@@ -5,11 +5,15 @@ import {
   DEFAULTS,
   INITIAL_SETTINGS,
   PHASE_COLORS,
+  buildPdfFromJpeg,
   cardNumber,
   clearAutosave,
   cmapGradient,
   computeTicks,
+  detectedPeaksToCsv,
   downloadBlob,
+  encodeTiffRgba,
+  estimateCorrelationShift,
   loadAutosave,
   mergeDedupPeaks,
   nearestValue,
@@ -36,6 +40,21 @@ const NORMALIZATION_OPTIONS = [
   ["max", "Maximum par patron"],
   ["area", "Aire par patron"],
   ["none", "Aucune — échelle globale"],
+];
+
+const BASELINE_OPTIONS = [
+  ["none", "Aucune"],
+  ["linear", "Linéaire — extrémités"],
+  ["rolling", "Rolling minimum"],
+  ["polynomial", "Polynôme robuste"],
+  ["als", "ALS asymétrique"],
+];
+
+const LAYOUT_OPTIONS = [
+  ["stacked", "Empilement"],
+  ["overlay", "Superposition"],
+  ["waterfall", "Waterfall"],
+  ["difference", "Différence à une référence"],
 ];
 
 const PRESETS = {
@@ -345,6 +364,7 @@ export default function App() {
   const [cursor, setCursor] = useState(null);
   const [dropActive, setDropActive] = useState(false);
   const [autosaveState, setAutosaveState] = useState("loading");
+  const [isExporting, setIsExporting] = useState(false);
 
   const svgRef = useRef(null);
   const workspaceRef = useRef(null);
@@ -551,7 +571,7 @@ export default function App() {
   }, [history, selection]);
 
   const saveSessionFile = useCallback(() => {
-    const payload = JSON.stringify({ version: 3, ...project }, null, 2);
+    const payload = JSON.stringify({ version: 4, ...project }, null, 2);
     downloadBlob(payload, "application/json", `${S.fileName || "figure"}_session.json`);
     setMessage("Session JSON exportée.");
   }, [project, S.fileName]);
@@ -636,11 +656,63 @@ export default function App() {
     setMessage("Données traitées exportées en CSV.");
   };
 
+  const exportDetectedPeaksCsv = () => {
+    const peakCount = processed.reduce((sum, pattern) => sum + (pattern.detectedPeaks?.length || 0), 0);
+    if (!peakCount) {
+      setMessage("Aucun pic détecté avec les seuils actuels.");
+      return;
+    }
+    downloadBlob(`\ufeff${detectedPeaksToCsv(processed)}`, "text/csv;charset=utf-8", `${S.fileName || "figure"}_peaks.csv`);
+    setMessage(`${peakCount} pic(s) exporté(s) en CSV.`);
+  };
+
+  const alignVisiblePatterns = () => {
+    const visible = patterns.filter((pattern) => pattern.visible);
+    if (visible.length < 2) {
+      setMessage("L’alignement nécessite au moins deux patrons visibles.");
+      return;
+    }
+    const referenceId = S.alignmentReferenceId || activePattern?.id || visible[0].id;
+    const reference = visible.find((pattern) => pattern.id === referenceId) || visible[0];
+    const results = new Map();
+    visible.forEach((pattern) => {
+      if (pattern.id === reference.id) return;
+      results.set(pattern.id, estimateCorrelationShift(reference, pattern, S));
+    });
+    history.set((current) => ({
+      ...current,
+      patterns: current.patterns.map((pattern) => {
+        const result = results.get(pattern.id);
+        if (!result) return pattern;
+        return {
+          ...pattern,
+          xoffset: (Number(pattern.xoffset) || 0) + result.shift,
+          alignmentScore: result.score,
+          alignmentShift: (Number(pattern.alignmentShift) || 0) + result.shift,
+          alignmentReference: reference.id,
+        };
+      }),
+      settings: { ...current.settings, alignmentReferenceId: reference.id },
+    }));
+    const valid = [...results.values()].filter((result) => result.score !== null);
+    const meanScore = valid.length ? valid.reduce((sum, result) => sum + result.score, 0) / valid.length : null;
+    setMessage(`Alignement sur « ${reference.label} » appliqué à ${results.size} patron(s)${meanScore === null ? "" : ` · corrélation moyenne ${meanScore.toFixed(3)}`}.`);
+  };
+
   const M = { left: 62, right: S.rightMargin, top: S.title ? 48 : 22, gap: 10, axisHeight: 50 };
-  const annotationBase = Math.max(0, visibleCount - 1) * S.vstep + S.annotGap;
+  const curveMinimum = processed.length
+    ? Math.min(...processed.map((pattern) => pattern.stackOffset + pattern.displayMinimum))
+    : 0;
+  const curveMaximum = processed.length
+    ? Math.max(...processed.map((pattern) => pattern.stackOffset + pattern.displayMaximum))
+    : 1;
+  const curvePadding = Math.max(0.12, (curveMaximum - curveMinimum) * 0.06);
+  const annotationBase = curveMaximum + S.annotGap;
   const hasAnnotations = S.showAnnotations && phases.some((phase) => phase.visible && phase.inAnnot);
-  const yMaximum = hasAnnotations ? annotationBase + S.tickScale + 0.65 : Math.max(1.2, Math.max(0, visibleCount - 1) * S.vstep + 1.2);
-  const yMinimum = -0.15;
+  const yMinimum = Math.min(-0.15, curveMinimum - curvePadding);
+  const yMaximum = hasAnnotations
+    ? annotationBase + S.tickScale + 0.65
+    : Math.max(curveMaximum + curvePadding, yMinimum + 1.2);
   const mainHeight = Math.max(270, (yMaximum - yMinimum) * S.pxPerUnit);
   const panelPhases = phases.filter((phase) => phase.visible && phase.inPanel);
   const panelHeight = S.showPdfPanel && panelPhases.length ? S.pdfPanelH : 0;
@@ -674,14 +746,12 @@ export default function App() {
     return { ticks, labels };
   }, [S.showAnnotations, S.xmin, S.xmax, S.tickMinI, S.labelMinI, S.labelMinSep, phases]);
 
-  const serializeSvg = () => {
+  const serializeSvg = ({ transparent = S.transparentExport } = {}) => {
     if (!svgRef.current) return null;
     const clone = svgRef.current.cloneNode(true);
     clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
-    if (S.transparentExport) {
-      const background = clone.querySelector("[data-figure-background]");
-      if (background) background.setAttribute("fill", "none");
-    }
+    const background = clone.querySelector("[data-figure-background]");
+    if (background) background.setAttribute("fill", transparent ? "none" : S.pageBackground);
     return new XMLSerializer().serializeToString(clone);
   };
 
@@ -691,26 +761,81 @@ export default function App() {
     downloadBlob(serialized, "image/svg+xml;charset=utf-8", `${S.fileName || "figure"}.svg`);
   };
 
-  const downloadPng = () => {
-    const serialized = serializeSvg();
-    if (!serialized) return;
+  const rasterizeSvg = async (requestedScale, transparent = S.transparentExport) => {
+    const serialized = serializeSvg({ transparent });
+    if (!serialized) throw new Error("Figure SVG indisponible.");
+    const maximumDimension = 10000;
+    const maximumPixels = 28000000;
+    const pixelLimitedScale = Math.sqrt(maximumPixels / Math.max(1, W * H));
+    const scale = Math.max(0.25, Math.min(requestedScale, maximumDimension / W, maximumDimension / H, pixelLimitedScale));
     const image = new Image();
-    image.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.round(W * S.pngScale);
-      canvas.height = Math.round(H * S.pngScale);
-      const context = canvas.getContext("2d");
-      if (!S.transparentExport) {
-        context.fillStyle = S.pageBackground;
-        context.fillRect(0, 0, canvas.width, canvas.height);
-      }
-      context.drawImage(image, 0, 0, canvas.width, canvas.height);
-      canvas.toBlob((blob) => {
-        if (blob) downloadBlob(blob, "image/png", `${S.fileName || "figure"}.png`);
-      }, "image/png");
-    };
-    image.onerror = () => setMessage("Échec de la conversion PNG.");
-    image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(serialized)}`;
+    await new Promise((resolve, reject) => {
+      image.onload = resolve;
+      image.onerror = () => reject(new Error("Échec du rendu SVG."));
+      image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(serialized)}`;
+    });
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(W * scale));
+    canvas.height = Math.max(1, Math.round(H * scale));
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    if (!context) throw new Error("Canvas 2D indisponible.");
+    if (!transparent) {
+      context.fillStyle = S.pageBackground;
+      context.fillRect(0, 0, canvas.width, canvas.height);
+    }
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    return { canvas, context, scale };
+  };
+
+  const downloadPng = async () => {
+    try {
+      setIsExporting(true);
+      const { canvas } = await rasterizeSvg(S.pngScale, S.transparentExport);
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+      if (!blob) throw new Error("Encodage PNG impossible.");
+      downloadBlob(blob, "image/png", `${S.fileName || "figure"}.png`);
+      setMessage("Figure PNG exportée.");
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const downloadTiff = async () => {
+    try {
+      setIsExporting(true);
+      const requestedScale = Math.max(1, S.exportDpi / 96);
+      const { canvas, context, scale } = await rasterizeSvg(requestedScale, S.transparentExport);
+      const effectiveDpi = Math.round(scale * 96);
+      const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+      const tiff = encodeTiffRgba(imageData, canvas.width, canvas.height, effectiveDpi);
+      downloadBlob(tiff, "image/tiff", `${S.fileName || "figure"}.tiff`);
+      setMessage(`Figure TIFF exportée à ${effectiveDpi} dpi${effectiveDpi < S.exportDpi ? " — résolution limitée par la taille du canvas" : ""}.`);
+    } catch (error) {
+      setMessage(`Échec TIFF : ${error.message}`);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const downloadPdf = async () => {
+    try {
+      setIsExporting(true);
+      const requestedScale = Math.max(1, S.exportDpi / 96);
+      const { canvas, scale } = await rasterizeSvg(requestedScale, false);
+      const effectiveDpi = Math.round(scale * 96);
+      const jpegBlob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.97));
+      if (!jpegBlob) throw new Error("Encodage JPEG intermédiaire impossible.");
+      const jpegBytes = new Uint8Array(await jpegBlob.arrayBuffer());
+      const pdf = buildPdfFromJpeg(jpegBytes, canvas.width, canvas.height, effectiveDpi);
+      downloadBlob(pdf, "application/pdf", `${S.fileName || "figure"}.pdf`);
+      setMessage(`Figure PDF exportée à ${effectiveDpi} dpi${effectiveDpi < S.exportDpi ? " — résolution limitée par la taille du canvas" : ""}.`);
+    } catch (error) {
+      setMessage(`Échec PDF : ${error.message}`);
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const fitToWorkspace = useCallback(() => {
@@ -848,6 +973,8 @@ export default function App() {
           <span>{activePattern.fileName}</span>
           <span>{activePattern.x.length.toLocaleString("fr-FR")} points</span>
           {selectedVisibleIndex >= 0 && <span>Position visible : {selectedVisibleIndex + 1}/{visibleCount}</span>}
+          {Number.isFinite(activePattern.alignmentScore) && <span>Corrélation d’alignement : {activePattern.alignmentScore.toFixed(4)}</span>}
+          {Number.isFinite(activePattern.alignmentShift) && activePattern.alignmentShift !== 0 && <span>Décalage automatique cumulé : {activePattern.alignmentShift.toFixed(4)}</span>}
         </div>
       </Section>
     </>
@@ -887,7 +1014,7 @@ export default function App() {
       <header className="topbar">
         <div className="brand">
           <Logo />
-          <div><strong>Make Figure</strong><span>DRX · Raman · v3</span></div>
+          <div><strong>Make Figure</strong><span>DRX · Raman · v4</span></div>
         </div>
         <div className="topbar__divider" />
         <div className="mode-switch" aria-label="Mode d’analyse">
@@ -911,8 +1038,8 @@ export default function App() {
           {autosaveState === "saving" ? "Enregistrement" : autosaveState === "error" ? "Autosauvegarde indisponible" : "Sauvegardé localement"}
         </div>
         <div className="topbar__group">
-          <Button variant="secondary" onClick={downloadSvg}>SVG</Button>
-          <Button variant="primary" icon="download" onClick={downloadPng}>Exporter PNG</Button>
+          <Button variant="secondary" disabled={isExporting} onClick={downloadSvg}>SVG</Button>
+          <Button variant="primary" icon="download" disabled={isExporting} onClick={downloadPng}>{isExporting ? "Export…" : "Exporter PNG"}</Button>
         </div>
       </header>
 
@@ -1054,17 +1181,42 @@ export default function App() {
                       <line key={`grid-${tick}`} x1={xToPx(tick)} x2={xToPx(tick)} y1={M.top} y2={M.top + mainHeight + (panelHeight ? M.gap + panelHeight : 0)} stroke="#cfd4da" strokeWidth="0.65" opacity={S.gridOpacity} />
                     ))}
 
-                    {processed.map((pattern, visibleIndex) => {
+                    <defs>
+                      <clipPath id="plot-clip">
+                        <rect x={M.left} y={M.top} width={plotWidth} height={mainHeight} />
+                      </clipPath>
+                    </defs>
+
+                    {processed.map((pattern) => {
                       if (!pattern.px?.length) return null;
-                      const offset = pattern.stackIndex * S.vstep;
+                      const offset = pattern.stackOffset;
                       const color = colorMap.get(pattern.id) || "#111111";
                       const path = pattern.px.map((x, index) => `${index ? "L" : "M"}${xToPx(x).toFixed(2)},${yToPx(pattern.py[index] + offset).toFixed(2)}`).join("");
-                      const fillPath = `${path}L${xToPx(pattern.px.at(-1)).toFixed(2)},${yToPx(offset).toFixed(2)}L${xToPx(pattern.px[0]).toFixed(2)},${yToPx(offset).toFixed(2)}Z`;
+                      const baselineY = yToPx(offset);
+                      const fillPath = `${path}L${xToPx(pattern.px.at(-1)).toFixed(2)},${baselineY.toFixed(2)}L${xToPx(pattern.px[0]).toFixed(2)},${baselineY.toFixed(2)}Z`;
+                      const labelY = S.layoutMode === "overlay" && visibleCount > 1
+                        ? curveMaximum - (pattern.stackIndex / (visibleCount - 1)) * Math.max(curveMaximum - curveMinimum, 0.8)
+                        : offset + (pattern.displayMinimum + pattern.displayMaximum) * 0.5;
+                      const labelledPeaks = [...(pattern.detectedPeaks || [])]
+                        .sort((a, b) => b.prominence - a.prominence)
+                        .slice(0, S.peakMaxLabels)
+                        .sort((a, b) => a.displayX - b.displayX);
                       return (
                         <g key={pattern.id} opacity={selection?.type === "pattern" && selection.id !== pattern.id ? 0.82 : 1}>
-                          {S.showFill && <path d={fillPath} fill={color} opacity={S.fillAlpha} />}
-                          <path d={path} fill="none" stroke={color} strokeWidth={S.lineWidth} vectorEffect="non-scaling-stroke" />
-                          <text x={xToPx(S.xmax) + 10} y={yToPx(offset + 0.5)} dominantBaseline="middle" fontSize={S.patternLabelSize} fontWeight={S.patternLabelBold ? "700" : "400"} fill={color} fontFamily="Arial, Helvetica, sans-serif">{pattern.label}</text>
+                          <g clipPath="url(#plot-clip)">
+                            {S.layoutMode === "difference" && <line x1={M.left} x2={M.left + plotWidth} y1={baselineY} y2={baselineY} stroke={color} strokeWidth="0.55" strokeDasharray="3 3" opacity="0.35" />}
+                            {S.showFill && <path d={fillPath} fill={color} opacity={S.fillAlpha} />}
+                            <path d={path} fill="none" stroke={color} strokeWidth={S.lineWidth} vectorEffect="non-scaling-stroke" />
+                            {S.showDetectedPeaks && (pattern.detectedPeaks || []).map((peak, peakIndex) => (
+                              <circle key={`peak-marker-${pattern.id}-${peakIndex}`} cx={xToPx(peak.displayX)} cy={yToPx(peak.displayY + offset)} r={S.peakMarkerSize} fill={S.pageBackground} stroke={color} strokeWidth="1.1" vectorEffect="non-scaling-stroke" />
+                            ))}
+                            {S.showDetectedPeaks && labelledPeaks.map((peak, peakIndex) => {
+                              const x = xToPx(peak.displayX);
+                              const y = yToPx(peak.displayY + offset) - 7 - (peakIndex % 2) * 7;
+                              return <text key={`peak-label-${pattern.id}-${peakIndex}`} x={x} y={y} textAnchor="start" fontSize={S.peakLabelSize} fill={color} fontFamily="Arial, Helvetica, sans-serif" transform={`rotate(-90 ${x} ${y})`}>{peak.x.toFixed(S.mode === "drx" ? 2 : 0)}</text>;
+                            })}
+                          </g>
+                          <text x={xToPx(S.xmax) + 10} y={yToPx(labelY)} dominantBaseline="middle" fontSize={S.patternLabelSize} fontWeight={S.patternLabelBold ? "700" : "400"} fill={color} fontFamily="Arial, Helvetica, sans-serif">{pattern.label}{pattern.isDifferenceReference ? " (réf.)" : ""}</text>
                         </g>
                       );
                     })}
@@ -1139,6 +1291,8 @@ export default function App() {
             <span><strong>{patterns.length}</strong> patrons</span>
             <span><strong>{phases.length}</strong> phases</span>
             <span><strong>{visibleCount}</strong> visibles</span>
+            <span><strong>{processed.reduce((sum, pattern) => sum + (pattern.detectedPeaks?.length || 0), 0)}</strong> pics détectés</span>
+            <span>{LAYOUT_OPTIONS.find(([value]) => value === S.layoutMode)?.[1]}</span>
             <span className="statusbar__spacer" />
             {cursor ? <><span>x = <strong>{cursor.dataX.toFixed(S.mode === "drx" ? 3 : 1)}</strong></span>{cursor.nearest && <span>{activePattern?.label}: <strong>{cursor.nearest.y.toFixed(4)}</strong></span>}</> : <span>Déplacer le curseur sur la figure pour lire les coordonnées.</span>}
           </footer>
@@ -1163,9 +1317,12 @@ export default function App() {
                   {S.showGrid && <SliderField label="Opacité de la grille" value={S.gridOpacity} min={0.1} max={1} step={0.05} onChange={(value) => patchSettings("gridOpacity", value)} />}
                 </Section>
                 <Section title="Disposition">
-                  <SliderField label="Décalage vertical" value={S.vstep} min={0.3} max={4} step={0.05} onChange={(value) => patchSettings("vstep", value)} />
+                  <SelectField label="Mode de représentation" value={S.layoutMode} onChange={(value) => patchSettings("layoutMode", value)} options={LAYOUT_OPTIONS} />
+                  {S.layoutMode === "difference" && <SelectField label="Patron de référence" value={S.differenceReferenceId} onChange={(value) => patchSettings("differenceReferenceId", value)} options={[["", "Premier patron visible"], ...patterns.filter((pattern) => pattern.visible).map((pattern) => [pattern.id, pattern.label])]} />}
+                  {S.layoutMode === "waterfall" && <NumberField label="Décalage X par patron" value={S.waterfallXShift} min={-1000} max={1000} step={S.mode === "drx" ? 0.02 : 2} onChange={(value) => patchSettings("waterfallXShift", value)} />}
+                  {S.layoutMode !== "overlay" && <SliderField label="Décalage vertical" value={S.vstep} min={0.1} max={4} step={0.05} onChange={(value) => patchSettings("vstep", value)} />}
                   <SliderField label="Échelle verticale" value={S.pxPerUnit} min={30} max={220} step={5} suffix="px" onChange={(value) => patchSettings("pxPerUnit", value)} />
-                  <Toggle label="Inverser l’empilement" checked={S.reverseStack} onChange={(value) => patchSettings("reverseStack", value)} description="Modifie réellement la position verticale des patrons." />
+                  {S.layoutMode !== "overlay" && <Toggle label="Inverser l’ordre" checked={S.reverseStack} onChange={(value) => patchSettings("reverseStack", value)} />}
                   <SliderField label="Marge droite" value={S.rightMargin} min={50} max={400} step={5} suffix="px" onChange={(value) => patchSettings("rightMargin", value)} />
                 </Section>
                 <Section title="Typographie" defaultOpen={false}>
@@ -1180,12 +1337,41 @@ export default function App() {
 
             {rightTab === "signal" && (
               <>
-                <Section title="Traitement du signal">
-                  <SelectField label="Normalisation" value={S.normalizeMode} onChange={(value) => patchSettings("normalizeMode", value)} options={NORMALIZATION_OPTIONS} />
+                <Section title="Prétraitement">
                   <SliderField label="Lissage — moyenne mobile" value={S.smoothW} min={1} max={41} step={1} onChange={(value) => patchSettings("smoothW", value)} />
                   <SliderField label="Écrêtage percentile" value={S.clipPct} min={90} max={100} step={0.1} suffix="%" onChange={(value) => patchSettings("clipPct", value)} />
-                  {S.normalizeMode === "none" && <div className="callout">Les amplitudes relatives entre patrons sont conservées. Une échelle globale est uniquement appliquée pour l’affichage empilé.</div>}
+                  <SelectField label="Normalisation" value={S.normalizeMode} onChange={(value) => patchSettings("normalizeMode", value)} options={NORMALIZATION_OPTIONS} />
+                  {S.normalizeMode === "none" && <div className="callout">Les amplitudes relatives sont conservées ; une échelle globale commune est utilisée uniquement pour l’affichage.</div>}
                 </Section>
+
+                <Section title="Correction de ligne de base">
+                  <SelectField label="Méthode" value={S.baselineMode} onChange={(value) => patchSettings("baselineMode", value)} options={BASELINE_OPTIONS} />
+                  {S.baselineMode === "rolling" && <SliderField label="Fenêtre" value={S.baselineWindow} min={5} max={501} step={2} suffix="pts" onChange={(value) => patchSettings("baselineWindow", Math.round(value) | 1)} />}
+                  {S.baselineMode === "polynomial" && <SliderField label="Ordre du polynôme" value={S.baselinePolyOrder} min={1} max={6} step={1} onChange={(value) => patchSettings("baselinePolyOrder", Math.round(value))} />}
+                  {S.baselineMode === "als" && <SliderField label="Rigidité log₁₀(λ)" value={S.baselineLambdaLog} min={1} max={9} step={0.25} onChange={(value) => patchSettings("baselineLambdaLog", value)} />}
+                  {["polynomial", "als"].includes(S.baselineMode) && <><SliderField label="Asymétrie p" value={S.baselineAsymmetry} min={0.001} max={0.2} step={0.001} onChange={(value) => patchSettings("baselineAsymmetry", value)} /><SliderField label="Itérations" value={S.baselineIterations} min={1} max={20} step={1} onChange={(value) => patchSettings("baselineIterations", Math.round(value))} /></>}
+                  {S.baselineMode !== "none" && <Toggle label="Ramener les valeurs négatives à zéro" checked={S.baselineClamp} onChange={(value) => patchSettings("baselineClamp", value)} />}
+                  {S.baselineMode === "als" && <div className="callout">ALS est plus coûteux que les autres méthodes. Une rigidité élevée produit une ligne de base plus lisse.</div>}
+                </Section>
+
+                <Section title="Détection automatique de pics">
+                  <Toggle label="Afficher les pics détectés" checked={S.showDetectedPeaks} onChange={(value) => patchSettings("showDetectedPeaks", value)} />
+                  <SliderField label="Hauteur minimale" value={S.peakMinHeight} min={0} max={100} step={1} suffix="%" onChange={(value) => patchSettings("peakMinHeight", value)} />
+                  <SliderField label="Proéminence minimale" value={S.peakMinProminence} min={0} max={100} step={0.5} suffix="%" onChange={(value) => patchSettings("peakMinProminence", value)} />
+                  <NumberField label="Distance minimale X" value={S.peakMinDistance} min={0} step={S.mode === "drx" ? 0.05 : 1} onChange={(value) => patchSettings("peakMinDistance", value)} />
+                  <SliderField label="Fenêtre de proéminence" value={S.peakLookaround} min={2} max={250} step={1} suffix="pts" onChange={(value) => patchSettings("peakLookaround", Math.round(value))} />
+                  <SliderField label="Nombre maximal de labels" value={S.peakMaxLabels} min={0} max={100} step={1} onChange={(value) => patchSettings("peakMaxLabels", Math.round(value))} />
+                  <div className="inline-actions"><Button variant="secondary" icon="csv" onClick={exportDetectedPeaksCsv}>Exporter les pics</Button></div>
+                </Section>
+
+                <Section title="Alignement par corrélation">
+                  <SelectField label="Référence" value={S.alignmentReferenceId} onChange={(value) => patchSettings("alignmentReferenceId", value)} options={[["", activePattern ? `Sélection : ${activePattern.label}` : "Premier patron visible"], ...patterns.filter((pattern) => pattern.visible).map((pattern) => [pattern.id, pattern.label])]} />
+                  <NumberField label="Décalage maximal ±" value={S.alignmentMaxShift} min={0} step={S.mode === "drx" ? 0.05 : 1} onChange={(value) => patchSettings("alignmentMaxShift", value)} />
+                  <NumberField label="Pas de recherche" value={S.alignmentStep} min={0.0001} step={S.mode === "drx" ? 0.005 : 0.1} onChange={(value) => patchSettings("alignmentStep", value)} />
+                  <div className="inline-actions"><Button variant="primary" onClick={alignVisiblePatterns}>Aligner les patrons visibles</Button><Button variant="secondary" icon="reset" onClick={() => history.set((current) => ({ ...current, patterns: current.patterns.map((pattern) => ({ ...pattern, xoffset: (Number(pattern.xoffset) || 0) - (Number(pattern.alignmentShift) || 0), alignmentShift: 0, alignmentScore: undefined, alignmentReference: undefined })) }))}>Retirer l’alignement auto</Button></div>
+                  <div className="callout">L’algorithme recherche le décalage X maximisant la corrélation avec le patron de référence sur la plage affichée.</div>
+                </Section>
+
                 <Section title="Courbes">
                   <SliderField label="Épaisseur" value={S.lineWidth} min={0.3} max={4} step={0.05} onChange={(value) => patchSettings("lineWidth", value)} />
                   <Toggle label="Remplissage sous les courbes" checked={S.showFill} onChange={(value) => patchSettings("showFill", value)} />
@@ -1223,13 +1409,14 @@ export default function App() {
                   <SelectField label="Preset" value="" onChange={applyPreset} options={[["", "Choisir…"], ...Object.entries(PRESETS).map(([key, preset]) => [key, preset.label])]} />
                   <SliderField label="Largeur de figure" value={S.figWidth} min={500} max={3000} step={25} suffix="px" onChange={(value) => patchSettings("figWidth", value)} />
                   <SliderField label="Échelle PNG" value={S.pngScale} min={1} max={6} step={1} suffix="×" onChange={(value) => patchSettings("pngScale", value)} />
+                  <SliderField label="Résolution PDF / TIFF" value={S.exportDpi} min={72} max={600} step={12} suffix="dpi" onChange={(value) => patchSettings("exportDpi", Math.round(value))} />
                   <Field label="Fond de la figure"><div className="color-field"><input type="color" value={S.pageBackground} onChange={(event) => patchSettings("pageBackground", event.target.value)} /><code>{S.pageBackground}</code></div></Field>
-                  <Toggle label="Fond transparent à l’export" checked={S.transparentExport} onChange={(value) => patchSettings("transparentExport", value)} />
+                  <Toggle label="Fond transparent à l’export" checked={S.transparentExport} onChange={(value) => patchSettings("transparentExport", value)} description="Le PDF utilise toujours un fond opaque ; le TIFF conserve le canal alpha." />
                   <TextField label="Nom du fichier" value={S.fileName} onChange={(value) => patchSettings("fileName", value.replace(/[\\/:*?"<>|]/g, "_"))} />
-                  <div className="export-summary"><span>PNG : {Math.round(W * S.pngScale)} × {Math.round(H * S.pngScale)} px</span><span>SVG : vectoriel éditable</span></div>
+                  <div className="export-summary"><span>PNG : {Math.round(W * S.pngScale)} × {Math.round(H * S.pngScale)} px</span><span>PDF / TIFF : {S.exportDpi} dpi</span><span>SVG : vectoriel éditable</span></div>
                 </Section>
                 <Section title="Exporter">
-                  <div className="export-grid"><Button variant="primary" icon="download" onClick={downloadPng}>PNG</Button><Button variant="secondary" onClick={downloadSvg}>SVG</Button><Button variant="secondary" icon="csv" onClick={exportProcessedCsv}>CSV traité</Button><Button variant="secondary" icon="save" onClick={saveSessionFile}>Session JSON</Button></div>
+                  <div className="export-grid"><Button variant="primary" icon="download" disabled={isExporting} onClick={downloadPng}>PNG</Button><Button variant="secondary" disabled={isExporting} onClick={downloadSvg}>SVG</Button><Button variant="secondary" disabled={isExporting} onClick={downloadPdf}>PDF</Button><Button variant="secondary" disabled={isExporting} onClick={downloadTiff}>TIFF</Button><Button variant="secondary" icon="csv" onClick={exportProcessedCsv}>CSV traité</Button><Button variant="secondary" icon="csv" onClick={exportDetectedPeaksCsv}>CSV pics</Button><Button variant="secondary" icon="save" onClick={saveSessionFile}>Session JSON</Button></div>
                 </Section>
               </>
             )}
