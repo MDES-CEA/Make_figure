@@ -211,6 +211,143 @@ export function parsePeaksText(text) {
   return normalizePeaks(x.map((value, index) => [value, y[index]]));
 }
 
+export function parseRruffMetadata(text) {
+  const metadata = {};
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line.startsWith("##") || !line.includes("=")) continue;
+    const separator = line.indexOf("=");
+    const key = line.slice(2, separator).trim();
+    const value = line.slice(separator + 1).trim();
+    if (key) metadata[key] = value;
+  }
+  return metadata;
+}
+
+/**
+ * Converts a continuous Raman reference spectrum into a compact stick list.
+ * RRUFF RAW spectra receive a rolling-minimum baseline correction; processed
+ * spectra are only lightly smoothed before local maxima are selected.
+ */
+export function extractRamanReferencePeaks(x, y, options = {}) {
+  if (!Array.isArray(x) || !Array.isArray(y) || x.length !== y.length || x.length < 5) return [];
+  const smoothWindow = Math.max(1, Math.round(options.smoothWindow ?? 7));
+  const baselineWindow = Math.max(11, Math.round(options.baselineWindow ?? 151) | 1);
+  const minProminencePct = Math.max(0, Number(options.minProminencePct ?? 1));
+  const minHeightPct = Math.max(0, Number(options.minHeightPct ?? 1));
+  const minDistance = Math.max(0, Number(options.minDistance ?? 5));
+  const maxCount = Math.max(1, Math.round(options.maxCount ?? 30));
+  const isProcessed = Boolean(options.isProcessed);
+
+  const smoothed = movingAverage(y, smoothWindow);
+  let baseline;
+  if (isProcessed) {
+    const low = percentile(smoothed, 1);
+    baseline = new Array(smoothed.length).fill(low);
+  } else {
+    baseline = movingAverage(movingMinimum(smoothed, baselineWindow), baselineWindow);
+  }
+  const corrected = smoothed.map((value, index) => Math.max(0, value - baseline[index]));
+  const dxValues = [];
+  for (let i = 1; i < x.length; i += 1) {
+    const dx = x[i] - x[i - 1];
+    if (Number.isFinite(dx) && dx > 0) dxValues.push(dx);
+  }
+  const medianDx = dxValues.length ? percentile(dxValues, 50) : 1;
+  const lookaround = Math.max(3, Math.round((options.lookaround ?? 15) / Math.max(medianDx, 1e-9)));
+  const detected = detectPeaks(x, corrected, {
+    peakMinHeight: minHeightPct,
+    peakMinProminence: minProminencePct,
+    peakMinDistance: minDistance,
+    peakLookaround: lookaround,
+  });
+  if (!detected.length) return [];
+
+  const selected = detected
+    .slice()
+    .sort((a, b) => b.prominence - a.prominence || b.y - a.y)
+    .slice(0, maxCount);
+  const maximum = Math.max(...selected.map((peak) => corrected[peak.index]));
+  if (!Number.isFinite(maximum) || maximum <= 0) return [];
+  return selected
+    .map((peak) => [peak.x, (corrected[peak.index] / maximum) * 100])
+    .sort((a, b) => a[0] - b[0]);
+}
+
+export function parseReferenceText(text, options = {}) {
+  const metadata = parseRruffMetadata(text);
+  const parsed = parseXYText(text);
+  const fileType = metadata.FILETYPE || "";
+  const isRaman = /raman/i.test(fileType) || Boolean(metadata["RAMAN WAVELENGTH"]);
+  if (!isRaman) {
+    return {
+      kind: "peak-list",
+      peaks: normalizePeaks(parsed.x.map((value, index) => [value, parsed.y[index]])),
+      metadata,
+      name: metadata.NAMES || options.fallbackName || "Phase",
+    };
+  }
+
+  const ramanOptions = {
+    smoothWindow: options.smoothWindow ?? 7,
+    baselineWindow: options.baselineWindow ?? 151,
+    minProminencePct: options.minProminencePct ?? 1,
+    minHeightPct: options.minHeightPct ?? 1,
+    minDistance: options.minDistance ?? 5,
+    maxCount: options.maxCount ?? 30,
+    lookaround: options.lookaround ?? 15,
+    isProcessed: /processed/i.test(fileType),
+  };
+  return {
+    kind: "raman-spectrum",
+    peaks: extractRamanReferencePeaks(parsed.x, parsed.y, ramanOptions),
+    metadata,
+    name: metadata.NAMES || options.fallbackName || "Référence Raman",
+    spectrum: { x: parsed.x, y: parsed.y },
+    ramanOptions,
+  };
+}
+
+/**
+ * Parses manual peak definitions. Accepted examples:
+ *   107; 280; 713; 750; 1085
+ *   107:40; 280:100; 713:65
+ *   one "position intensity" pair per line
+ */
+export function parseManualPeaks(text) {
+  const entries = [];
+  const numberPattern = /[-+]?(?:\d+(?:[.,]\d*)?|[.,]\d+)(?:[eE][-+]?\d+)?/g;
+  const segments = String(text || "")
+    .replace(/[−–—]/g, "-")
+    .split(/[;\n]+/)
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  for (const segment of segments) {
+    const matches = segment.match(numberPattern) || [];
+    const values = matches.map(parseNumberToken).filter((value) => value !== null);
+    if (!values.length) continue;
+    const explicitPair = /[:|]/.test(segment) || (/\s+/.test(segment) && values.length === 2 && !/,\s*/.test(segment));
+    if (explicitPair && values.length >= 2) entries.push([values[0], Math.max(0, values[1])]);
+    else values.forEach((position) => entries.push([position, 100]));
+  }
+
+  const sorted = entries
+    .filter(([position, intensity]) => Number.isFinite(position) && Number.isFinite(intensity))
+    .sort((a, b) => a[0] - b[0]);
+  const deduped = [];
+  for (const peak of sorted) {
+    const previous = deduped[deduped.length - 1];
+    if (previous && Math.abs(previous[0] - peak[0]) < 1e-9) previous[1] = Math.max(previous[1], peak[1]);
+    else deduped.push(peak);
+  }
+  return normalizePeaks(deduped);
+}
+
+export function formatManualPeaks(peaks) {
+  return (peaks || []).map(([position, intensity]) => `${Number(position).toFixed(2)}:${Number(intensity).toFixed(1)}`).join("; ");
+}
+
 export function normalizePeaks(peaks) {
   if (!peaks.length) return [];
   const maximum = Math.max(...peaks.map((peak) => peak[1]));
@@ -1100,6 +1237,7 @@ export function validateProject(input) {
   const patterns = Array.isArray(input.patterns) ? input.patterns : [];
   const phases = Array.isArray(input.phases) ? input.phases : [];
   const notes = Array.isArray(input.notes) ? input.notes : [];
+  const zones = Array.isArray(input.zones) ? input.zones : [];
   for (const pattern of patterns) {
     if (!Array.isArray(pattern.x) || !Array.isArray(pattern.y) || pattern.x.length !== pattern.y.length) {
       throw new Error(`Patron invalide : ${pattern.label || pattern.fileName || "sans nom"}.`);
@@ -1108,7 +1246,15 @@ export function validateProject(input) {
       throw new Error(`Écart-type invalide : ${pattern.label || pattern.fileName || "sans nom"}.`);
     }
   }
-  return { settings, patterns, phases, notes };
+  for (const phase of phases) {
+    if (!Array.isArray(phase.peaks)) throw new Error(`Phase invalide : ${phase.name || "sans nom"}.`);
+  }
+  for (const zone of zones) {
+    if (!Number.isFinite(Number(zone.xmin)) || !Number.isFinite(Number(zone.xmax))) {
+      throw new Error(`Zone invalide : ${zone.name || "sans nom"}.`);
+    }
+  }
+  return { settings, patterns, phases, notes, zones };
 }
 
 export function nearestValue(pattern, x) {
