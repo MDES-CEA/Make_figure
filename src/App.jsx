@@ -5,6 +5,7 @@ import {
   DEFAULTS,
   INITIAL_SETTINGS,
   PHASE_COLORS,
+  averagePatterns,
   buildPdfFromJpeg,
   cardNumber,
   clearAutosave,
@@ -245,10 +246,16 @@ function EmptyPanel({ title, body }) {
   );
 }
 
-function PatternItem({ pattern, index, color, selected, onSelect, onUpdate, onDelete, onDragStart, onDrop }) {
+function PatternItem({
+  pattern, index, color, selected, onSelect, onUpdate, onDelete, onDragStart, onDrop,
+  averageSelectable = false, averageChecked = false, onAverageToggle,
+}) {
+  const meta = pattern.isAverage
+    ? `${pattern.replicateCount || pattern.sourcePatternIds?.length || 0} acquisitions moyennées · ${pattern.x.length.toLocaleString("fr-FR")} points`
+    : `${pattern.x.length.toLocaleString("fr-FR")} points · #${index + 1}`;
   return (
     <article
-      className={`data-item ${selected ? "is-selected" : ""} ${!pattern.visible ? "is-hidden" : ""}`}
+      className={`data-item ${selected ? "is-selected" : ""} ${!pattern.visible ? "is-hidden" : ""} ${pattern.isAverage ? "is-average" : ""}`}
       draggable
       onDragStart={(event) => onDragStart(event, pattern.id)}
       onDragOver={(event) => event.preventDefault()}
@@ -264,7 +271,14 @@ function PatternItem({ pattern, index, color, selected, onSelect, onUpdate, onDe
           onClick={(event) => event.stopPropagation()}
           onChange={(event) => onUpdate("label", event.target.value)}
         />
-        <span className="data-item__meta">{pattern.x.length.toLocaleString("fr-FR")} points · #{index + 1}</span>
+        <span className="data-item__meta">{meta}</span>
+        {averageSelectable && (
+          <label className={`average-pick ${averageChecked ? "is-checked" : ""}`} onClick={(event) => event.stopPropagation()}>
+            <input type="checkbox" checked={averageChecked} onChange={(event) => onAverageToggle?.(event.target.checked)} />
+            <span>Inclure dans la moyenne Raman</span>
+          </label>
+        )}
+        {pattern.isAverage && <span className="derived-badge">patron moyen</span>}
       </div>
       <div className="data-item__actions">
         <IconButton icon={pattern.visible ? "eye" : "eyeOff"} title={pattern.visible ? "Masquer" : "Afficher"} onClick={(event) => { event?.stopPropagation?.(); onUpdate("visible", !pattern.visible); }} />
@@ -365,6 +379,8 @@ export default function App() {
   const [dropActive, setDropActive] = useState(false);
   const [autosaveState, setAutosaveState] = useState("loading");
   const [isExporting, setIsExporting] = useState(false);
+  const [ramanAverageSelection, setRamanAverageSelection] = useState([]);
+  const [ramanAverageLabel, setRamanAverageLabel] = useState("");
 
   const svgRef = useRef(null);
   const workspaceRef = useRef(null);
@@ -439,6 +455,14 @@ export default function App() {
     const timer = window.setTimeout(() => setMessage(""), 5000);
     return () => window.clearTimeout(timer);
   }, [message]);
+
+  useEffect(() => {
+    const eligible = new Set(patterns.filter((pattern) => !pattern.isAverage).map((pattern) => pattern.id));
+    setRamanAverageSelection((current) => {
+      const filtered = current.filter((id) => eligible.has(id));
+      return filtered.length === current.length && filtered.every((id, index) => id === current[index]) ? current : filtered;
+    });
+  }, [patterns]);
 
   const processed = useMemo(() => processPatterns(patterns, S), [patterns, S]);
   const visibleCount = processed.length;
@@ -551,6 +575,45 @@ export default function App() {
     setMessage(`Fiche ${file.name} fusionnée.`);
   };
 
+  const toggleRamanAveragePattern = (id, checked) => {
+    setRamanAverageSelection((current) => checked
+      ? (current.includes(id) ? current : [...current, id])
+      : current.filter((value) => value !== id));
+  };
+
+  const createRamanAverage = () => {
+    const selected = patterns.filter((pattern) => ramanAverageSelection.includes(pattern.id) && !pattern.isAverage);
+    if (selected.length < 2) {
+      setMessage("Sélectionner au moins deux acquisitions Raman.");
+      return;
+    }
+    try {
+      const averaged = averagePatterns(selected, {
+        label: ramanAverageLabel || `Moyenne Raman · ${selected.length} acquisitions`,
+        method: S.ramanAverageMethod,
+        normalizeMode: S.ramanAverageNormalize,
+      });
+      history.set((current) => ({
+        ...current,
+        patterns: [
+          ...current.patterns.map((pattern) => (
+            S.ramanAverageHideSources && ramanAverageSelection.includes(pattern.id)
+              ? { ...pattern, visible: false }
+              : pattern
+          )),
+          averaged,
+        ],
+      }));
+      setRamanAverageSelection([]);
+      setRamanAverageLabel("");
+      setSelection({ type: "pattern", id: averaged.id });
+      setRightTab("selection");
+      setMessage(`Patron moyen créé à partir de ${selected.length} acquisitions.`);
+    } catch (error) {
+      setMessage(error.message || "Impossible de calculer la moyenne Raman.");
+    }
+  };
+
   const setMode = (mode) => {
     const defaults = DEFAULTS[mode];
     history.set((current) => ({
@@ -571,7 +634,7 @@ export default function App() {
   }, [history, selection]);
 
   const saveSessionFile = useCallback(() => {
-    const payload = JSON.stringify({ version: 4, ...project }, null, 2);
+    const payload = JSON.stringify({ version: 5, ...project }, null, 2);
     downloadBlob(payload, "application/json", `${S.fileName || "figure"}_session.json`);
     setMessage("Session JSON exportée.");
   }, [project, S.fileName]);
@@ -972,6 +1035,9 @@ export default function App() {
         <div className="info-box">
           <span>{activePattern.fileName}</span>
           <span>{activePattern.x.length.toLocaleString("fr-FR")} points</span>
+          {activePattern.isAverage && <span>Patron dérivé : {activePattern.replicateCount} acquisitions · {activePattern.averageMethod === "median" ? "médiane" : "moyenne"}</span>}
+          {activePattern.isAverage && <span>Pré-normalisation : {activePattern.averageNormalizeMode || "none"}</span>}
+          {activePattern.isAverage && <span>Sources : {(activePattern.sourceFiles || []).join(", ")}</span>}
           {selectedVisibleIndex >= 0 && <span>Position visible : {selectedVisibleIndex + 1}/{visibleCount}</span>}
           {Number.isFinite(activePattern.alignmentScore) && <span>Corrélation d’alignement : {activePattern.alignmentScore.toFixed(4)}</span>}
           {Number.isFinite(activePattern.alignmentShift) && activePattern.alignmentShift !== 0 && <span>Décalage automatique cumulé : {activePattern.alignmentShift.toFixed(4)}</span>}
@@ -1055,6 +1121,25 @@ export default function App() {
             {leftTab === "patterns" && (
               <>
                 <button type="button" className="drop-button" onClick={() => patternInputRef.current?.click()}><Icon name="upload" /><span><strong>Importer des patrons</strong><small>.xy · .txt · .csv · .dat</small></span></button>
+                {S.mode === "raman" && (
+                  <div className="average-builder">
+                    <div className="average-builder__header">
+                      <div><strong>Moyenne d’acquisitions Raman</strong><span>{ramanAverageSelection.length} acquisition(s) sélectionnée(s)</span></div>
+                      <button type="button" onClick={() => setRamanAverageSelection(patterns.filter((pattern) => pattern.visible && !pattern.isAverage).map((pattern) => pattern.id))}>Sélectionner visibles</button>
+                    </div>
+                    <input type="text" value={ramanAverageLabel} placeholder="Nom du patron moyen" onChange={(event) => setRamanAverageLabel(event.target.value)} />
+                    <div className="average-builder__grid">
+                      <label><span>Agrégation</span><select value={S.ramanAverageMethod} onChange={(event) => patchSettings("ramanAverageMethod", event.target.value)}><option value="mean">Moyenne</option><option value="median">Médiane</option></select></label>
+                      <label><span>Avant moyenne</span><select value={S.ramanAverageNormalize} onChange={(event) => patchSettings("ramanAverageNormalize", event.target.value)}><option value="none">Intensités brutes</option><option value="max">Normaliser au maximum</option><option value="area">Normaliser à l’aire</option><option value="minmax">Min–max</option></select></label>
+                    </div>
+                    <Toggle label="Masquer les acquisitions source" checked={S.ramanAverageHideSources} onChange={(value) => patchSettings("ramanAverageHideSources", value)} />
+                    <div className="average-builder__actions">
+                      <Button variant="secondary" onClick={() => setRamanAverageSelection([])}>Effacer</Button>
+                      <Button variant="primary" disabled={ramanAverageSelection.length < 2} onClick={createRamanAverage}>Créer la moyenne</Button>
+                    </div>
+                    <p>Les acquisitions sont interpolées sur leur plage commune. Les données sources ne sont pas modifiées.</p>
+                  </div>
+                )}
                 <div className="data-list">
                   {patterns.length ? patterns.map((pattern, index) => (
                     <PatternItem
@@ -1068,6 +1153,9 @@ export default function App() {
                       onDelete={() => { history.set((current) => ({ ...current, patterns: current.patterns.filter((item) => item.id !== pattern.id) })); if (selection?.id === pattern.id) setSelection(null); }}
                       onDragStart={(event, id) => handleDataDragStart(event, "pattern", id)}
                       onDrop={(event, id) => handleDataDrop(event, "pattern", id)}
+                      averageSelectable={S.mode === "raman" && !pattern.isAverage}
+                      averageChecked={ramanAverageSelection.includes(pattern.id)}
+                      onAverageToggle={(checked) => toggleRamanAveragePattern(pattern.id, checked)}
                     />
                   )) : <EmptyPanel title="Aucun patron" body="Importer des données expérimentales ou déposer les fichiers dans l’espace central." />}
                 </div>
@@ -1319,7 +1407,7 @@ export default function App() {
                 <Section title="Disposition">
                   <SelectField label="Mode de représentation" value={S.layoutMode} onChange={(value) => patchSettings("layoutMode", value)} options={LAYOUT_OPTIONS} />
                   {S.layoutMode === "difference" && <SelectField label="Patron de référence" value={S.differenceReferenceId} onChange={(value) => patchSettings("differenceReferenceId", value)} options={[["", "Premier patron visible"], ...patterns.filter((pattern) => pattern.visible).map((pattern) => [pattern.id, pattern.label])]} />}
-                  {S.layoutMode === "waterfall" && <NumberField label="Décalage X par patron" value={S.waterfallXShift} min={-1000} max={1000} step={S.mode === "drx" ? 0.02 : 2} onChange={(value) => patchSettings("waterfallXShift", value)} />}
+                  {S.layoutMode === "waterfall" && <SliderField label="Décalage horizontal par patron" value={S.waterfallXShiftPct} min={-8} max={8} step={0.1} suffix="%" onChange={(value) => patchSettings("waterfallXShiftPct", value)} />}
                   {S.layoutMode !== "overlay" && <SliderField label="Décalage vertical" value={S.vstep} min={0.1} max={4} step={0.05} onChange={(value) => patchSettings("vstep", value)} />}
                   <SliderField label="Échelle verticale" value={S.pxPerUnit} min={30} max={220} step={5} suffix="px" onChange={(value) => patchSettings("pxPerUnit", value)} />
                   {S.layoutMode !== "overlay" && <Toggle label="Inverser l’ordre" checked={S.reverseStack} onChange={(value) => patchSettings("reverseStack", value)} />}
