@@ -45,6 +45,7 @@ export const INITIAL_SETTINGS = {
   layoutMode: "stacked",
   vstep: 1.25,
   waterfallXShift: 0.18,
+  waterfallXShiftPct: 1.5,
   differenceReferenceId: "",
   pxPerUnit: 80,
   lineWidth: 0.9,
@@ -64,6 +65,10 @@ export const INITIAL_SETTINGS = {
   alignmentReferenceId: "",
   alignmentMaxShift: 1,
   alignmentStep: 0.01,
+
+  ramanAverageMethod: "mean",
+  ramanAverageNormalize: "none",
+  ramanAverageHideSources: true,
 
   cmap: "plasma",
   cmapMin: 0.05,
@@ -497,6 +502,100 @@ function interpolateLinear(x, y, target) {
   return y[left] + (y[low] - y[left]) * fraction;
 }
 
+
+
+function preparePatternForAverage(pattern, normalizeMode = "none") {
+  const offset = Number.isFinite(Number(pattern.xoffset)) ? Number(pattern.xoffset) : 0;
+  const pairs = pattern.x
+    .map((value, index) => [Number(value) + offset, Number(pattern.y[index])])
+    .filter(([xValue, yValue]) => Number.isFinite(xValue) && Number.isFinite(yValue))
+    .sort((a, b) => a[0] - b[0]);
+  const x = [];
+  const y = [];
+  for (const [xValue, yValue] of pairs) {
+    if (x.length && Math.abs(xValue - x[x.length - 1]) < 1e-12) y[y.length - 1] = yValue;
+    else { x.push(xValue); y.push(yValue); }
+  }
+  return {
+    pattern,
+    x,
+    y: normalizeSeries(x, y, normalizeMode),
+  };
+}
+
+function median(values) {
+  const sorted = values.slice().sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) * 0.5;
+}
+
+/**
+ * Builds a derived Raman pattern from several acquisitions. The densest
+ * acquisition supplies the output grid; every other acquisition is linearly
+ * interpolated on the common overlap. Standard deviation is retained as
+ * metadata and exported with the processed CSV.
+ */
+export function averagePatterns(patterns, options = {}) {
+  const usable = patterns
+    .filter((pattern) => Array.isArray(pattern?.x) && Array.isArray(pattern?.y) && pattern.x.length >= 2)
+    .map((pattern) => preparePatternForAverage(pattern, options.normalizeMode || "none"))
+    .filter((pattern) => pattern.x.length >= 2);
+  if (usable.length < 2) throw new Error("Sélectionner au moins deux acquisitions valides.");
+
+  const overlapMinimum = Math.max(...usable.map((pattern) => pattern.x[0]));
+  const overlapMaximum = Math.min(...usable.map((pattern) => pattern.x[pattern.x.length - 1]));
+  if (!(overlapMaximum > overlapMinimum)) throw new Error("Les acquisitions sélectionnées ne possèdent aucune plage X commune.");
+
+  const reference = usable
+    .map((pattern) => ({
+      ...pattern,
+      count: pattern.x.reduce((count, value) => count + (value >= overlapMinimum && value <= overlapMaximum ? 1 : 0), 0),
+    }))
+    .sort((a, b) => b.count - a.count)[0];
+  const grid = reference.x.filter((value) => value >= overlapMinimum && value <= overlapMaximum);
+  if (grid.length < 2) throw new Error("La plage commune contient moins de deux points.");
+
+  const method = options.method === "median" ? "median" : "mean";
+  const outputGrid = [];
+  const mean = [];
+  const standardDeviation = [];
+  for (const xValue of grid) {
+    const values = usable
+      .map((pattern) => interpolateLinear(pattern.x, pattern.y, xValue))
+      .filter((value) => value !== null && Number.isFinite(value));
+    if (values.length !== usable.length) continue;
+    const arithmeticMean = values.reduce((sum, value) => sum + value, 0) / values.length;
+    const center = method === "median" ? median(values) : arithmeticMean;
+    const variance = values.length > 1
+      ? values.reduce((sum, value) => sum + (value - arithmeticMean) ** 2, 0) / (values.length - 1)
+      : 0;
+    outputGrid.push(xValue);
+    mean.push(center);
+    standardDeviation.push(Math.sqrt(Math.max(0, variance)));
+  }
+
+  if (mean.length < 2) throw new Error("Impossible d’interpoler les acquisitions sur une grille commune.");
+  const sourceFiles = usable.flatMap(({ pattern }) => pattern.sourceFiles || [pattern.fileName || pattern.label]);
+  return {
+    id: newId("average"),
+    label: options.label?.trim() || `Moyenne Raman (${usable.length} acquisitions)`,
+    fileName: `moyenne_raman_${usable.length}_acquisitions`,
+    x: outputGrid,
+    y: mean,
+    stdY: standardDeviation,
+    visible: true,
+    color: "#111111",
+    yscale: 1,
+    xoffset: 0,
+    isAverage: true,
+    replicateCount: usable.length,
+    averageMethod: method,
+    averageNormalizeMode: options.normalizeMode || "none",
+    sourcePatternIds: usable.map(({ pattern }) => pattern.id),
+    sourceFiles,
+  };
+}
+
 export function detectPeaks(x, y, settings) {
   if (!x.length || x.length < 5) return [];
   const { minimum, maximum } = arrayMinMax(y);
@@ -536,12 +635,14 @@ export function detectPeaks(x, y, settings) {
 function preprocessPattern(pattern, settings, margin = 0) {
   const x = [];
   const raw = [];
+  const rawStd = [];
   const offset = Number.isFinite(pattern.xoffset) ? pattern.xoffset : 0;
   for (let i = 0; i < pattern.x.length; i += 1) {
     const xValue = pattern.x[i] + offset;
     if (xValue >= settings.xmin - margin && xValue <= settings.xmax + margin) {
       x.push(xValue);
       raw.push(pattern.y[i]);
+      rawStd.push(Array.isArray(pattern.stdY) && Number.isFinite(pattern.stdY[i]) ? pattern.stdY[i] : null);
     }
   }
   if (x.length < 2) return null;
@@ -559,6 +660,7 @@ function preprocessPattern(pattern, settings, margin = 0) {
     ...pattern,
     sourceX: x,
     sourceRawY: raw,
+    sourceStdY: rawStd,
     smoothedY: smoothed,
     baselineY: baseline,
     correctedY: corrected,
@@ -568,8 +670,15 @@ function preprocessPattern(pattern, settings, margin = 0) {
 
 export function processPatterns(patterns, settings) {
   const visible = patterns.filter((pattern) => pattern.visible);
+  const waterfallPercent = Number.isFinite(Number(settings.waterfallXShiftPct))
+    ? Number(settings.waterfallXShiftPct)
+    : ((Number(settings.waterfallXShift) || 0) / Math.max(1e-12, settings.xmax - settings.xmin)) * 100;
+  const waterfallStep = settings.layoutMode === "waterfall"
+    ? ((settings.xmax - settings.xmin) * waterfallPercent) / 100
+    : 0;
+  const waterfallMargin = Math.abs(waterfallStep) * Math.max(0, visible.length - 1);
   const preliminary = visible
-    .map((pattern) => preprocessPattern(pattern, settings))
+    .map((pattern) => preprocessPattern(pattern, settings, waterfallMargin))
     .filter(Boolean);
 
   const referenceId = settings.differenceReferenceId || preliminary[0]?.id;
@@ -595,7 +704,7 @@ export function processPatterns(patterns, settings) {
   return transformed.map((pattern, visibleIndex) => {
     const stackIndex = settings.reverseStack ? transformed.length - 1 - visibleIndex : visibleIndex;
     const stackOffset = settings.layoutMode === "overlay" ? 0 : stackIndex * settings.vstep;
-    const waterfallShift = settings.layoutMode === "waterfall" ? stackIndex * settings.waterfallXShift : 0;
+    const waterfallShift = settings.layoutMode === "waterfall" ? stackIndex * waterfallStep : 0;
     const displayX = pattern.sourceX.map((value) => value + waterfallShift);
     const displayY = settings.normalizeMode === "none"
       ? pattern.processedY.map((value) => value / globalScale)
@@ -780,6 +889,7 @@ export function processedPatternsToCsv(processed) {
   const rows = [[
     "pattern", "x", "x_display", "raw_intensity", "smoothed_intensity",
     "baseline", "corrected_intensity", "processed_intensity", "display_intensity",
+    "raw_standard_deviation", "replicate_count", "source_files",
   ]];
   for (const pattern of processed) {
     for (let i = 0; i < (pattern.sourceX?.length || 0); i += 1) {
@@ -793,6 +903,9 @@ export function processedPatternsToCsv(processed) {
         pattern.correctedY[i],
         pattern.processedY[i],
         pattern.displayY[i],
+        pattern.sourceStdY?.[i] ?? "",
+        pattern.replicateCount ?? 1,
+        (pattern.sourceFiles || [pattern.fileName || pattern.label]).join(" | "),
       ]);
     }
   }
@@ -990,6 +1103,9 @@ export function validateProject(input) {
   for (const pattern of patterns) {
     if (!Array.isArray(pattern.x) || !Array.isArray(pattern.y) || pattern.x.length !== pattern.y.length) {
       throw new Error(`Patron invalide : ${pattern.label || pattern.fileName || "sans nom"}.`);
+    }
+    if (pattern.stdY !== undefined && (!Array.isArray(pattern.stdY) || pattern.stdY.length !== pattern.x.length)) {
+      throw new Error(`Écart-type invalide : ${pattern.label || pattern.fileName || "sans nom"}.`);
     }
   }
   return { settings, patterns, phases, notes };
