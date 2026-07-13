@@ -29,15 +29,42 @@ export const INITIAL_SETTINGS = {
   xTickStep: 0,
   showGrid: false,
   gridOpacity: 0.55,
+
   smoothW: 3,
   clipPct: 99.5,
   normalizeMode: "minmax",
+
+  baselineMode: "none",
+  baselineWindow: 51,
+  baselinePolyOrder: 3,
+  baselineLambdaLog: 5,
+  baselineAsymmetry: 0.02,
+  baselineIterations: 8,
+  baselineClamp: false,
+
+  layoutMode: "stacked",
   vstep: 1.25,
+  waterfallXShift: 0.18,
+  differenceReferenceId: "",
   pxPerUnit: 80,
   lineWidth: 0.9,
   showFill: true,
   fillAlpha: 0.08,
   reverseStack: false,
+
+  showDetectedPeaks: false,
+  peakMinHeight: 10,
+  peakMinProminence: 5,
+  peakMinDistance: 0.5,
+  peakLookaround: 30,
+  peakMaxLabels: 20,
+  peakMarkerSize: 3,
+  peakLabelSize: 8,
+
+  alignmentReferenceId: "",
+  alignmentMaxShift: 1,
+  alignmentStep: 0.01,
+
   cmap: "plasma",
   cmapMin: 0.05,
   cmapMax: 0.85,
@@ -64,6 +91,7 @@ export const INITIAL_SETTINGS = {
   rightMargin: 145,
   figWidth: 1100,
   pngScale: 2,
+  exportDpi: 300,
   pageBackground: "#ffffff",
   transparentExport: false,
   fileName: "figure_stacked",
@@ -81,9 +109,25 @@ function parseNumberToken(token) {
   return Number.isFinite(value) ? value : null;
 }
 
+function arrayMinMax(values) {
+  let minimum = Infinity;
+  let maximum = -Infinity;
+  for (const value of values) {
+    if (value < minimum) minimum = value;
+    if (value > maximum) maximum = value;
+  }
+  return values.length ? { minimum, maximum } : { minimum: 0, maximum: 0 };
+}
+
+function arrayMaxAbs(values) {
+  let maximum = 0;
+  for (const value of values) maximum = Math.max(maximum, Math.abs(value));
+  return maximum;
+}
+
 /**
- * Reads the first two numbers found on each line. This handles:
- * 10.25 145.8, 10,25 ; 145,8, 10.25,145.8 and tab-separated files.
+ * Reads the first two numbers found on each line. Supports decimal commas,
+ * decimal points, semicolon/tab/space separators, and standard CSV.
  */
 export function parseXYText(text) {
   const points = [];
@@ -95,17 +139,10 @@ export function parseXYText(text) {
     if (!line || /^[#%!]/.test(line)) continue;
 
     let fields;
-    if (/[;\t]/.test(line)) {
-      fields = line.split(/[;\t]+/);
-    } else if (/\s+/.test(line)) {
-      fields = line.split(/\s+/);
-    } else if (line.includes(",")) {
-      // In a comma-only line, the comma is treated as the CSV delimiter.
-      // Decimal commas remain supported in whitespace-, tab- or semicolon-separated files.
-      fields = line.split(",");
-    } else {
-      fields = [line];
-    }
+    if (/[;\t]/.test(line)) fields = line.split(/[;\t]+/);
+    else if (/\s+/.test(line)) fields = line.split(/\s+/);
+    else if (line.includes(",")) fields = line.split(",");
+    else fields = [line];
 
     const tokens = fields
       .map((field) => field.match(numberPattern)?.[0] ?? null)
@@ -128,11 +165,8 @@ export function parseXYText(text) {
   const deduped = [];
   for (const point of points) {
     const previous = deduped[deduped.length - 1];
-    if (previous && Math.abs(previous[0] - point[0]) < 1e-12) {
-      previous[1] = point[1];
-    } else {
-      deduped.push(point);
-    }
+    if (previous && Math.abs(previous[0] - point[0]) < 1e-12) previous[1] = point[1];
+    else deduped.push(point);
   }
 
   return {
@@ -159,9 +193,7 @@ export function parseDIFBinary(buffer) {
       if (
         Number.isFinite(t2) && Number.isFinite(intensity)
         && t2 >= 2 && t2 <= 180 && intensity > 0
-      ) {
-        peaks.push([t2, intensity]);
-      }
+      ) peaks.push([t2, intensity]);
     }
     return normalizePeaks(peaks);
   } catch {
@@ -210,6 +242,26 @@ export function movingAverage(values, width) {
     const start = Math.max(0, i - half);
     const end = Math.min(values.length - 1, i + half);
     output[i] = (prefix[end + 1] - prefix[start]) / (end - start + 1);
+  }
+  return output;
+}
+
+function movingMinimum(values, width) {
+  const windowSize = Math.max(3, Math.round(width) | 1);
+  const half = Math.floor(windowSize / 2);
+  const output = new Array(values.length);
+  const deque = [];
+  let right = -1;
+  for (let i = 0; i < values.length; i += 1) {
+    const desiredRight = Math.min(values.length - 1, i + half);
+    while (right < desiredRight) {
+      right += 1;
+      while (deque.length && values[deque[deque.length - 1]] >= values[right]) deque.pop();
+      deque.push(right);
+    }
+    const left = Math.max(0, i - half);
+    while (deque.length && deque[0] < left) deque.shift();
+    output[i] = values[deque[0]];
   }
   return output;
 }
@@ -263,71 +315,381 @@ function normalizeSeries(x, y, mode) {
   if (!y.length) return y;
   if (mode === "none") return y.slice();
   if (mode === "max") {
-    const maximum = Math.max(...y.map((value) => Math.abs(value))) || 1;
+    const maximum = arrayMaxAbs(y) || 1;
     return y.map((value) => value / maximum);
   }
   if (mode === "area") {
     const area = trapezoidalArea(x, y) || 1;
     return y.map((value) => value / area);
   }
-  const minimum = Math.min(...y);
-  const maximum = Math.max(...y);
+  const { minimum, maximum } = arrayMinMax(y);
   const range = maximum - minimum || 1;
   return y.map((value) => (value - minimum) / range);
 }
 
-export function processPatterns(patterns, settings) {
-  const visible = patterns.filter((pattern) => pattern.visible);
-  const preliminary = visible.map((pattern) => {
-    const xs = [];
-    const ys = [];
-    const offset = Number.isFinite(pattern.xoffset) ? pattern.xoffset : 0;
-
-    for (let i = 0; i < pattern.x.length; i += 1) {
-      const xValue = pattern.x[i] + offset;
-      if (xValue >= settings.xmin && xValue <= settings.xmax) {
-        xs.push(xValue);
-        ys.push(pattern.y[i]);
-      }
+function solveLinearSystem(matrix, vector) {
+  const n = vector.length;
+  const a = matrix.map((row, i) => [...row, vector[i]]);
+  for (let column = 0; column < n; column += 1) {
+    let pivot = column;
+    for (let row = column + 1; row < n; row += 1) {
+      if (Math.abs(a[row][column]) > Math.abs(a[pivot][column])) pivot = row;
     }
-
-    if (xs.length < 2) return { ...pattern, px: [], py: [], rawProcessedY: [] };
-    let processedY = movingAverage(ys, settings.smoothW);
-    if (settings.clipPct < 100) {
-      const top = percentile(processedY, settings.clipPct);
-      processedY = processedY.map((value) => Math.min(value, top));
-    }
-    processedY = normalizeSeries(xs, processedY, settings.normalizeMode);
-    const scale = Number.isFinite(pattern.yscale) ? pattern.yscale : 1;
-    processedY = processedY.map((value) => value * scale);
-
-    return { ...pattern, sourceX: xs, rawProcessedY: processedY };
-  });
-
-  let displayMin = 0;
-  let displayMax = 1;
-  if (settings.normalizeMode === "none") {
-    const allValues = preliminary.flatMap((pattern) => pattern.rawProcessedY);
-    if (allValues.length) {
-      displayMin = Math.min(...allValues);
-      displayMax = Math.max(...allValues);
-      if (displayMax === displayMin) displayMax = displayMin + 1;
+    if (Math.abs(a[pivot][column]) < 1e-14) continue;
+    [a[column], a[pivot]] = [a[pivot], a[column]];
+    const divisor = a[column][column];
+    for (let j = column; j <= n; j += 1) a[column][j] /= divisor;
+    for (let row = 0; row < n; row += 1) {
+      if (row === column) continue;
+      const factor = a[row][column];
+      if (!factor) continue;
+      for (let j = column; j <= n; j += 1) a[row][j] -= factor * a[column][j];
     }
   }
+  return a.map((row) => Number.isFinite(row[n]) ? row[n] : 0);
+}
 
-  return preliminary.map((pattern, visibleIndex) => {
-    if (!pattern.sourceX?.length) return { ...pattern, stackIndex: visibleIndex };
+function weightedPolynomialBaseline(x, y, order, asymmetry, iterations) {
+  const n = y.length;
+  if (n < order + 2) return new Array(n).fill(arrayMinMax(y).minimum);
+  const xmin = x[0];
+  const xmax = x[x.length - 1];
+  const span = xmax - xmin || 1;
+  const xn = x.map((value) => ((value - xmin) / span) * 2 - 1);
+  const weights = new Array(n).fill(1);
+  let coefficients = new Array(order + 1).fill(0);
+  let baseline = new Array(n).fill(0);
+
+  for (let iteration = 0; iteration < Math.max(1, iterations); iteration += 1) {
+    const matrix = Array.from({ length: order + 1 }, () => new Array(order + 1).fill(0));
+    const vector = new Array(order + 1).fill(0);
+    for (let i = 0; i < n; i += 1) {
+      const powers = new Array(order * 2 + 1).fill(1);
+      for (let p = 1; p < powers.length; p += 1) powers[p] = powers[p - 1] * xn[i];
+      for (let row = 0; row <= order; row += 1) {
+        vector[row] += weights[i] * y[i] * powers[row];
+        for (let column = 0; column <= order; column += 1) {
+          matrix[row][column] += weights[i] * powers[row + column];
+        }
+        matrix[row][row] += 1e-10;
+      }
+    }
+    coefficients = solveLinearSystem(matrix, vector);
+    baseline = xn.map((value) => {
+      let result = 0;
+      let power = 1;
+      for (const coefficient of coefficients) {
+        result += coefficient * power;
+        power *= value;
+      }
+      return result;
+    });
+    for (let i = 0; i < n; i += 1) weights[i] = y[i] > baseline[i] ? asymmetry : 1 - asymmetry;
+  }
+  return baseline;
+}
+
+function dot(a, b) {
+  let result = 0;
+  for (let i = 0; i < a.length; i += 1) result += a[i] * b[i];
+  return result;
+}
+
+function applyWhittakerMatrix(vector, weights, lambda) {
+  const output = new Float64Array(vector.length);
+  for (let i = 0; i < vector.length; i += 1) output[i] = weights[i] * vector[i];
+  for (let i = 0; i < vector.length - 2; i += 1) {
+    const secondDifference = vector[i] - 2 * vector[i + 1] + vector[i + 2];
+    output[i] += lambda * secondDifference;
+    output[i + 1] -= 2 * lambda * secondDifference;
+    output[i + 2] += lambda * secondDifference;
+  }
+  return output;
+}
+
+function conjugateGradient(weights, lambda, rhs, initial, maxIterations = 80, tolerance = 1e-7) {
+  const x = Float64Array.from(initial);
+  const ax = applyWhittakerMatrix(x, weights, lambda);
+  const residual = new Float64Array(rhs.length);
+  for (let i = 0; i < rhs.length; i += 1) residual[i] = rhs[i] - ax[i];
+  const direction = Float64Array.from(residual);
+  let residualNorm = dot(residual, residual);
+  const initialNorm = Math.max(residualNorm, 1e-30);
+
+  for (let iteration = 0; iteration < maxIterations; iteration += 1) {
+    const ad = applyWhittakerMatrix(direction, weights, lambda);
+    const denominator = dot(direction, ad);
+    if (Math.abs(denominator) < 1e-30) break;
+    const alpha = residualNorm / denominator;
+    for (let i = 0; i < x.length; i += 1) {
+      x[i] += alpha * direction[i];
+      residual[i] -= alpha * ad[i];
+    }
+    const nextNorm = dot(residual, residual);
+    if (Math.sqrt(nextNorm / initialNorm) < tolerance) break;
+    const beta = nextNorm / residualNorm;
+    for (let i = 0; i < direction.length; i += 1) direction[i] = residual[i] + beta * direction[i];
+    residualNorm = nextNorm;
+  }
+  return Array.from(x);
+}
+
+function asymmetricLeastSquares(y, lambda, asymmetry, iterations) {
+  if (y.length < 4) return new Array(y.length).fill(arrayMinMax(y).minimum);
+  const weights = new Float64Array(y.length).fill(1);
+  let baseline = y.slice();
+  for (let iteration = 0; iteration < Math.max(1, iterations); iteration += 1) {
+    const rhs = new Float64Array(y.length);
+    for (let i = 0; i < y.length; i += 1) rhs[i] = weights[i] * y[i];
+    baseline = conjugateGradient(weights, lambda, rhs, baseline);
+    for (let i = 0; i < y.length; i += 1) weights[i] = y[i] > baseline[i] ? asymmetry : 1 - asymmetry;
+  }
+  return baseline;
+}
+
+export function estimateBaseline(x, y, settings) {
+  if (!y.length || settings.baselineMode === "none") return new Array(y.length).fill(0);
+  if (settings.baselineMode === "linear") {
+    const edgeCount = Math.max(2, Math.min(Math.floor(y.length * 0.05), 30));
+    const first = y.slice(0, edgeCount).reduce((sum, value) => sum + value, 0) / edgeCount;
+    const last = y.slice(-edgeCount).reduce((sum, value) => sum + value, 0) / edgeCount;
+    const span = x[x.length - 1] - x[0] || 1;
+    return x.map((value) => first + ((value - x[0]) / span) * (last - first));
+  }
+  if (settings.baselineMode === "rolling") {
+    const minimum = movingMinimum(y, settings.baselineWindow);
+    return movingAverage(minimum, Math.max(3, Math.round(settings.baselineWindow / 2)));
+  }
+  if (settings.baselineMode === "polynomial") {
+    return weightedPolynomialBaseline(
+      x,
+      y,
+      Math.max(1, Math.min(6, Math.round(settings.baselinePolyOrder))),
+      Math.max(0.001, Math.min(0.49, settings.baselineAsymmetry)),
+      settings.baselineIterations,
+    );
+  }
+  if (settings.baselineMode === "als") {
+    const lambda = 10 ** Math.max(1, Math.min(9, settings.baselineLambdaLog));
+    return asymmetricLeastSquares(
+      y,
+      lambda,
+      Math.max(0.001, Math.min(0.49, settings.baselineAsymmetry)),
+      settings.baselineIterations,
+    );
+  }
+  return new Array(y.length).fill(0);
+}
+
+function interpolateLinear(x, y, target) {
+  if (!x.length || target < x[0] || target > x[x.length - 1]) return null;
+  let low = 0;
+  let high = x.length - 1;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (x[middle] < target) low = middle + 1;
+    else high = middle;
+  }
+  if (x[low] === target || low === 0) return y[low];
+  const left = low - 1;
+  const span = x[low] - x[left] || 1;
+  const fraction = (target - x[left]) / span;
+  return y[left] + (y[low] - y[left]) * fraction;
+}
+
+export function detectPeaks(x, y, settings) {
+  if (!x.length || x.length < 5) return [];
+  const { minimum, maximum } = arrayMinMax(y);
+  const range = maximum - minimum || 1;
+  const heightThreshold = minimum + (settings.peakMinHeight / 100) * range;
+  const prominenceThreshold = (settings.peakMinProminence / 100) * range;
+  const lookaround = Math.max(2, Math.round(settings.peakLookaround));
+  const candidates = [];
+
+  for (let i = 1; i < y.length - 1; i += 1) {
+    if (!(y[i] > y[i - 1] && y[i] >= y[i + 1] && y[i] >= heightThreshold)) continue;
+    let leftMinimum = y[i];
+    let rightMinimum = y[i];
+    for (let j = Math.max(0, i - lookaround); j < i; j += 1) leftMinimum = Math.min(leftMinimum, y[j]);
+    for (let j = i + 1; j <= Math.min(y.length - 1, i + lookaround); j += 1) rightMinimum = Math.min(rightMinimum, y[j]);
+    const prominence = y[i] - Math.max(leftMinimum, rightMinimum);
+    if (prominence < prominenceThreshold) continue;
+    candidates.push({
+      index: i,
+      x: x[i],
+      y: y[i],
+      heightPct: ((y[i] - minimum) / range) * 100,
+      prominence,
+      prominencePct: (prominence / range) * 100,
+    });
+  }
+
+  candidates.sort((a, b) => b.prominence - a.prominence || b.y - a.y);
+  const kept = [];
+  for (const candidate of candidates) {
+    if (kept.every((peak) => Math.abs(peak.x - candidate.x) >= settings.peakMinDistance)) kept.push(candidate);
+  }
+  kept.sort((a, b) => a.x - b.x);
+  return kept;
+}
+
+function preprocessPattern(pattern, settings, margin = 0) {
+  const x = [];
+  const raw = [];
+  const offset = Number.isFinite(pattern.xoffset) ? pattern.xoffset : 0;
+  for (let i = 0; i < pattern.x.length; i += 1) {
+    const xValue = pattern.x[i] + offset;
+    if (xValue >= settings.xmin - margin && xValue <= settings.xmax + margin) {
+      x.push(xValue);
+      raw.push(pattern.y[i]);
+    }
+  }
+  if (x.length < 2) return null;
+  let smoothed = movingAverage(raw, settings.smoothW);
+  if (settings.clipPct < 100) {
+    const top = percentile(smoothed, settings.clipPct);
+    smoothed = smoothed.map((value) => Math.min(value, top));
+  }
+  const baseline = estimateBaseline(x, smoothed, settings);
+  let corrected = smoothed.map((value, index) => value - baseline[index]);
+  if (settings.baselineClamp) corrected = corrected.map((value) => Math.max(0, value));
+  const normalized = normalizeSeries(x, corrected, settings.normalizeMode);
+  const scale = Number.isFinite(pattern.yscale) ? pattern.yscale : 1;
+  return {
+    ...pattern,
+    sourceX: x,
+    sourceRawY: raw,
+    smoothedY: smoothed,
+    baselineY: baseline,
+    correctedY: corrected,
+    normalizedY: normalized.map((value) => value * scale),
+  };
+}
+
+export function processPatterns(patterns, settings) {
+  const visible = patterns.filter((pattern) => pattern.visible);
+  const preliminary = visible
+    .map((pattern) => preprocessPattern(pattern, settings))
+    .filter(Boolean);
+
+  const referenceId = settings.differenceReferenceId || preliminary[0]?.id;
+  const reference = preliminary.find((pattern) => pattern.id === referenceId) || preliminary[0];
+
+  const transformed = preliminary.map((pattern) => {
+    let processedY = pattern.normalizedY.slice();
+    if (settings.layoutMode === "difference" && reference) {
+      processedY = pattern.sourceX.map((xValue, index) => {
+        const refValue = interpolateLinear(reference.sourceX, reference.normalizedY, xValue);
+        return refValue === null ? 0 : pattern.normalizedY[index] - refValue;
+      });
+    }
+    return { ...pattern, processedY };
+  });
+
+  let globalScale = 1;
+  if (settings.normalizeMode === "none") {
+    globalScale = 1e-12;
+    for (const pattern of transformed) globalScale = Math.max(globalScale, arrayMaxAbs(pattern.processedY));
+  }
+
+  return transformed.map((pattern, visibleIndex) => {
+    const stackIndex = settings.reverseStack ? transformed.length - 1 - visibleIndex : visibleIndex;
+    const stackOffset = settings.layoutMode === "overlay" ? 0 : stackIndex * settings.vstep;
+    const waterfallShift = settings.layoutMode === "waterfall" ? stackIndex * settings.waterfallXShift : 0;
+    const displayX = pattern.sourceX.map((value) => value + waterfallShift);
     const displayY = settings.normalizeMode === "none"
-      ? pattern.rawProcessedY.map((value) => (value - displayMin) / (displayMax - displayMin))
-      : pattern.rawProcessedY;
-    const sampled = downsampleMinMax(pattern.sourceX, displayY, 1800);
+      ? pattern.processedY.map((value) => value / globalScale)
+      : pattern.processedY.slice();
+    const sampled = downsampleMinMax(displayX, displayY, 1800);
+    const detectedPeaks = detectPeaks(pattern.sourceX, pattern.processedY, settings).map((peak) => ({
+      ...peak,
+      displayX: peak.x + waterfallShift,
+      displayY: settings.normalizeMode === "none" ? peak.y / globalScale : peak.y,
+    }));
+    const displayRange = arrayMinMax(displayY);
+    const displayMinimum = displayY.length ? displayRange.minimum : 0;
+    const displayMaximum = displayY.length ? displayRange.maximum : 1;
     return {
       ...pattern,
+      displayX,
+      displayY,
       px: sampled.x,
       py: sampled.y,
-      stackIndex: settings.reverseStack ? preliminary.length - 1 - visibleIndex : visibleIndex,
+      stackIndex,
+      stackOffset,
+      waterfallShift,
+      detectedPeaks,
+      displayMinimum,
+      displayMaximum,
+      isDifferenceReference: settings.layoutMode === "difference" && pattern.id === reference?.id,
     };
   });
+}
+
+function correlation(valuesA, valuesB) {
+  if (valuesA.length < 3 || valuesA.length !== valuesB.length) return -Infinity;
+  let meanA = 0;
+  let meanB = 0;
+  for (let i = 0; i < valuesA.length; i += 1) {
+    meanA += valuesA[i];
+    meanB += valuesB[i];
+  }
+  meanA /= valuesA.length;
+  meanB /= valuesB.length;
+  let numerator = 0;
+  let denominatorA = 0;
+  let denominatorB = 0;
+  for (let i = 0; i < valuesA.length; i += 1) {
+    const da = valuesA[i] - meanA;
+    const db = valuesB[i] - meanB;
+    numerator += da * db;
+    denominatorA += da * da;
+    denominatorB += db * db;
+  }
+  const denominator = Math.sqrt(denominatorA * denominatorB);
+  return denominator > 0 ? numerator / denominator : -Infinity;
+}
+
+export function estimateCorrelationShift(referencePattern, targetPattern, settings) {
+  const maxShift = Math.max(0, Number(settings.alignmentMaxShift) || 0);
+  const step = Math.max(1e-5, Number(settings.alignmentStep) || 0.01);
+  const reference = preprocessPattern(referencePattern, { ...settings, normalizeMode: "minmax" }, maxShift);
+  const target = preprocessPattern(targetPattern, { ...settings, normalizeMode: "minmax" }, maxShift);
+  if (!reference || !target) return { shift: 0, score: null };
+
+  const start = Math.max(settings.xmin, reference.sourceX[0]);
+  const end = Math.min(settings.xmax, reference.sourceX.at(-1));
+  if (end <= start) return { shift: 0, score: null };
+  const sampleCount = Math.min(1600, Math.max(120, Math.round((end - start) / step)));
+  const gridStep = (end - start) / Math.max(1, sampleCount - 1);
+  const grid = Array.from({ length: sampleCount }, (_, index) => start + index * gridStep);
+
+  let bestShift = 0;
+  let bestScore = -Infinity;
+  const numberOfSteps = Math.max(1, Math.floor((maxShift * 2) / step));
+  for (let shiftIndex = 0; shiftIndex <= numberOfSteps; shiftIndex += 1) {
+    const shift = -maxShift + shiftIndex * step;
+    const refValues = [];
+    const targetValues = [];
+    for (const xValue of grid) {
+      const a = interpolateLinear(reference.sourceX, reference.normalizedY, xValue);
+      const b = interpolateLinear(target.sourceX, target.normalizedY, xValue - shift);
+      if (a !== null && b !== null) {
+        refValues.push(a);
+        targetValues.push(b);
+      }
+    }
+    if (refValues.length < 30) continue;
+    const score = correlation(refValues, targetValues);
+    if (score > bestScore) {
+      bestScore = score;
+      bestShift = shift;
+    }
+  }
+  return {
+    shift: Math.round(bestShift / step) * step,
+    score: Number.isFinite(bestScore) ? bestScore : null,
+  };
 }
 
 function hexToRgb(hex) {
@@ -415,13 +777,152 @@ function escapeCsv(value) {
 }
 
 export function processedPatternsToCsv(processed) {
-  const rows = [["pattern", "x", "processed_intensity"]];
+  const rows = [[
+    "pattern", "x", "x_display", "raw_intensity", "smoothed_intensity",
+    "baseline", "corrected_intensity", "processed_intensity", "display_intensity",
+  ]];
   for (const pattern of processed) {
     for (let i = 0; i < (pattern.sourceX?.length || 0); i += 1) {
-      rows.push([pattern.label, pattern.sourceX[i], pattern.rawProcessedY[i]]);
+      rows.push([
+        pattern.label,
+        pattern.sourceX[i],
+        pattern.displayX[i],
+        pattern.sourceRawY[i],
+        pattern.smoothedY[i],
+        pattern.baselineY[i],
+        pattern.correctedY[i],
+        pattern.processedY[i],
+        pattern.displayY[i],
+      ]);
     }
   }
   return rows.map((row) => row.map(escapeCsv).join(";")).join("\n");
+}
+
+export function detectedPeaksToCsv(processed) {
+  const rows = [["pattern", "x", "display_x", "intensity", "height_pct", "prominence", "prominence_pct"]];
+  for (const pattern of processed) {
+    for (const peak of pattern.detectedPeaks || []) {
+      rows.push([
+        pattern.label,
+        peak.x,
+        peak.displayX,
+        peak.y,
+        peak.heightPct,
+        peak.prominence,
+        peak.prominencePct,
+      ]);
+    }
+  }
+  return rows.map((row) => row.map(escapeCsv).join(";")).join("\n");
+}
+
+function concatBytes(parts) {
+  const length = parts.reduce((sum, part) => sum + part.length, 0);
+  const output = new Uint8Array(length);
+  let offset = 0;
+  for (const part of parts) {
+    output.set(part, offset);
+    offset += part.length;
+  }
+  return output;
+}
+
+export function buildPdfFromJpeg(jpegBytes, pixelWidth, pixelHeight, dpi = 300) {
+  const encoder = new TextEncoder();
+  const pageWidth = (pixelWidth / dpi) * 72;
+  const pageHeight = (pixelHeight / dpi) * 72;
+  const content = `q\n${pageWidth.toFixed(4)} 0 0 ${pageHeight.toFixed(4)} 0 0 cm\n/Im0 Do\nQ\n`;
+  const objects = [
+    null,
+    encoder.encode("<< /Type /Catalog /Pages 2 0 R >>"),
+    encoder.encode("<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+    encoder.encode(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth.toFixed(4)} ${pageHeight.toFixed(4)}] /Resources << /XObject << /Im0 5 0 R >> >> /Contents 4 0 R >>`),
+    encoder.encode(`<< /Length ${encoder.encode(content).length} >>\nstream\n${content}endstream`),
+    null,
+  ];
+
+  const parts = [encoder.encode("%PDF-1.4\n")];
+  const offsets = [0];
+  let currentOffset = parts[0].length;
+  for (let index = 1; index <= 5; index += 1) {
+    offsets[index] = currentOffset;
+    const header = encoder.encode(`${index} 0 obj\n`);
+    const footer = encoder.encode("\nendobj\n");
+    let body;
+    if (index === 5) {
+      const imageHeader = encoder.encode(`<< /Type /XObject /Subtype /Image /Width ${pixelWidth} /Height ${pixelHeight} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpegBytes.length} >>\nstream\n`);
+      const imageFooter = encoder.encode("\nendstream");
+      body = concatBytes([imageHeader, jpegBytes, imageFooter]);
+    } else body = objects[index];
+    parts.push(header, body, footer);
+    currentOffset += header.length + body.length + footer.length;
+  }
+  const xrefOffset = currentOffset;
+  let xref = "xref\n0 6\n0000000000 65535 f \n";
+  for (let index = 1; index <= 5; index += 1) xref += `${String(offsets[index]).padStart(10, "0")} 00000 n \n`;
+  xref += `trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+  parts.push(encoder.encode(xref));
+  return concatBytes(parts);
+}
+
+function writeTiffEntry(view, offset, tag, type, count, valueOrOffset) {
+  view.setUint16(offset, tag, true);
+  view.setUint16(offset + 2, type, true);
+  view.setUint32(offset + 4, count, true);
+  if (type === 3 && count === 1) {
+    view.setUint16(offset + 8, valueOrOffset, true);
+    view.setUint16(offset + 10, 0, true);
+  } else view.setUint32(offset + 8, valueOrOffset, true);
+}
+
+export function encodeTiffRgba(imageData, width, height, dpi = 300) {
+  const entryCount = 14;
+  const ifdOffset = 8;
+  const ifdSize = 2 + entryCount * 12 + 4;
+  const bitsOffset = ifdOffset + ifdSize;
+  const xResolutionOffset = bitsOffset + 8;
+  const yResolutionOffset = xResolutionOffset + 8;
+  const pixelOffset = yResolutionOffset + 8;
+  const pixelByteCount = width * height * 4;
+  const buffer = new ArrayBuffer(pixelOffset + pixelByteCount);
+  const view = new DataView(buffer);
+  const bytes = new Uint8Array(buffer);
+
+  view.setUint8(0, 0x49);
+  view.setUint8(1, 0x49);
+  view.setUint16(2, 42, true);
+  view.setUint32(4, ifdOffset, true);
+  view.setUint16(ifdOffset, entryCount, true);
+
+  let entryOffset = ifdOffset + 2;
+  const add = (tag, type, count, value) => {
+    writeTiffEntry(view, entryOffset, tag, type, count, value);
+    entryOffset += 12;
+  };
+  add(256, 4, 1, width);
+  add(257, 4, 1, height);
+  add(258, 3, 4, bitsOffset);
+  add(259, 3, 1, 1);
+  add(262, 3, 1, 2);
+  add(273, 4, 1, pixelOffset);
+  add(277, 3, 1, 4);
+  add(278, 4, 1, height);
+  add(279, 4, 1, pixelByteCount);
+  add(282, 5, 1, xResolutionOffset);
+  add(283, 5, 1, yResolutionOffset);
+  add(284, 3, 1, 1);
+  add(296, 3, 1, 2);
+  add(338, 3, 1, 2);
+  view.setUint32(ifdOffset + 2 + entryCount * 12, 0, true);
+
+  for (let i = 0; i < 4; i += 1) view.setUint16(bitsOffset + i * 2, 8, true);
+  view.setUint32(xResolutionOffset, Math.round(dpi), true);
+  view.setUint32(xResolutionOffset + 4, 1, true);
+  view.setUint32(yResolutionOffset, Math.round(dpi), true);
+  view.setUint32(yResolutionOffset + 4, 1, true);
+  bytes.set(imageData.data, pixelOffset);
+  return new Uint8Array(buffer);
 }
 
 const DB_NAME = "make-figure-v3";
