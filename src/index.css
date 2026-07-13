@@ -380,3 +380,45 @@ select { cursor: pointer; }
   font-size: 8px;
   line-height: 1.45;
 }
+
+/* v6 — Raman references, manual phases and Raman zones */
+button, input, select, textarea { font: inherit; }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid color-mix(in srgb, var(--selection) 75%, white); outline-offset: 1px; }
+textarea {
+  width: 100%;
+  min-width: 0;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--input);
+  color: var(--text);
+  padding: 7px 9px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  line-height: 1.5;
+}
+textarea:hover { border-color: var(--border-strong); }
+textarea:focus { border-color: var(--selection); }
+.panel-tabs { overflow-x: auto; scrollbar-width: thin; }
+.panel-tabs button { flex: 0 0 auto; min-width: 66px; }
+.data-item--zone { grid-template-columns: 15px minmax(0,1fr) auto; }
+.manual-builder {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 9px;
+  border: 1px solid rgba(210,138,85,.32);
+  border-radius: 8px;
+  background: linear-gradient(145deg, rgba(210,138,85,.08), rgba(17,21,27,.82));
+  padding: 9px;
+}
+.manual-builder__header { display: flex; flex-direction: column; gap: 3px; }
+.manual-builder__header strong { color: var(--text); font-size: 10px; }
+.manual-builder__header span { color: var(--text-dim); font-size: 8px; line-height: 1.4; }
+.manual-builder__grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 7px; }
+.manual-builder__grid label { display: flex; flex-direction: column; gap: 4px; color: var(--text-dim); font-size: 8px; }
+.manual-builder input, .manual-builder textarea { padding: 6px 7px; font-size: 9px; }
+.manual-builder__footer { display: flex; align-items: center; gap: 8px; }
+.manual-builder__footer .button { flex: 1; }
+.zone-builder { border-color: rgba(124,92,255,.34); background: linear-gradient(145deg, rgba(124,92,255,.09), rgba(17,21,27,.82)); }
+.peak-editor { display: flex; flex-direction: column; gap: 8px; }
