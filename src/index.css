@@ -253,3 +253,10 @@ select { cursor: pointer; }
   .brand span { display: none; }
   .workspace { padding: 25px; }
 }
+
+.inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.inline-actions .button { flex: 1 1 120px; }
