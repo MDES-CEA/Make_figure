@@ -20,7 +20,10 @@ import {
   nearestValue,
   newId,
   parseDIFBinary,
-  parsePeaksText,
+  parseManualPeaks,
+  parseReferenceText,
+  extractRamanReferencePeaks,
+  formatManualPeaks,
   parseXYText,
   patternColor,
   processPatterns,
@@ -34,6 +37,7 @@ const EMPTY_PROJECT = {
   patterns: [],
   phases: [],
   notes: [],
+  zones: [],
 };
 
 const NORMALIZATION_OPTIONS = [
@@ -211,6 +215,14 @@ function TextField({ label, value, onChange, placeholder }) {
   );
 }
 
+function TextAreaField({ label, value, onChange, placeholder, hint, rows = 4 }) {
+  return (
+    <Field label={label} hint={hint}>
+      <textarea rows={rows} value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} />
+    </Field>
+  );
+}
+
 function SelectField({ label, value, onChange, options }) {
   return (
     <Field label={label}>
@@ -342,6 +354,44 @@ function NoteItem({ note, selected, onSelect, onUpdate, onDelete }) {
   );
 }
 
+function PhasePeaksEditor({ phase, onApply }) {
+  const [text, setText] = useState(() => formatManualPeaks(phase.peaks));
+  useEffect(() => setText(formatManualPeaks(phase.peaks)), [phase.id, phase.peaks]);
+  const apply = () => {
+    const peaks = parseManualPeaks(text);
+    if (peaks.length) onApply(peaks);
+  };
+  return (
+    <div className="peak-editor">
+      <TextAreaField
+        label="Pics de la phase"
+        value={text}
+        onChange={setText}
+        rows={5}
+        placeholder="107:40; 280:100; 713:65"
+        hint="Format position:intensité. L’intensité est facultative ; elle vaut alors 100 %."
+      />
+      <div className="inline-actions"><Button variant="secondary" onClick={apply}>Appliquer la liste</Button></div>
+    </div>
+  );
+}
+
+function ZoneItem({ zone, selected, onSelect, onUpdate, onDelete }) {
+  return (
+    <article className={`data-item data-item--zone ${selected ? "is-selected" : ""} ${!zone.visible ? "is-hidden" : ""}`} onClick={onSelect}>
+      <input type="color" value={zone.color} className="color-dot" title="Couleur de la zone" onClick={(event) => event.stopPropagation()} onChange={(event) => onUpdate("color", event.target.value)} />
+      <div className="data-item__content">
+        <input className="data-item__name" value={zone.name} onClick={(event) => event.stopPropagation()} onChange={(event) => onUpdate("name", event.target.value)} />
+        <span className="data-item__meta">{Number(zone.xmin).toLocaleString("fr-FR")}–{Number(zone.xmax).toLocaleString("fr-FR")} cm⁻¹</span>
+      </div>
+      <div className="data-item__actions">
+        <IconButton icon={zone.visible ? "eye" : "eyeOff"} title={zone.visible ? "Masquer" : "Afficher"} onClick={(event) => { event?.stopPropagation?.(); onUpdate("visible", !zone.visible); }} />
+        <IconButton icon="trash" title="Supprimer" danger onClick={(event) => { event?.stopPropagation?.(); onDelete(); }} />
+      </div>
+    </article>
+  );
+}
+
 function Resizer({ side, onResize }) {
   const start = (event) => {
     event.preventDefault();
@@ -364,7 +414,7 @@ function Resizer({ side, onResize }) {
 export default function App() {
   const history = useHistoryState(EMPTY_PROJECT);
   const project = history.value;
-  const { settings: S, patterns, phases, notes } = project;
+  const { settings: S, patterns, phases, notes, zones = [] } = project;
 
   const [leftTab, setLeftTab] = useState("patterns");
   const [rightTab, setRightTab] = useState("figure");
@@ -381,6 +431,8 @@ export default function App() {
   const [isExporting, setIsExporting] = useState(false);
   const [ramanAverageSelection, setRamanAverageSelection] = useState([]);
   const [ramanAverageLabel, setRamanAverageLabel] = useState("");
+  const [manualPhase, setManualPhase] = useState({ name: "", abbrev: "", peaks: "", color: PHASE_COLORS[0] });
+  const [zoneDraft, setZoneDraft] = useState({ name: "", xmin: 500, xmax: 700, color: "#7c5cff", opacity: 0.12 });
 
   const svgRef = useRef(null);
   const workspaceRef = useRef(null);
@@ -422,6 +474,13 @@ export default function App() {
     history.set((current) => ({
       ...current,
       notes: current.notes.map((note) => note.id === id ? { ...note, [key]: value } : note),
+    }));
+  }, [history]);
+
+  const updateZone = useCallback((id, key, value) => {
+    history.set((current) => ({
+      ...current,
+      zones: (current.zones || []).map((zone) => zone.id === id ? { ...zone, [key]: value } : zone),
     }));
   }, [history]);
 
@@ -476,17 +535,23 @@ export default function App() {
   const activePattern = selection?.type === "pattern" ? patterns.find((pattern) => pattern.id === selection.id) : null;
   const activePhase = selection?.type === "phase" ? phases.find((phase) => phase.id === selection.id) : null;
   const activeNote = selection?.type === "note" ? notes.find((note) => note.id === selection.id) : null;
+  const activeZone = selection?.type === "zone" ? zones.find((zone) => zone.id === selection.id) : null;
 
   const readPhaseFile = async (file) => {
+    const fallbackName = file.name.replace(/\.(dif|txt|csv|dat)$/i, "").replace(/^PDF\s*/i, "");
     if (/\.dif$/i.test(file.name)) {
       const buffer = await file.arrayBuffer();
       let peaks = parseDIFBinary(buffer);
       if (!peaks.length) {
-        try { peaks = parsePeaksText(new TextDecoder("latin1").decode(buffer)); } catch { peaks = []; }
+        try {
+          const decoded = new TextDecoder("latin1").decode(buffer);
+          const reference = parseReferenceText(decoded, { fallbackName });
+          peaks = reference.peaks;
+        } catch { peaks = []; }
       }
-      return peaks;
+      return { kind: "peak-list", peaks, metadata: {}, name: fallbackName };
     }
-    return parsePeaksText(await file.text());
+    return parseReferenceText(await file.text(), { fallbackName });
   };
 
   const importPatterns = useCallback(async (files) => {
@@ -528,23 +593,37 @@ export default function App() {
     const warnings = [];
     for (const file of files) {
       try {
-        const peaks = await readPhaseFile(file);
-        if (!peaks.length) {
-          warnings.push(`${file.name}: aucun pic valide`);
+        const reference = await readPhaseFile(file);
+        if (!reference.peaks.length) {
+          warnings.push(`${file.name}: aucun pic Raman significatif détecté`);
           continue;
         }
-        const name = file.name.replace(/\.(dif|txt|csv|dat)$/i, "").replace(/^PDF\s*/i, "");
-        additions.push({
+        const name = reference.name || file.name.replace(/\.(dif|txt|csv|dat)$/i, "").replace(/^PDF\s*/i, "");
+        const candidate = {
           id: newId("phase"),
           name,
           abbrev: name.slice(0, 3),
           color: PHASE_COLORS[(phases.length + additions.length) % PHASE_COLORS.length],
-          peaks,
+          peaks: reference.peaks,
           files: [file.name],
           visible: true,
           inAnnot: true,
           inPanel: true,
-        });
+          sourceKind: reference.kind,
+          metadata: reference.metadata || {},
+          referenceSpectrum: reference.spectrum || null,
+          ramanOptions: reference.ramanOptions || null,
+        };
+        const rruffId = candidate.metadata?.RRUFFID;
+        const duplicateIndex = rruffId ? additions.findIndex((phase) => phase.metadata?.RRUFFID === rruffId) : -1;
+        if (duplicateIndex >= 0) {
+          const previous = additions[duplicateIndex];
+          const candidateProcessed = /processed/i.test(candidate.metadata?.FILETYPE || "");
+          const previousProcessed = /processed/i.test(previous.metadata?.FILETYPE || "");
+          additions[duplicateIndex] = candidateProcessed || !previousProcessed
+            ? { ...candidate, id: previous.id, color: previous.color, files: [...previous.files, file.name] }
+            : { ...previous, files: [...previous.files, file.name] };
+        } else additions.push(candidate);
       } catch {
         warnings.push(`${file.name}: lecture impossible`);
       }
@@ -561,18 +640,95 @@ export default function App() {
     const targetId = appendTargetRef.current;
     if (!targetId || !files.length) return;
     const file = files[0];
-    const peaks = await readPhaseFile(file);
-    if (!peaks.length) {
+    const reference = await readPhaseFile(file);
+    if (!reference.peaks.length) {
       setMessage(`Aucun pic valide dans ${file.name}.`);
       return;
     }
     history.set((current) => ({
       ...current,
       phases: current.phases.map((phase) => phase.id === targetId
-        ? { ...phase, peaks: mergeDedupPeaks(phase.peaks, peaks), files: [...phase.files, file.name] }
+        ? {
+          ...phase,
+          peaks: mergeDedupPeaks(phase.peaks, reference.peaks),
+          files: [...phase.files, file.name],
+          metadata: { ...(phase.metadata || {}), ...(reference.metadata || {}) },
+        }
         : phase),
     }));
     setMessage(`Fiche ${file.name} fusionnée.`);
+  };
+
+  const createManualPhase = () => {
+    const name = manualPhase.name.trim();
+    const peaks = parseManualPeaks(manualPhase.peaks);
+    if (!name) {
+      setMessage("Saisir le nom de la phase.");
+      return;
+    }
+    if (!peaks.length) {
+      setMessage("Saisir au moins une position de pic valide.");
+      return;
+    }
+    const phase = {
+      id: newId("phase"),
+      name,
+      abbrev: manualPhase.abbrev.trim() || name.slice(0, 3),
+      color: manualPhase.color,
+      peaks,
+      files: ["saisie manuelle"],
+      visible: true,
+      inAnnot: true,
+      inPanel: true,
+      sourceKind: "manual",
+      metadata: {},
+    };
+    history.set((current) => ({ ...current, phases: [...current.phases, phase] }));
+    setManualPhase({ name: "", abbrev: "", peaks: "", color: PHASE_COLORS[(phases.length + 1) % PHASE_COLORS.length] });
+    setSelection({ type: "phase", id: phase.id });
+    setRightTab("selection");
+    setMessage(`Phase « ${name} » ajoutée avec ${peaks.length} pic(s).`);
+  };
+
+  const recalculateRamanPhase = (phase) => {
+    if (!phase?.referenceSpectrum?.x?.length) {
+      setMessage("Cette phase ne contient pas de spectre Raman source.");
+      return;
+    }
+    const peaks = extractRamanReferencePeaks(
+      phase.referenceSpectrum.x,
+      phase.referenceSpectrum.y,
+      phase.ramanOptions || {},
+    );
+    if (!peaks.length) {
+      setMessage("Aucun pic détecté avec ces paramètres.");
+      return;
+    }
+    updatePhase(phase.id, "peaks", peaks);
+    setMessage(`${peaks.length} pics Raman recalculés pour « ${phase.name} ».`);
+  };
+
+  const createZone = () => {
+    const name = zoneDraft.name.trim();
+    const xmin = Number(zoneDraft.xmin);
+    const xmax = Number(zoneDraft.xmax);
+    if (!name || !Number.isFinite(xmin) || !Number.isFinite(xmax) || xmax <= xmin) {
+      setMessage("La zone nécessite un nom et des limites X valides.");
+      return;
+    }
+    const zone = {
+      id: newId("zone"),
+      name, xmin, xmax,
+      color: zoneDraft.color,
+      opacity: Number(zoneDraft.opacity) || 0.12,
+      visible: true,
+      showLabel: true,
+    };
+    history.set((current) => ({ ...current, zones: [...(current.zones || []), zone] }));
+    setZoneDraft((current) => ({ ...current, name: "" }));
+    setSelection({ type: "zone", id: zone.id });
+    setRightTab("selection");
+    setMessage(`Zone Raman « ${name} » ajoutée.`);
   };
 
   const toggleRamanAveragePattern = (id, checked) => {
@@ -629,12 +785,13 @@ export default function App() {
       patterns: selection.type === "pattern" ? current.patterns.filter((item) => item.id !== selection.id) : current.patterns,
       phases: selection.type === "phase" ? current.phases.filter((item) => item.id !== selection.id) : current.phases,
       notes: selection.type === "note" ? current.notes.filter((item) => item.id !== selection.id) : current.notes,
+      zones: selection.type === "zone" ? (current.zones || []).filter((item) => item.id !== selection.id) : (current.zones || []),
     }));
     setSelection(null);
   }, [history, selection]);
 
   const saveSessionFile = useCallback(() => {
-    const payload = JSON.stringify({ version: 5, ...project }, null, 2);
+    const payload = JSON.stringify({ version: 6, ...project }, null, 2);
     downloadBlob(payload, "application/json", `${S.fileName || "figure"}_session.json`);
     setMessage("Session JSON exportée.");
   }, [project, S.fileName]);
@@ -652,7 +809,7 @@ export default function App() {
   };
 
   const createNewProject = async () => {
-    if ((patterns.length || phases.length || notes.length) && !window.confirm("Effacer la session courante ?")) return;
+    if ((patterns.length || phases.length || notes.length || zones.length) && !window.confirm("Effacer la session courante ?")) return;
     history.replace(EMPTY_PROJECT);
     setSelection(null);
     setZoom(1);
@@ -692,10 +849,26 @@ export default function App() {
     setDropActive(false);
     const files = [...event.dataTransfer.files];
     if (!files.length) return;
-    const difFiles = files.filter((file) => /\.dif$/i.test(file.name));
-    const patternFiles = files.filter((file) => !/\.dif$/i.test(file.name));
+    const phaseFiles = [];
+    const patternFiles = [];
+    for (const file of files) {
+      if (/\.dif$/i.test(file.name)) {
+        phaseFiles.push(file);
+        continue;
+      }
+      if (/\.(txt|csv|dat)$/i.test(file.name)) {
+        try {
+          const prefix = (await file.text()).slice(0, 6000);
+          if (/##RRUFFID=|##FILETYPE=Raman/i.test(prefix)) {
+            phaseFiles.push(file);
+            continue;
+          }
+        } catch { /* imported as an experimental pattern below */ }
+      }
+      patternFiles.push(file);
+    }
     if (patternFiles.length) await importPatterns(patternFiles);
-    if (difFiles.length) await importPhases(difFiles);
+    if (phaseFiles.length) await importPhases(phaseFiles);
   };
 
   const selectedVisibleIndex = processed.findIndex((pattern) => pattern.id === activePattern?.id);
@@ -727,6 +900,25 @@ export default function App() {
     }
     downloadBlob(`\ufeff${detectedPeaksToCsv(processed)}`, "text/csv;charset=utf-8", `${S.fileName || "figure"}_peaks.csv`);
     setMessage(`${peakCount} pic(s) exporté(s) en CSV.`);
+  };
+
+  const exportZonesCsv = () => {
+    if (!zones.length) {
+      setMessage("Aucune zone Raman à exporter.");
+      return;
+    }
+    const escape = (value) => `"${String(value ?? "").replaceAll('"', '""')}"`;
+    const rows = ["name,xmin_cm-1,xmax_cm-1,color,opacity,visible"];
+    zones.forEach((zone) => rows.push([
+      escape(zone.name),
+      Number(zone.xmin),
+      Number(zone.xmax),
+      escape(zone.color),
+      Number(zone.opacity ?? 0.12),
+      zone.visible !== false,
+    ].join(",")));
+    downloadBlob(`\ufeff${rows.join("\n")}`, "text/csv;charset=utf-8", `${S.fileName || "figure"}_raman_zones.csv`);
+    setMessage(`${zones.length} zone(s) Raman exportée(s) en CSV.`);
   };
 
   const alignVisiblePatterns = () => {
@@ -1045,19 +1237,53 @@ export default function App() {
       </Section>
     </>
   ) : activePhase ? (
-    <Section title="Phase sélectionnée">
-      <TextField label="Nom" value={activePhase.name} onChange={(value) => updatePhase(activePhase.id, "name", value)} />
-      <TextField label="Abréviation" value={activePhase.abbrev} onChange={(value) => updatePhase(activePhase.id, "abbrev", value)} />
-      <Field label="Couleur">
-        <div className="color-field">
-          <input type="color" value={activePhase.color} onChange={(event) => updatePhase(activePhase.id, "color", event.target.value)} />
-          <code>{activePhase.color}</code>
+    <>
+      <Section title="Phase sélectionnée">
+        <TextField label="Nom" value={activePhase.name} onChange={(value) => updatePhase(activePhase.id, "name", value)} />
+        <TextField label="Abréviation" value={activePhase.abbrev} onChange={(value) => updatePhase(activePhase.id, "abbrev", value)} />
+        <Field label="Couleur">
+          <div className="color-field">
+            <input type="color" value={activePhase.color} onChange={(event) => updatePhase(activePhase.id, "color", event.target.value)} />
+            <code>{activePhase.color}</code>
+          </div>
+        </Field>
+        <Toggle label="Visible" checked={activePhase.visible} onChange={(value) => updatePhase(activePhase.id, "visible", value)} />
+        <Toggle label="Annotations supérieures" checked={activePhase.inAnnot} onChange={(value) => updatePhase(activePhase.id, "inAnnot", value)} />
+        <Toggle label="Panneau de références" checked={activePhase.inPanel} onChange={(value) => updatePhase(activePhase.id, "inPanel", value)} />
+        <div className="info-box">
+          <span>{activePhase.peaks.length} pics</span>
+          <span>{activePhase.files.join(", ")}</span>
+          {activePhase.metadata?.RRUFFID && <span>RRUFF : {activePhase.metadata.RRUFFID}</span>}
+          {activePhase.metadata?.["RAMAN WAVELENGTH"] && <span>Laser : {activePhase.metadata["RAMAN WAVELENGTH"]} nm</span>}
+          {activePhase.metadata?.["IDEAL CHEMISTRY"] && <span>{activePhase.metadata["IDEAL CHEMISTRY"]}</span>}
         </div>
-      </Field>
-      <Toggle label="Visible" checked={activePhase.visible} onChange={(value) => updatePhase(activePhase.id, "visible", value)} />
-      <Toggle label="Annotations supérieures" checked={activePhase.inAnnot} onChange={(value) => updatePhase(activePhase.id, "inAnnot", value)} />
-      <Toggle label="Panneau PDF" checked={activePhase.inPanel} onChange={(value) => updatePhase(activePhase.id, "inPanel", value)} />
-      <div className="info-box"><span>{activePhase.peaks.length} pics</span><span>{activePhase.files.join(", ")}</span></div>
+      </Section>
+      {activePhase.sourceKind === "raman-spectrum" && activePhase.referenceSpectrum && (
+        <Section title="Extraction des pics Raman">
+          <SliderField label="Lissage" value={activePhase.ramanOptions?.smoothWindow ?? 7} min={1} max={31} step={2} suffix="pts" onChange={(value) => updatePhase(activePhase.id, "ramanOptions", { ...(activePhase.ramanOptions || {}), smoothWindow: Math.round(value) })} />
+          <SliderField label="Proéminence minimale" value={activePhase.ramanOptions?.minProminencePct ?? 1} min={0.1} max={10} step={0.1} suffix="%" onChange={(value) => updatePhase(activePhase.id, "ramanOptions", { ...(activePhase.ramanOptions || {}), minProminencePct: value })} />
+          <SliderField label="Hauteur minimale" value={activePhase.ramanOptions?.minHeightPct ?? 1} min={0} max={10} step={0.1} suffix="%" onChange={(value) => updatePhase(activePhase.id, "ramanOptions", { ...(activePhase.ramanOptions || {}), minHeightPct: value })} />
+          <NumberField label="Distance minimale" value={activePhase.ramanOptions?.minDistance ?? 5} min={0} step={0.5} suffix="cm⁻¹" onChange={(value) => updatePhase(activePhase.id, "ramanOptions", { ...(activePhase.ramanOptions || {}), minDistance: value })} />
+          <SliderField label="Nombre maximal" value={activePhase.ramanOptions?.maxCount ?? 30} min={3} max={80} step={1} onChange={(value) => updatePhase(activePhase.id, "ramanOptions", { ...(activePhase.ramanOptions || {}), maxCount: Math.round(value) })} />
+          <div className="inline-actions"><Button variant="primary" onClick={() => recalculateRamanPhase(activePhase)}>Recalculer les pics</Button></div>
+          <div className="callout">Les fichiers Raman RRUFF sont lus comme des spectres continus. Seuls les maxima répondant à ces critères sont transformés en bâtonnets de référence.</div>
+        </Section>
+      )}
+      <Section title="Édition manuelle des pics" defaultOpen={activePhase.sourceKind === "manual"}>
+        <PhasePeaksEditor phase={activePhase} onApply={(peaks) => updatePhase(activePhase.id, "peaks", peaks)} />
+      </Section>
+    </>
+  ) : activeZone ? (
+    <Section title="Zone Raman sélectionnée">
+      <TextField label="Nom" value={activeZone.name} onChange={(value) => updateZone(activeZone.id, "name", value)} />
+      <div className="two-columns">
+        <NumberField label="X min" value={activeZone.xmin} step={1} suffix="cm⁻¹" onChange={(value) => updateZone(activeZone.id, "xmin", value)} />
+        <NumberField label="X max" value={activeZone.xmax} step={1} suffix="cm⁻¹" onChange={(value) => updateZone(activeZone.id, "xmax", value)} />
+      </div>
+      <Field label="Couleur"><div className="color-field"><input type="color" value={activeZone.color} onChange={(event) => updateZone(activeZone.id, "color", event.target.value)} /><code>{activeZone.color}</code></div></Field>
+      <SliderField label="Opacité" value={activeZone.opacity ?? 0.12} min={0.02} max={0.5} step={0.01} onChange={(value) => updateZone(activeZone.id, "opacity", value)} />
+      <Toggle label="Visible" checked={activeZone.visible} onChange={(value) => updateZone(activeZone.id, "visible", value)} />
+      <Toggle label="Afficher le nom" checked={activeZone.showLabel !== false} onChange={(value) => updateZone(activeZone.id, "showLabel", value)} />
     </Section>
   ) : activeNote ? (
     <Section title="Note sélectionnée">
@@ -1073,14 +1299,14 @@ export default function App() {
       <Field label="Couleur"><div className="color-field"><input type="color" value={activeNote.color} onChange={(event) => updateNote(activeNote.id, "color", event.target.value)} /><code>{activeNote.color}</code></div></Field>
       <Toggle label="Ligne verticale" checked={activeNote.vline} onChange={(value) => updateNote(activeNote.id, "vline", value)} />
     </Section>
-  ) : <EmptyPanel title="Aucune sélection" body="Sélectionner un patron, une phase ou une note dans le panneau Projet." />;
+  ) : <EmptyPanel title="Aucune sélection" body="Sélectionner un patron, une phase, une zone ou une note dans le panneau Projet." />;
 
   return (
     <div className="app-shell">
       <header className="topbar">
         <div className="brand">
           <Logo />
-          <div><strong>Make Figure</strong><span>DRX · Raman · v4</span></div>
+          <div><strong>Make Figure</strong><span>DRX · Raman · v6</span></div>
         </div>
         <div className="topbar__divider" />
         <div className="mode-switch" aria-label="Mode d’analyse">
@@ -1111,9 +1337,9 @@ export default function App() {
 
       <main className="workbench" style={{ gridTemplateColumns: `${leftWidth}px minmax(300px, 1fr) ${rightWidth}px` }}>
         <aside className="side-panel side-panel--left">
-          <div className="panel-titlebar"><strong>Projet</strong><span>{patterns.length + phases.length + notes.length} éléments</span></div>
+          <div className="panel-titlebar"><strong>Projet</strong><span>{patterns.length + phases.length + notes.length + zones.length} éléments</span></div>
           <nav className="panel-tabs">
-            {[["patterns", "Patrons", patterns.length], ["phases", "Phases", phases.length], ["notes", "Notes", notes.length]].map(([value, label, count]) => (
+            {[["patterns", "Patrons", patterns.length], ["phases", "Phases", phases.length], ["zones", "Zones", zones.length], ["notes", "Notes", notes.length]].map(([value, label, count]) => (
               <button type="button" key={value} className={leftTab === value ? "is-active" : ""} onClick={() => setLeftTab(value)}>{label}<span>{count}</span></button>
             ))}
           </nav>
@@ -1163,7 +1389,19 @@ export default function App() {
             )}
             {leftTab === "phases" && (
               <>
-                <button type="button" className="drop-button" onClick={() => phaseInputRef.current?.click()}><Icon name="upload" /><span><strong>Importer des phases</strong><small>.dif EVA ou liste 2θ / I</small></span></button>
+                <button type="button" className="drop-button" onClick={() => phaseInputRef.current?.click()}><Icon name="upload" /><span><strong>Importer des phases</strong><small>.dif, liste de pics ou spectre Raman RRUFF</small></span></button>
+                <div className="manual-builder">
+                  <div className="manual-builder__header"><strong>Ajouter une phase manuellement</strong><span>Positions seules ou position:intensité</span></div>
+                  <div className="manual-builder__grid">
+                    <input type="text" value={manualPhase.name} placeholder="Nom, ex. Vatérite" onChange={(event) => setManualPhase((current) => ({ ...current, name: event.target.value }))} />
+                    <input type="text" value={manualPhase.abbrev} placeholder="Abréviation" onChange={(event) => setManualPhase((current) => ({ ...current, abbrev: event.target.value }))} />
+                  </div>
+                  <textarea rows="4" value={manualPhase.peaks} placeholder="107; 280; 713; 750; 1085\nou 107:40; 280:100; 713:65" onChange={(event) => setManualPhase((current) => ({ ...current, peaks: event.target.value }))} />
+                  <div className="manual-builder__footer">
+                    <input type="color" value={manualPhase.color} onChange={(event) => setManualPhase((current) => ({ ...current, color: event.target.value }))} />
+                    <Button variant="primary" onClick={createManualPhase}>Ajouter la phase</Button>
+                  </div>
+                </div>
                 <div className="data-list">
                   {phases.length ? phases.map((phase) => (
                     <PhaseItem
@@ -1178,6 +1416,34 @@ export default function App() {
                       onDrop={(event, id) => handleDataDrop(event, "phase", id)}
                     />
                   )) : <EmptyPanel title="Aucune phase" body="Importer des fiches .dif ou des listes de pics texte." />}
+                </div>
+              </>
+            )}
+            {leftTab === "zones" && (
+              <>
+                <div className="manual-builder zone-builder">
+                  <div className="manual-builder__header"><strong>Ajouter une zone Raman</strong><span>Bandes, vibrations ou domaines d’attribution</span></div>
+                  <input type="text" value={zoneDraft.name} placeholder="Nom, ex. ν IO — iode" onChange={(event) => setZoneDraft((current) => ({ ...current, name: event.target.value }))} />
+                  <div className="manual-builder__grid">
+                    <label><span>X min</span><input type="number" value={zoneDraft.xmin} step="1" onChange={(event) => setZoneDraft((current) => ({ ...current, xmin: Number(event.target.value) }))} /></label>
+                    <label><span>X max</span><input type="number" value={zoneDraft.xmax} step="1" onChange={(event) => setZoneDraft((current) => ({ ...current, xmax: Number(event.target.value) }))} /></label>
+                  </div>
+                  <div className="manual-builder__footer">
+                    <input type="color" value={zoneDraft.color} onChange={(event) => setZoneDraft((current) => ({ ...current, color: event.target.value }))} />
+                    <Button variant="primary" onClick={createZone}>Ajouter la zone</Button>
+                  </div>
+                </div>
+                <div className="data-list">
+                  {zones.length ? zones.map((zone) => (
+                    <ZoneItem
+                      key={zone.id}
+                      zone={zone}
+                      selected={selection?.type === "zone" && selection.id === zone.id}
+                      onSelect={() => { setSelection({ type: "zone", id: zone.id }); setRightTab("selection"); }}
+                      onUpdate={(key, value) => updateZone(zone.id, key, value)}
+                      onDelete={() => { history.set((current) => ({ ...current, zones: (current.zones || []).filter((item) => item.id !== zone.id) })); if (selection?.id === zone.id) setSelection(null); }}
+                    />
+                  )) : <EmptyPanel title="Aucune zone" body="Ajouter une plage Raman nommée, par exemple une vibration phosphate ou une zone attribuée à l’iode." />}
                 </div>
               </>
             )}
@@ -1264,6 +1530,19 @@ export default function App() {
                     <rect data-figure-background x="0" y="0" width={W} height={H} fill={S.pageBackground} />
 
                     {S.title && <text x={M.left + plotWidth / 2} y={M.top - 17} textAnchor="middle" fontSize={S.titleFontSize} fontWeight="700" fill="#15191f" fontFamily="Arial, Helvetica, sans-serif">{S.title}</text>}
+
+                    {S.mode === "raman" && zones.filter((zone) => zone.visible && Number(zone.xmax) > S.xmin && Number(zone.xmin) < S.xmax).map((zone) => {
+                      const start = Math.max(S.xmin, Number(zone.xmin));
+                      const end = Math.min(S.xmax, Number(zone.xmax));
+                      const x = xToPx(start);
+                      const width = Math.max(0, xToPx(end) - x);
+                      return (
+                        <g key={`zone-${zone.id}`} opacity={selection?.type === "zone" && selection.id === zone.id ? 1 : 0.94}>
+                          <rect x={x} y={M.top} width={width} height={mainHeight} fill={zone.color} opacity={zone.opacity ?? 0.12} />
+                          {zone.showLabel !== false && width > 12 && <text x={x + width / 2} y={M.top + 14} textAnchor="middle" fontSize="9" fontWeight="700" fill={zone.color} fontFamily="Arial, Helvetica, sans-serif">{zone.name}</text>}
+                        </g>
+                      );
+                    })}
 
                     {S.showGrid && xTicks.map((tick) => (
                       <line key={`grid-${tick}`} x1={xToPx(tick)} x2={xToPx(tick)} y1={M.top} y2={M.top + mainHeight + (panelHeight ? M.gap + panelHeight : 0)} stroke="#cfd4da" strokeWidth="0.65" opacity={S.gridOpacity} />
@@ -1358,7 +1637,7 @@ export default function App() {
                           const boxHeight = panelPhases.length * lineHeight + 24;
                           const boxX = M.left + plotWidth - boxWidth - 7;
                           const boxY = panelTop + 7;
-                          return <g><rect x={boxX} y={boxY} width={boxWidth} height={boxHeight} fill="#ffffff" opacity="0.92" stroke="#aeb4bb" strokeWidth="0.7" rx="3"/><text x={boxX + boxWidth / 2} y={boxY + 14} textAnchor="middle" fontSize="9" fontWeight="700" fill="#343a40">Références PDF</text>{panelPhases.map((phase, index) => <g key={phase.id}><line x1={boxX + 9} x2={boxX + 27} y1={boxY + 24 + index * lineHeight} y2={boxY + 24 + index * lineHeight} stroke={phase.color} strokeWidth="2"/><text x={boxX + 34} y={boxY + 27 + index * lineHeight} fontSize="8" fill="#20252b">{phase.name} — {phase.files.map(cardNumber).join(", ")}</text></g>)}</g>;
+                          return <g><rect x={boxX} y={boxY} width={boxWidth} height={boxHeight} fill="#ffffff" opacity="0.92" stroke="#aeb4bb" strokeWidth="0.7" rx="3"/><text x={boxX + boxWidth / 2} y={boxY + 14} textAnchor="middle" fontSize="9" fontWeight="700" fill="#343a40">Références de phase</text>{panelPhases.map((phase, index) => <g key={phase.id}><line x1={boxX + 9} x2={boxX + 27} y1={boxY + 24 + index * lineHeight} y2={boxY + 24 + index * lineHeight} stroke={phase.color} strokeWidth="2"/><text x={boxX + 34} y={boxY + 27 + index * lineHeight} fontSize="8" fill="#20252b">{phase.name} — {phase.files.map(cardNumber).join(", ")}</text></g>)}</g>;
                         })()}
                       </g>
                     )}
@@ -1482,7 +1761,7 @@ export default function App() {
                   <Toggle label="Afficher les annotations" checked={S.showAnnotations} onChange={(value) => patchSettings("showAnnotations", value)} />
                   {S.showAnnotations && <><SliderField label="Seuil des bâtonnets" value={S.tickMinI} min={0} max={50} step={0.5} suffix="%" onChange={(value) => patchSettings("tickMinI", value)} /><SliderField label="Seuil des labels" value={S.labelMinI} min={0} max={100} step={1} suffix="%" onChange={(value) => patchSettings("labelMinI", value)} /><SliderField label="Séparation des labels" value={S.labelMinSep} min={0.1} max={10} step={0.1} onChange={(value) => patchSettings("labelMinSep", value)} /><SliderField label="Hauteur" value={S.tickScale} min={0.1} max={1.5} step={0.02} onChange={(value) => patchSettings("tickScale", value)} /><SliderField label="Écart au patron" value={S.annotGap} min={0.3} max={3} step={0.02} onChange={(value) => patchSettings("annotGap", value)} /><SliderField label="Taille des labels" value={S.annotFontSize} min={5} max={18} step={0.5} onChange={(value) => patchSettings("annotFontSize", value)} /><Toggle label="Clé des abréviations" checked={S.showAbbrevKey} onChange={(value) => patchSettings("showAbbrevKey", value)} /></>}
                 </Section>
-                <Section title="Panneau PDF">
+                <Section title="Panneau de références">
                   <Toggle label="Afficher le panneau" checked={S.showPdfPanel} onChange={(value) => patchSettings("showPdfPanel", value)} />
                   {S.showPdfPanel && <><SliderField label="Hauteur" value={S.pdfPanelH} min={60} max={500} step={10} suffix="px" onChange={(value) => patchSettings("pdfPanelH", value)} /><SliderField label="Épaisseur des bâtonnets" value={S.pdfStickW} min={0.3} max={4} step={0.05} onChange={(value) => patchSettings("pdfStickW", value)} /><Toggle label="Noms des lignes" checked={S.showRowLabels} onChange={(value) => patchSettings("showRowLabels", value)} /><Toggle label="Encart de légende" checked={S.showPdfLegend} onChange={(value) => patchSettings("showPdfLegend", value)} /></>}
                 </Section>
@@ -1504,7 +1783,7 @@ export default function App() {
                   <div className="export-summary"><span>PNG : {Math.round(W * S.pngScale)} × {Math.round(H * S.pngScale)} px</span><span>PDF / TIFF : {S.exportDpi} dpi</span><span>SVG : vectoriel éditable</span></div>
                 </Section>
                 <Section title="Exporter">
-                  <div className="export-grid"><Button variant="primary" icon="download" disabled={isExporting} onClick={downloadPng}>PNG</Button><Button variant="secondary" disabled={isExporting} onClick={downloadSvg}>SVG</Button><Button variant="secondary" disabled={isExporting} onClick={downloadPdf}>PDF</Button><Button variant="secondary" disabled={isExporting} onClick={downloadTiff}>TIFF</Button><Button variant="secondary" icon="csv" onClick={exportProcessedCsv}>CSV traité</Button><Button variant="secondary" icon="csv" onClick={exportDetectedPeaksCsv}>CSV pics</Button><Button variant="secondary" icon="save" onClick={saveSessionFile}>Session JSON</Button></div>
+                  <div className="export-grid"><Button variant="primary" icon="download" disabled={isExporting} onClick={downloadPng}>PNG</Button><Button variant="secondary" disabled={isExporting} onClick={downloadSvg}>SVG</Button><Button variant="secondary" disabled={isExporting} onClick={downloadPdf}>PDF</Button><Button variant="secondary" disabled={isExporting} onClick={downloadTiff}>TIFF</Button><Button variant="secondary" icon="csv" onClick={exportProcessedCsv}>CSV traité</Button><Button variant="secondary" icon="csv" onClick={exportDetectedPeaksCsv}>CSV pics</Button><Button variant="secondary" icon="csv" onClick={exportZonesCsv}>CSV zones</Button><Button variant="secondary" icon="save" onClick={saveSessionFile}>Session JSON</Button></div>
                 </Section>
               </>
             )}
