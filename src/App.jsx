@@ -712,6 +712,7 @@ function PhaseItem({ phase, selected, onSelect, onUpdate, onDelete, onAppend, on
           <span className="type-badge"><Icon name="phase" size={10} /> {phase.sourceKind === "manual" ? "manuel" : phase.sourceKind === "raman-spectrum" ? "RRUFF" : "référence"}</span>
           <button type="button" className={phase.inAnnot ? "chip is-on" : "chip"} onClick={(event) => { event.stopPropagation(); onUpdate("inAnnot", !phase.inAnnot); }}>annotation</button>
           <button type="button" className={phase.inPanel ? "chip is-on" : "chip"} onClick={(event) => { event.stopPropagation(); onUpdate("inPanel", !phase.inPanel); }}>panneau</button>
+          <button type="button" className={phase.inOverlay ? "chip is-on" : "chip"} title="Superposer les bâtonnets directement sur la figure" onClick={(event) => { event.stopPropagation(); onUpdate("inOverlay", !phase.inOverlay); }}>figure</button>
           <button type="button" className="chip chip--action" onClick={(event) => { event.stopPropagation(); onAppend(); }}>+ fiche</button>
         </div>
       </div>
@@ -1175,6 +1176,7 @@ export default function App() {
   const [dragPreview, setDragPreview] = useState(null);
   const [contextTarget, setContextTarget] = useState(null);
   const [snapToPeak, setSnapToPeak] = useState(() => readLocalSetting("make-figure-snap-to-peak", "true") === "true");
+  const [magnetAlign, setMagnetAlign] = useState(() => readLocalSetting("make-figure-magnet-align", "true") === "true");
   const [showNavigator, setShowNavigator] = useState(() => readLocalSetting("make-figure-show-navigator", "true") === "true");
   const [comparisonView, setComparisonView] = useState(false);
   const [editorFullscreen, setEditorFullscreen] = useState(false);
@@ -1430,7 +1432,8 @@ export default function App() {
   useEffect(() => {
     writeLocalSetting("make-figure-snap-to-peak", snapToPeak);
     writeLocalSetting("make-figure-show-navigator", showNavigator);
-  }, [snapToPeak, showNavigator]);
+    writeLocalSetting("make-figure-magnet-align", magnetAlign);
+  }, [snapToPeak, showNavigator, magnetAlign]);
 
   useEffect(() => {
     writeLocalSetting("make-figure-drx-phase-library", JSON.stringify(phaseLibrary));
@@ -2916,11 +2919,75 @@ export default function App() {
       }
       event.preventDefault();
       if (interaction.type === "note") {
-        setDragPreview({ type: "note", id: interaction.payload.id, x: clamp(point.dataX, S.xmin, S.xmax), yFrac: clamp(1 - ((point.svgY - M.top) / mainHeight), 0, 1), fontSize: interaction.payload.fontSize });
+        let x = clamp(point.dataX, S.xmin, S.xmax);
+        let yFrac = clamp(1 - ((point.svgY - M.top) / mainHeight), 0, 1);
+        const guides = [];
+        if (magnetAlign) {
+          const threshold = 6;
+          // Candidats verticaux : X des autres notes visibles, centre et bords du tracé.
+          const candidatesX = notes
+            .filter((note) => note.id !== interaction.payload.id && note.visible !== false)
+            .map((note) => xToPx(safeNoteModel(note, viewXMin, viewXMax).x));
+          candidatesX.push(M.left + plotWidth / 2);
+          const currentPx = xToPx(x);
+          let bestX = null;
+          candidatesX.forEach((candidate) => {
+            const distance = Math.abs(candidate - currentPx);
+            if (distance <= threshold && (!bestX || distance < bestX.distance)) bestX = { candidate, distance };
+          });
+          if (bestX) {
+            x = clamp(pxToDataX(bestX.candidate), S.xmin, S.xmax);
+            guides.push({ axis: "x", px: bestX.candidate });
+          }
+          // Candidats horizontaux : Y des autres notes, centre du tracé.
+          const candidatesY = notes
+            .filter((note) => note.id !== interaction.payload.id && note.visible !== false)
+            .map((note) => M.top + mainHeight * (1 - safeNoteModel(note, viewXMin, viewXMax).yFrac));
+          candidatesY.push(M.top + mainHeight / 2);
+          const currentPy = M.top + mainHeight * (1 - yFrac);
+          let bestY = null;
+          candidatesY.forEach((candidate) => {
+            const distance = Math.abs(candidate - currentPy);
+            if (distance <= threshold && (!bestY || distance < bestY.distance)) bestY = { candidate, distance };
+          });
+          if (bestY) {
+            yFrac = clamp(1 - ((bestY.candidate - M.top) / mainHeight), 0, 1);
+            guides.push({ axis: "y", px: bestY.candidate });
+          }
+        }
+        setDragPreview({ type: "note", id: interaction.payload.id, x, yFrac, fontSize: interaction.payload.fontSize, guides });
       } else if (interaction.type === "noteResize") {
         setDragPreview({ type: "noteResize", id: interaction.payload.id, fontSize: clamp(interaction.payload.fontSize + (point.svgX - interaction.start.svgX) / 4, 5, 60) });
       } else if (interaction.type === "patternLabel") {
-        setDragPreview({ type: "patternLabel", id: interaction.payload.id, dx: interaction.payload.dx + (point.svgX - interaction.start.svgX), dy: interaction.payload.dy + (point.svgY - interaction.start.svgY), fontSize: interaction.payload.fontSize });
+        let dx = interaction.payload.dx + (point.svgX - interaction.start.svgX);
+        let dy = interaction.payload.dy + (point.svgY - interaction.start.svgY);
+        const guides = [];
+        if (magnetAlign) {
+          const threshold = 6;
+          const defaultLabelX = M.left + plotWidth + 10;
+          // Alignement horizontal : retour à la colonne par défaut des étiquettes.
+          if (Math.abs(dx) <= threshold) {
+            dx = 0;
+            guides.push({ axis: "x", px: defaultLabelX });
+          }
+          // Alignement vertical : ligne de base d'une autre étiquette de courbe.
+          const dragged = processed.find((pattern) => pattern.id === interaction.payload.id);
+          if (dragged) {
+            const currentY = yToPx(labelYForPattern(dragged)) + dy;
+            let bestY = null;
+            processed.forEach((other) => {
+              if (other.id === dragged.id) return;
+              const candidate = yToPx(labelYForPattern(other)) + (Number(other.labelDy) || 0);
+              const distance = Math.abs(candidate - currentY);
+              if (distance <= threshold && (!bestY || distance < bestY.distance)) bestY = { candidate, distance };
+            });
+            if (bestY) {
+              dy += bestY.candidate - currentY;
+              guides.push({ axis: "y", px: bestY.candidate });
+            }
+          }
+        }
+        setDragPreview({ type: "patternLabel", id: interaction.payload.id, dx, dy, fontSize: interaction.payload.fontSize, guides });
       } else if (interaction.type === "patternLabelResize") {
         setDragPreview({ type: "patternLabelResize", id: interaction.payload.id, fontSize: clamp(interaction.payload.fontSize + (point.svgX - interaction.start.svgX) / 4, 6, 42) });
       } else if (interaction.type === "phaseLegendMove") {
@@ -3050,10 +3117,83 @@ export default function App() {
     setMessage("Plage X réinitialisée sur l’étendue des données visibles.");
   }, [activeMode, fullXRange.maximum, fullXRange.minimum, history]);
 
+  // ── Édition interactive des pics ─────────────────────────────────────────
+  const peakEditTolerance = activeMode === "drx" ? 0.05 : 2;
+
+  const addUserPeak = useCallback((patternId, x) => {
+    history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
+      ...currentWorkspace,
+      patterns: currentWorkspace.patterns.map((pattern) => {
+        if (pattern.id !== patternId) return pattern;
+        const existing = Array.isArray(pattern.userPeaks) ? pattern.userPeaks : [];
+        if (existing.some((value) => Math.abs(value - x) < peakEditTolerance / 2)) return pattern;
+        // Un ajout à une position exclue lève d'abord l'exclusion.
+        const excluded = (Array.isArray(pattern.excludedPeaks) ? pattern.excludedPeaks : []).filter((value) => Math.abs(value - x) >= peakEditTolerance);
+        return { ...pattern, userPeaks: [...existing, x].sort((a, b) => a - b), excludedPeaks: excluded };
+      }),
+    })));
+    setMessage(`Pic ajouté à ${x.toFixed(activeMode === "drx" ? 3 : 1)}.`);
+  }, [activeMode, history, peakEditTolerance]);
+
+  const removePeak = useCallback((patternId, peak) => {
+    history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
+      ...currentWorkspace,
+      patterns: currentWorkspace.patterns.map((pattern) => {
+        if (pattern.id !== patternId) return pattern;
+        if (peak.manual) {
+          const userPeaks = (Array.isArray(pattern.userPeaks) ? pattern.userPeaks : []).filter((value) => Math.abs(value - peak.x) >= peakEditTolerance / 2);
+          return { ...pattern, userPeaks };
+        }
+        const excluded = Array.isArray(pattern.excludedPeaks) ? pattern.excludedPeaks : [];
+        if (excluded.some((value) => Math.abs(value - peak.x) < peakEditTolerance / 2)) return pattern;
+        return { ...pattern, excludedPeaks: [...excluded, peak.x].sort((a, b) => a - b) };
+      }),
+    })));
+    setMessage(`Pic à ${Number(peak.x).toFixed(activeMode === "drx" ? 3 : 1)} retiré.`);
+  }, [activeMode, history, peakEditTolerance]);
+
+  const resetPeakEdits = useCallback((patternId) => {
+    history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
+      ...currentWorkspace,
+      patterns: currentWorkspace.patterns.map((pattern) => pattern.id === patternId ? { ...pattern, userPeaks: [], excludedPeaks: [] } : pattern),
+    })));
+    setMessage("Ajouts et retraits manuels de pics réinitialisés.");
+  }, [activeMode, history]);
+
+  /** Recherche le maximum local du signal traité autour d'une position cliquée. */
+  const snapToLocalMax = useCallback((pattern, dataX) => {
+    const sourceX = pattern.sourceX || [];
+    const y = pattern.processedY || [];
+    if (!sourceX.length) return dataX;
+    const window = Math.max(peakEditTolerance * 3, ((S.xmax - S.xmin) / Math.max(1, plotWidth)) * 10);
+    let bestIndex = -1;
+    for (let i = 0; i < sourceX.length; i += 1) {
+      if (Math.abs(sourceX[i] - dataX) > window) continue;
+      if (bestIndex < 0 || y[i] > y[bestIndex]) bestIndex = i;
+    }
+    return bestIndex >= 0 ? sourceX[bestIndex] : dataX;
+  }, [S.xmax, S.xmin, peakEditTolerance, plotWidth]);
+
   const onSvgClick = (event) => {
     if (suppressClickRef.current) { suppressClickRef.current = false; return; }
     const point = svgPoint(event);
     if (!point?.insidePlot || interactionRef.current) return;
+    if (tool === "peaks") {
+      if (!processed.length) return;
+      // Patron cible : le plus proche verticalement de la position cliquée.
+      let target = null;
+      let bestDistance = Infinity;
+      processed.forEach((pattern) => {
+        const localX = point.dataX - (pattern.waterfallShift || 0);
+        const value = interpolateSeriesLocal(pattern.sourceX, pattern.displayY, localX);
+        if (value === null) return;
+        const distance = Math.abs(value + pattern.stackOffset - point.dataY);
+        if (distance < bestDistance) { bestDistance = distance; target = { pattern, localX }; }
+      });
+      if (!target) return;
+      addUserPeak(target.pattern.id, snapToLocalMax(target.pattern, target.localX));
+      return;
+    }
     if (!addNoteMode) return;
     const note = {
       id: newId("note"),
@@ -3238,12 +3378,19 @@ export default function App() {
         <div className="inline-actions"><Button variant="secondary" icon="duplicate" onClick={duplicateSelection}>Dupliquer pour une variante</Button><Button variant="secondary" icon="sort" onClick={() => updatePattern(activePattern.id, "orderValue", extractOrderValue(activePattern.fileName || activePattern.label))}>Extraire l’ordre</Button></div>
       </Section>
       <Section title="Traitement individuel" defaultOpen={Boolean(activePattern.processingOverrides?.enabled)}>
-        <Toggle label="Remplacer les réglages globaux" checked={Boolean(activePattern.processingOverrides?.enabled)} onChange={(enabled) => updatePattern(activePattern.id, "processingOverrides", enabled ? { enabled: true, smoothW: S.smoothW, clipPct: S.clipPct, baselineMode: S.baselineMode, normalizeMode: S.normalizeMode } : { enabled: false })} />
+        <Toggle label="Remplacer les réglages globaux" checked={Boolean(activePattern.processingOverrides?.enabled)} onChange={(enabled) => updatePattern(activePattern.id, "processingOverrides", enabled ? { enabled: true, smoothW: S.smoothW, clipPct: S.clipPct, baselineMode: S.baselineMode, normalizeMode: S.normalizeMode, showDetectedPeaks: S.showDetectedPeaks, peakMinHeight: S.peakMinHeight, peakMinProminence: S.peakMinProminence, peakMinDistance: S.peakMinDistance, peakLookaround: S.peakLookaround } : { enabled: false })} />
         {activePattern.processingOverrides?.enabled && <>
           <SliderField label="Lissage" value={activePattern.processingOverrides.smoothW ?? S.smoothW} min={1} max={51} step={1} onChange={(value) => updatePattern(activePattern.id, "processingOverrides", { ...activePattern.processingOverrides, smoothW: Math.round(value) })} />
           <SliderField label="Écrêtage" value={activePattern.processingOverrides.clipPct ?? S.clipPct} min={90} max={100} step={0.1} suffix="%" onChange={(value) => updatePattern(activePattern.id, "processingOverrides", { ...activePattern.processingOverrides, clipPct: value })} />
           <SelectField label="Ligne de base" value={activePattern.processingOverrides.baselineMode ?? S.baselineMode} onChange={(value) => updatePattern(activePattern.id, "processingOverrides", { ...activePattern.processingOverrides, baselineMode: value })} options={BASELINE_OPTIONS} />
           <SelectField label="Normalisation" value={activePattern.processingOverrides.normalizeMode ?? S.normalizeMode} onChange={(value) => updatePattern(activePattern.id, "processingOverrides", { ...activePattern.processingOverrides, normalizeMode: value })} options={NORMALIZATION_OPTIONS} />
+          <Field label="Détection de pics (ce patron)" hint="Ces seuils remplacent les réglages globaux du module « Repérage des pics expérimentaux » pour ce patron uniquement.">
+            <Toggle label="Marqueurs de pics" checked={activePattern.processingOverrides.showDetectedPeaks ?? S.showDetectedPeaks} onChange={(value) => updatePattern(activePattern.id, "processingOverrides", { ...activePattern.processingOverrides, showDetectedPeaks: value })} />
+          </Field>
+          <SliderField label="Hauteur minimale" value={activePattern.processingOverrides.peakMinHeight ?? S.peakMinHeight} min={0} max={100} step={1} suffix="%" onChange={(value) => updatePattern(activePattern.id, "processingOverrides", { ...activePattern.processingOverrides, peakMinHeight: value })} />
+          <SliderField label="Proéminence minimale" value={activePattern.processingOverrides.peakMinProminence ?? S.peakMinProminence} min={0} max={100} step={0.5} suffix="%" onChange={(value) => updatePattern(activePattern.id, "processingOverrides", { ...activePattern.processingOverrides, peakMinProminence: value })} />
+          <NumberField label="Distance minimale X" value={activePattern.processingOverrides.peakMinDistance ?? S.peakMinDistance} min={0} step={S.mode === "drx" ? 0.05 : 1} onChange={(value) => updatePattern(activePattern.id, "processingOverrides", { ...activePattern.processingOverrides, peakMinDistance: value })} />
+          <SliderField label="Fenêtre de proéminence" value={activePattern.processingOverrides.peakLookaround ?? S.peakLookaround} min={2} max={250} step={1} suffix="pts" onChange={(value) => updatePattern(activePattern.id, "processingOverrides", { ...activePattern.processingOverrides, peakLookaround: Math.round(value) })} />
         </>}
       </Section>
     </>
@@ -3264,6 +3411,7 @@ export default function App() {
         <Toggle label="Visible" checked={activePhase.visible} onChange={(value) => updatePhase(activePhase.id, "visible", value)} />
         <Toggle label="Annotations supérieures" checked={activePhase.inAnnot} onChange={(value) => updatePhase(activePhase.id, "inAnnot", value)} />
         <Toggle label="Panneau de références" checked={activePhase.inPanel} onChange={(value) => updatePhase(activePhase.id, "inPanel", value)} />
+        <Toggle label="Superposer sur la figure" checked={Boolean(activePhase.inOverlay)} onChange={(value) => updatePhase(activePhase.id, "inOverlay", value)} />
         <div className="two-columns"><NumberField label="Décalage label X" value={activePhase.labelOffsetX || 0} step={S.mode === "drx" ? 0.05 : 1} onChange={(value) => updatePhase(activePhase.id, "labelOffsetX", value)} /><NumberField label="Décalage label Y" value={activePhase.labelOffsetY || 0} step={0.05} onChange={(value) => updatePhase(activePhase.id, "labelOffsetY", value)} /></div>
         <div className="inline-actions"><Button variant="secondary" icon="reset" onClick={() => { updatePhase(activePhase.id, "labelOffsetX", 0); updatePhase(activePhase.id, "labelOffsetY", 0); }}>Réinitialiser la position des labels</Button></div>
         <div className="info-box">
@@ -3578,7 +3726,9 @@ export default function App() {
             <div className="canvas-toolbar__group">
               <IconButton icon="cursor" title="Sélection" active={tool === "cursor"} onClick={() => setTool("cursor")} />
               <IconButton icon="hand" title="Déplacer la feuille · espace" active={tool === "hand"} onClick={() => setTool("hand")} />
+              <IconButton icon="tag" title="Édition des pics · clic sur une courbe = ajouter, clic sur un marqueur ou sa valeur = retirer" active={tool === "peaks"} onClick={() => setTool((value) => value === "peaks" ? "cursor" : "peaks")} />
               <IconButton icon="magnet" title="Accrochage aux pics" active={snapToPeak} onClick={() => setSnapToPeak((value) => !value)} />
+              <IconButton icon="ruler" title="Guides d’alignement (magnétisme des labels et notes)" active={magnetAlign} onClick={() => setMagnetAlign((value) => !value)} />
             </div>
             <div className="canvas-toolbar__divider" />
             <div className="canvas-toolbar__group">
@@ -3640,7 +3790,7 @@ export default function App() {
               <div className="welcome-card">
                 <div className="welcome-card__visual"><WorkspaceIllustration mode={activeMode} /></div>
                 <span className="welcome-card__eyebrow"><Icon name="sparkles" size={12} /> Espace {modeLabel(activeMode)}</span>
-                <h1>{activeMode === "drx" ? "Composer une figure de diffraction" : "Composer une figure Raman"}</h1>
+                <h1>{activeMode === "drx" ? "Composer une figure de diffraction" : activeMode === "ir" ? "Composer une figure infrarouge" : "Composer une figure Raman"}</h1>
                 <p>Importer les acquisitions, ajouter les références, appliquer le traitement du signal puis produire une figure scientifique prête à publier.</p>
                 <div className="welcome-card__actions">
                   <Button variant="primary" icon="upload" onClick={() => patternInputRef.current?.click()}>Importer des patrons</Button>
@@ -3716,8 +3866,9 @@ export default function App() {
                       const baselineY = yToPx(offset);
                       const fillPath = `${path}L${xToPx(pattern.px.at(-1)).toFixed(2)},${baselineY.toFixed(2)}L${xToPx(pattern.px[0]).toFixed(2)},${baselineY.toFixed(2)}Z`;
                       const labelY = labelYForPattern(pattern);
+                      const showPeaks = tool === "peaks" || (pattern.effectiveSettings?.showDetectedPeaks ?? S.showDetectedPeaks);
                       const labelledPeaks = [...(pattern.detectedPeaks || [])]
-                        .sort((a, b) => b.prominence - a.prominence)
+                        .sort((a, b) => (b.prominence ?? 0) - (a.prominence ?? 0))
                         .slice(0, S.peakMaxLabels)
                         .sort((a, b) => a.displayX - b.displayX);
                       return (
@@ -3726,13 +3877,26 @@ export default function App() {
                             {S.layoutMode === "difference" && <line x1={M.left} x2={M.left + plotWidth} y1={baselineY} y2={baselineY} stroke={color} strokeWidth="0.55" strokeDasharray="3 3" opacity="0.35" />}
                             {S.showFill && !breakActive && <path d={fillPath} fill={color} opacity={S.fillAlpha * (pattern.curveOpacity ?? 1)} />}
                             <path d={path} fill="none" stroke={color} strokeWidth={S.lineWidth} opacity={pattern.curveOpacity ?? 1} vectorEffect="non-scaling-stroke" />
-                            {S.showDetectedPeaks && (pattern.detectedPeaks || []).map((peak, peakIndex) => (
-                              <circle key={`peak-marker-${pattern.id}-${peakIndex}`} cx={xToPx(peak.displayX)} cy={yToPx(peak.displayY + offset)} r={S.peakMarkerSize} fill={S.pageBackground} stroke={color} strokeWidth="1.1" vectorEffect="non-scaling-stroke" />
+                            {showPeaks && (pattern.detectedPeaks || []).map((peak, peakIndex) => (
+                              <circle
+                                key={`peak-marker-${pattern.id}-${peakIndex}`}
+                                cx={xToPx(peak.displayX)} cy={yToPx(peak.displayY + offset)}
+                                r={tool === "peaks" ? Math.max(S.peakMarkerSize, 4) : S.peakMarkerSize}
+                                fill={peak.manual ? color : S.pageBackground} stroke={color} strokeWidth="1.1" vectorEffect="non-scaling-stroke"
+                                style={tool === "peaks" ? { cursor: "pointer" } : undefined}
+                                onClick={tool === "peaks" ? (event) => { event.stopPropagation(); removePeak(pattern.id, peak); } : undefined}
+                              />
                             ))}
-                            {S.showDetectedPeaks && labelledPeaks.map((peak, peakIndex) => {
+                            {showPeaks && S.showPeakLabels && labelledPeaks.map((peak, peakIndex) => {
                               const x = xToPx(peak.displayX);
                               const y = yToPx(peak.displayY + offset) - 7 - (peakIndex % 2) * 7;
-                              return <text key={`peak-label-${pattern.id}-${peakIndex}`} x={x} y={y} textAnchor="start" fontSize={S.peakLabelSize} fill={color} fontFamily="Arial, Helvetica, sans-serif" transform={`rotate(-90 ${x} ${y})`}>{peak.x.toFixed(S.mode === "drx" ? 2 : 0)}</text>;
+                              return <text
+                                key={`peak-label-${pattern.id}-${peakIndex}`}
+                                x={x} y={y} textAnchor="start" fontSize={S.peakLabelSize} fill={color}
+                                fontFamily="Arial, Helvetica, sans-serif" transform={`rotate(-90 ${x} ${y})`}
+                                style={tool === "peaks" ? { cursor: "pointer", userSelect: "none" } : undefined}
+                                onClick={tool === "peaks" ? (event) => { event.stopPropagation(); removePeak(pattern.id, peak); } : undefined}
+                              >{peak.x.toFixed(S.mode === "drx" ? 2 : 0)}</text>;
                             })}
                           </g>
                           {(() => {
@@ -3778,6 +3942,26 @@ export default function App() {
                         xmax={viewXMax}
                       />
                     )}
+
+                    {S.figureLayoutMode === "single" && phases.filter((phase) => phase.visible && phase.inOverlay).map((phase) => (
+                      <g key={`phase-overlay-${phase.id}`} clipPath="url(#plot-clip)">
+                        {phase.peaks.map(([x, intensity], index) => {
+                          if (!(x >= viewXMin && x <= viewXMax)) return null;
+                          if (breakActive && x > Number(S.brokenAxisStart) && x < Number(S.brokenAxisEnd)) return null;
+                          const px = xToPx(x);
+                          const baseY = Math.min(M.top + mainHeight, yToPx(0));
+                          const topY = S.phaseOverlayFullHeight
+                            ? M.top
+                            : yToPx((intensity / 100) * (Number(S.phaseOverlayScale) || 0.85) * Math.max(0.2, curveMaximum));
+                          return <line
+                            key={`phase-overlay-line-${phase.id}-${index}`}
+                            x1={px} x2={px} y1={baseY} y2={Math.max(M.top, topY)}
+                            stroke={phase.color} strokeWidth={Number(S.phaseOverlayWidth) || 1}
+                            opacity={Number(S.phaseOverlayOpacity) || 0.7}
+                          />;
+                        })}
+                      </g>
+                    ))}
 
                     {S.figureLayoutMode === "single" && peakFitResult && activeProcessedPattern && (() => {
                       const offset = activeProcessedPattern.stackOffset || 0;
@@ -3992,6 +4176,9 @@ export default function App() {
                     })()}
                     {dragPreview?.type === "curveOrder" && <line data-ui-only="true" x1={M.left} x2={M.left + plotWidth + S.rightMargin - 8} y1={dragPreview.svgY} y2={dragPreview.svgY} stroke="#dc7848" strokeWidth="1.2" strokeDasharray="4 3" opacity="0.8" />}
                     {cursor && <g data-ui-only="true" pointerEvents="none"><line x1={cursor.svgX} x2={cursor.svgX} y1={M.top} y2={M.top + mainHeight} stroke={cursor.snapped ? "#dc7848" : "#67707c"} strokeWidth="0.7" strokeDasharray="3 3" opacity="0.75"/></g>}
+                    {Array.isArray(dragPreview?.guides) && dragPreview.guides.map((guide, index) => guide.axis === "x"
+                      ? <line data-ui-only="true" key={`guide-${index}`} x1={guide.px} x2={guide.px} y1={M.top} y2={M.top + mainHeight} stroke="#e0507a" strokeWidth="1" strokeDasharray="5 3" opacity="0.85" pointerEvents="none" />
+                      : <line data-ui-only="true" key={`guide-${index}`} x1={M.left} x2={M.left + plotWidth + S.rightMargin - 8} y1={guide.px} y2={guide.px} stroke="#e0507a" strokeWidth="1" strokeDasharray="5 3" opacity="0.85" pointerEvents="none" />)}
                   </svg>
                 </div>
               </div>
@@ -4157,6 +4344,9 @@ export default function App() {
                 <Section title="Repérage des pics expérimentaux" defaultOpen={false}>
                   <div className="callout">Détecte les maxima du patron sélectionné pour les exporter, les suivre dans une série ou lancer un ajustement. Ce module ne réalise pas une identification de phase.</div>
                   <Toggle label="Afficher les marqueurs sur la figure" checked={S.showDetectedPeaks} onChange={(value) => patchSettings("showDetectedPeaks", value)} />
+                  <Toggle label="Afficher les valeurs des pics" checked={S.showPeakLabels !== false} onChange={(value) => patchSettings("showPeakLabels", value)} />
+                  <div className="callout">Outil « Pics » de la barre du canevas : un clic sur une courbe ajoute un pic au maximum local le plus proche ; un clic sur un marqueur ou sa valeur le retire. Les pics ajoutés sont pleins, les pics détectés sont creux.</div>
+                  {activePattern && ((activePattern.userPeaks?.length || 0) + (activePattern.excludedPeaks?.length || 0) > 0) && <div className="inline-actions"><Button variant="secondary" icon="reset" onClick={() => resetPeakEdits(activePattern.id)}>Réinitialiser ajouts/retraits ({(activePattern.userPeaks?.length || 0)} + / {(activePattern.excludedPeaks?.length || 0)} −)</Button></div>}
                   <SliderField label="Hauteur minimale" value={S.peakMinHeight} min={0} max={100} step={1} suffix="%" onChange={(value) => patchSettings("peakMinHeight", value)} />
                   <SliderField label="Proéminence minimale" value={S.peakMinProminence} min={0} max={100} step={0.5} suffix="%" onChange={(value) => patchSettings("peakMinProminence", value)} />
                   <NumberField label="Distance minimale X" value={S.peakMinDistance} min={0} step={S.mode === "drx" ? 0.05 : 1} onChange={(value) => patchSettings("peakMinDistance", value)} />
@@ -4164,7 +4354,7 @@ export default function App() {
                   <SliderField label="Nombre maximal de labels" value={S.peakMaxLabels} min={0} max={100} step={1} onChange={(value) => patchSettings("peakMaxLabels", Math.round(value))} />
                   {activeProcessedPattern ? <div className="peak-results">
                     <div className="peak-results__header"><strong>{truncateLabel(activeProcessedPattern.label, 28)}</strong><span>{activeProcessedPattern.detectedPeaks?.length || 0} maximum(s)</span></div>
-                    <div className="peak-results__table"><div className="peak-results__row is-head"><span>Position</span><span>Hauteur</span><span>Prom.</span><span>Actions</span></div>{(activeProcessedPattern.detectedPeaks || []).slice(0, 30).map((peak, index) => <div className="peak-results__row" key={`${peak.x}-${index}`}><span>{Number(peak.x).toFixed(activeMode === "drx" ? 4 : 1)}</span><span>{Number(peak.heightPct).toFixed(1)} %</span><span>{Number(peak.prominencePct).toFixed(1)} %</span><span><button type="button" title="Ajouter au suivi de série" onClick={() => addDetectedPeakToTracking(peak, index)}>Suivre</button>{activeMode === "drx" && <button type="button" title="Ajuster ce pic" onClick={() => fitDetectedPeak(peak)}>Ajuster</button>}</span></div>)}</div>
+                    <div className="peak-results__table"><div className="peak-results__row is-head"><span>Position</span><span>Hauteur</span><span>Prom.</span><span>Actions</span></div>{(activeProcessedPattern.detectedPeaks || []).slice(0, 30).map((peak, index) => <div className="peak-results__row" key={`${peak.x}-${index}`}><span>{Number(peak.x).toFixed(activeMode === "drx" ? 4 : 1)}{peak.manual ? " ✎" : ""}</span><span>{Number(peak.heightPct).toFixed(1)} %</span><span>{Number(peak.prominencePct).toFixed(1)} %</span><span><button type="button" title="Ajouter au suivi de série" onClick={() => addDetectedPeakToTracking(peak, index)}>Suivre</button>{activeMode === "drx" && <button type="button" title="Ajuster ce pic" onClick={() => fitDetectedPeak(peak)}>Ajuster</button>}<button type="button" title={peak.manual ? "Supprimer ce pic ajouté manuellement" : "Exclure ce pic de la détection"} onClick={() => removePeak(activeProcessedPattern.id, peak)}>Retirer</button></span></div>)}</div>
                   </div> : <div className="callout">Sélectionner un patron visible pour afficher sa table de maxima.</div>}
                   <div className="inline-actions"><Button variant="secondary" icon="csv" onClick={exportDetectedPeaksCsv}>Exporter la table complète</Button></div>
                 </Section>
@@ -4233,6 +4423,13 @@ export default function App() {
                 <Section title="Annotations de phases">
                   <Toggle label="Afficher les annotations" checked={S.showAnnotations} onChange={(value) => patchSettings("showAnnotations", value)} />
                   {S.showAnnotations && <><SliderField label="Seuil des bâtonnets" value={S.tickMinI} min={0} max={50} step={0.5} suffix="%" onChange={(value) => patchSettings("tickMinI", value)} /><SliderField label="Seuil des labels" value={S.labelMinI} min={0} max={100} step={1} suffix="%" onChange={(value) => patchSettings("labelMinI", value)} /><SliderField label="Séparation des labels" value={S.labelMinSep} min={0.1} max={10} step={0.1} onChange={(value) => patchSettings("labelMinSep", value)} /><SliderField label="Hauteur" value={S.tickScale} min={0.1} max={1.5} step={0.02} onChange={(value) => patchSettings("tickScale", value)} /><SliderField label="Écart au patron" value={S.annotGap} min={0.3} max={3} step={0.02} onChange={(value) => patchSettings("annotGap", value)} /><SliderField label="Taille des labels" value={S.annotFontSize} min={5} max={18} step={0.5} onChange={(value) => patchSettings("annotFontSize", value)} /><Toggle label="Clé des abréviations" checked={S.showAbbrevKey} onChange={(value) => patchSettings("showAbbrevKey", value)} /></>}
+                </Section>
+                <Section title="Références sur la figure" defaultOpen={phases.some((phase) => phase.inOverlay)}>
+                  <div className="callout">Superpose les bâtonnets des phases marquées « figure » directement dans la zone de tracé, à la manière d’EVA ou HighScore. Activer phase par phase via la liste des phases ou l’inspecteur.</div>
+                  <Toggle label="Lignes pleine hauteur" checked={Boolean(S.phaseOverlayFullHeight)} onChange={(value) => patchSettings("phaseOverlayFullHeight", value)} />
+                  {!S.phaseOverlayFullHeight && <SliderField label="Hauteur relative" value={S.phaseOverlayScale ?? 0.85} min={0.1} max={2} step={0.05} onChange={(value) => patchSettings("phaseOverlayScale", value)} />}
+                  <SliderField label="Épaisseur" value={S.phaseOverlayWidth ?? 1} min={0.3} max={4} step={0.05} onChange={(value) => patchSettings("phaseOverlayWidth", value)} />
+                  <SliderField label="Opacité" value={S.phaseOverlayOpacity ?? 0.7} min={0.05} max={1} step={0.05} onChange={(value) => patchSettings("phaseOverlayOpacity", value)} />
                 </Section>
                 <Section title="Panneau de références" targetId="reference-panel-options">
                   <Toggle label="Afficher le panneau" checked={S.showPdfPanel} onChange={(value) => patchSettings("showPdfPanel", value)} />
