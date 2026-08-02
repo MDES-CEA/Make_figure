@@ -159,6 +159,11 @@ export const INITIAL_SETTINGS = {
   reverseStack: false,
 
   showDetectedPeaks: false,
+  showPeakLabels: true,
+  phaseOverlayScale: 0.85,
+  phaseOverlayWidth: 1,
+  phaseOverlayOpacity: 0.7,
+  phaseOverlayFullHeight: false,
   peakMinHeight: 10,
   peakMinProminence: 5,
   peakMinDistance: 0.5,
@@ -1297,11 +1302,41 @@ export function processPatterns(patterns, settings) {
     const displayY = baseDisplayY.map((value) => value * scaleDecay);
     const curveOpacity = settings.layoutMode === "waterfall" ? Math.max(0.08, 1 - (Math.max(0, Number(settings.waterfallOpacityDecay) || 0) / 100) * stackIndex) : 1;
     const sampled = downsampleMinMax(displayX, displayY, 1800);
-    // En transmittance infrarouge les bandes sont des minima.
+    // La détection utilise les réglages effectifs du patron (surcharges
+    // individuelles comprises). En transmittance infrarouge les bandes sont
+    // des minima.
+    const effectivePeakSettings = pattern.effectiveSettings || settings;
     const peakSettings = settings.mode === "ir" && settings.irYQuantity === "transmittance"
-      ? { ...settings, detectMinima: true }
-      : settings;
-    const detectedPeaks = detectPeaks(pattern.sourceX, pattern.processedY, peakSettings).map((peak) => ({
+      ? { ...effectivePeakSettings, detectMinima: true }
+      : effectivePeakSettings;
+    let basePeaks = detectPeaks(pattern.sourceX, pattern.processedY, peakSettings);
+    // Retraits manuels : tout maximum détecté proche d'une position exclue est écarté.
+    const excluded = Array.isArray(pattern.excludedPeaks) ? pattern.excludedPeaks.filter(Number.isFinite) : [];
+    if (excluded.length) {
+      const tolerance = Math.max(1e-9, (Number(effectivePeakSettings.peakMinDistance) || 0.1) * 0.75);
+      basePeaks = basePeaks.filter((peak) => excluded.every((x) => Math.abs(peak.x - x) > tolerance));
+    }
+    // Ajouts manuels : positions posées au clic, interpolées sur le signal traité.
+    const userPeaks = Array.isArray(pattern.userPeaks) ? pattern.userPeaks.filter(Number.isFinite) : [];
+    if (userPeaks.length) {
+      const { minimum: pMin, maximum: pMax } = arrayMinMax(pattern.processedY);
+      const pRange = pMax - pMin || 1;
+      userPeaks.forEach((x) => {
+        const y = interpolateLinear(pattern.sourceX, pattern.processedY, x);
+        if (y === null) return;
+        basePeaks.push({
+          index: -1,
+          x,
+          y,
+          heightPct: ((y - pMin) / pRange) * 100,
+          prominence: y - pMin,
+          prominencePct: ((y - pMin) / pRange) * 100,
+          manual: true,
+        });
+      });
+      basePeaks.sort((a, b) => a.x - b.x);
+    }
+    const detectedPeaks = basePeaks.map((peak) => ({
       ...peak,
       displayX: peak.x + waterfallShift,
       displayY: pattern.effectiveSettings?.normalizeMode === "none" ? peak.y / globalScale : peak.y,
