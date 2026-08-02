@@ -192,6 +192,7 @@ select { cursor: pointer; }
 .figure-page { overflow: hidden; background: white; box-shadow: 0 20px 60px rgba(0,0,0,.48), 0 0 0 1px rgba(255,255,255,.08); }
 .figure-page svg { display: block; background: white; user-select: none; }
 .figure-page svg.is-adding-note { cursor: crosshair; }
+.figure-page svg.tool-peaks { cursor: crosshair; }
 .welcome-card { width: min(520px, calc(100% - 30px)); display: flex; flex-direction: column; align-items: center; margin: 70px auto; border: 1px solid var(--border); border-radius: 14px; background: rgba(23,27,34,.96); padding: 34px 42px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,.3); }
 .welcome-card__eyebrow { margin-top: 12px; color: var(--accent-high); font-family: var(--font-mono); font-size: 9px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; }
 .welcome-card h1 { margin: 9px 0 8px; font-size: 22px; letter-spacing: -.025em; }
@@ -472,6 +473,11 @@ textarea:focus { border-color: var(--selection); }
   --mode-accent-soft: rgba(129, 113, 255, .15);
   --mode-secondary: #d95da7;
 }
+.mode-ir {
+  --mode-accent: #3aa7bd;
+  --mode-accent-soft: rgba(58, 167, 189, .15);
+  --mode-secondary: #5f8bff;
+}
 
 .app-shell {
   position: relative;
@@ -541,7 +547,7 @@ textarea:focus { border-color: var(--selection); }
   bottom: 2px;
   left: 2px;
   z-index: -1;
-  width: calc(50% - 2px);
+  width: calc((100% - 4px) / 3);
   border: 1px solid color-mix(in srgb, var(--mode-accent) 32%, transparent);
   border-radius: 5px;
   background: linear-gradient(135deg, var(--mode-accent-soft), color-mix(in srgb, var(--mode-secondary) 8%, transparent));
@@ -549,7 +555,8 @@ textarea:focus { border-color: var(--selection); }
   transition: transform .3s var(--ease-out), background .35s ease, border-color .35s ease;
 }
 .mode-switch.is-raman .mode-switch__indicator { transform: translateX(100%); }
-.mode-switch button { position: relative; z-index: 1; min-width: 84px; transition: color .22s ease, transform .2s var(--ease-out); }
+.mode-switch.is-ir .mode-switch__indicator { transform: translateX(200%); }
+.mode-switch button { position: relative; z-index: 1; flex: 1 1 0; min-width: 76px; transition: color .22s ease, transform .2s var(--ease-out); }
 .mode-switch button:hover { color: var(--text-soft); transform: translateY(-1px); }
 .mode-switch button.is-active { background: transparent; color: color-mix(in srgb, var(--mode-accent) 82%, white); box-shadow: none; }
 .mode-switch button.is-active > small { background: color-mix(in srgb, var(--mode-accent) 18%, transparent); color: color-mix(in srgb, var(--mode-accent) 72%, white); }
