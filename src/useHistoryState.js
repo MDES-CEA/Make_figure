@@ -3,6 +3,7 @@ import { useCallback, useRef, useState } from "react";
 export default function useHistoryState(initialValue, limit = 60) {
   const [history, setHistory] = useState({ past: [], present: initialValue, future: [] });
   const batchingRef = useRef(false);
+  const coalesceRef = useRef({ key: null, time: 0 });
 
   const set = useCallback((updater, options = {}) => {
     setHistory((current) => {
@@ -10,6 +11,14 @@ export default function useHistoryState(initialValue, limit = 60) {
       if (Object.is(next, current.present)) return current;
       if (options.replace || batchingRef.current) {
         return { ...current, present: next };
+      }
+      // Coalescence : des modifications rapprochées du même contrôle (slider,
+      // champ numérique) ne créent qu'une seule entrée d'historique.
+      const now = Date.now();
+      const sameKey = options.coalesceKey && coalesceRef.current.key === options.coalesceKey && now - coalesceRef.current.time < 900;
+      coalesceRef.current = options.coalesceKey ? { key: options.coalesceKey, time: now } : { key: null, time: 0 };
+      if (sameKey) {
+        return { ...current, present: next, future: [] };
       }
       const past = [...current.past, current.present];
       if (past.length > limit) past.splice(0, past.length - limit);
