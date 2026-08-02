@@ -80,6 +80,14 @@ export const INITIAL_SETTINGS = {
   xTickStep: 0,
   showGrid: false,
   gridOpacity: 0.55,
+  showGridHorizontal: false,
+  showYAxisTicks: false,
+  yTickStep: 0,
+  showCurveLegend: false,
+  curveLegendX: null,
+  curveLegendY: null,
+  curveLegendFontSize: 10,
+  fontFamily: "Arial, Helvetica, sans-serif",
   viewYMin: null,
   viewYMax: null,
 
@@ -169,6 +177,7 @@ export const INITIAL_SETTINGS = {
   overlayLegendY: null,
   overlayLegendFontSize: 10,
   phaseOverlayValueSize: 8.5,
+  phaseOverlayValueWindow: 0,
   peakMinHeight: 10,
   peakMinProminence: 5,
   peakMinDistance: 0.5,
@@ -1295,7 +1304,7 @@ export function processPatterns(patterns, settings) {
 
   return transformed.map((pattern, visibleIndex) => {
     const stackIndex = settings.reverseStack ? transformed.length - 1 - visibleIndex : visibleIndex;
-    const stackOffset = settings.layoutMode === "overlay" ? 0 : stackIndex * settings.vstep;
+    const stackOffset = (settings.layoutMode === "overlay" ? 0 : stackIndex * settings.vstep) + (Number(pattern.yoffset) || 0);
     const perspective = settings.layoutMode === "waterfall" ? Math.max(-0.9, Math.min(2, Number(settings.waterfallPerspective) || 0)) : 0;
     const perspectiveFactor = transformed.length > 1 ? 1 + perspective * (stackIndex / (transformed.length - 1)) : 1;
     const waterfallShift = settings.layoutMode === "waterfall" ? stackIndex * waterfallStep * perspectiveFactor : 0;
@@ -2383,4 +2392,813 @@ export function calculateCifPattern(cif, options = {}) {
   }
   const maximum=Math.max(...merged.map(item=>item[1]),1);
   return merged.map(([position,intensity,hkls])=>[position,(intensity/maximum)*100,hkls]).filter(item=>item[1]>=0.15);
+}
+
+// ---------------------------------------------------------------------------
+// DRX — lecture des fichiers Panalytical .xrdml
+// ---------------------------------------------------------------------------
+
+export function isXrdmlText(text) {
+  return /<xrdMeasurement[s]?[\s>]/i.test(String(text || "").slice(0, 4000));
+}
+
+/**
+ * Lit un fichier Panalytical .xrdml. Chaque balise <scan> devient une série ;
+ * l'axe 2θ est reconstruit linéairement entre startPosition et endPosition.
+ */
+export function parseXrdml(text, fallbackName = "Scan XRDML") {
+  if (typeof DOMParser === "undefined") throw new Error("Lecture XML indisponible dans cet environnement.");
+  const document_ = new DOMParser().parseFromString(String(text), "application/xml");
+  if (document_.querySelector("parsererror")) throw new Error("Fichier XRDML illisible.");
+  const scans = [...document_.querySelectorAll("scan")];
+  if (!scans.length) throw new Error("Aucune balise <scan> dans ce fichier XRDML.");
+  const series = [];
+  scans.forEach((scan, scanIndex) => {
+    const dataPoints = scan.querySelector("dataPoints");
+    if (!dataPoints) return;
+    const intensitiesNode = dataPoints.querySelector("intensities, counts");
+    if (!intensitiesNode) return;
+    const y = (intensitiesNode.textContent || "").trim().split(/\s+/).map(Number).filter(Number.isFinite);
+    if (y.length < 5) return;
+    // Axe 2θ : balise <positions axis="2Theta"> avec start/end, ou liste explicite.
+    let positions = null;
+    for (const node of dataPoints.querySelectorAll("positions")) {
+      const axis = (node.getAttribute("axis") || "").toLowerCase();
+      if (axis.includes("2theta") || !positions) positions = node;
+      if (axis.includes("2theta")) break;
+    }
+    let x = null;
+    if (positions) {
+      const list = positions.querySelector("listPositions");
+      if (list) {
+        x = (list.textContent || "").trim().split(/\s+/).map(Number).filter(Number.isFinite);
+      } else {
+        const start = Number(positions.querySelector("startPosition")?.textContent);
+        const end = Number(positions.querySelector("endPosition")?.textContent);
+        if (Number.isFinite(start) && Number.isFinite(end)) {
+          const step = y.length > 1 ? (end - start) / (y.length - 1) : 0;
+          x = Array.from({ length: y.length }, (_, index) => start + index * step);
+        }
+      }
+    }
+    if (!x || x.length !== y.length) return;
+    // Normalisation par le temps de comptage commun si présent (coups → cps).
+    const countingTime = Number(scan.querySelector("commonCountingTime")?.textContent);
+    const metadata = {};
+    const wavelengthNode = document_.querySelector("usedWavelength kAlpha1, kAlpha1");
+    if (wavelengthNode) metadata.wavelength = Number(wavelengthNode.textContent);
+    const anode = document_.querySelector("anodeMaterial")?.textContent;
+    if (anode) metadata.anode = anode.trim();
+    series.push({
+      name: scans.length > 1 ? `${fallbackName} · scan ${scanIndex + 1}` : fallbackName,
+      x,
+      y,
+      countingTime: Number.isFinite(countingTime) ? countingTime : null,
+      metadata,
+    });
+  });
+  if (!series.length) throw new Error("Aucun scan exploitable dans ce fichier XRDML.");
+  return series;
+}
+
+// ---------------------------------------------------------------------------
+// Infrarouge — lecture des fichiers OPUS binaires (.0, .1, …)
+// ---------------------------------------------------------------------------
+
+export function isOpusBinary(buffer) {
+  if (!(buffer instanceof ArrayBuffer) || buffer.byteLength < 32) return false;
+  const view = new DataView(buffer);
+  // Nombre magique OPUS : 0A 0A FE FE en tête de fichier.
+  return view.getUint8(0) === 0x0a && view.getUint8(1) === 0x0a && view.getUint8(2) === 0xfe && view.getUint8(3) === 0xfe;
+}
+
+function opusBinaryParameters(view, offset, byteLength) {
+  const values = {};
+  const decoder = new TextDecoder("latin1");
+  let cursor = offset;
+  const end = offset + byteLength;
+  while (cursor + 8 <= end) {
+    const tagBytes = new Uint8Array(view.buffer, cursor, 4);
+    const tag = decoder.decode(tagBytes).replace(/\0+$/, "");
+    if (!/^[A-Z0-9]{3}[A-Z0-9 ]?$/.test(tag)) break;
+    if (tag === "END") break;
+    const type = view.getUint16(cursor + 4, true);
+    const size = view.getUint16(cursor + 6, true); // en mots de 2 octets
+    const dataOffset = cursor + 8;
+    if (dataOffset + size * 2 > end) break;
+    let value = null;
+    if (type === 0) value = view.getInt32(dataOffset, true);
+    else if (type === 1) value = view.getFloat64(dataOffset, true);
+    else value = decoder.decode(new Uint8Array(view.buffer, dataOffset, size * 2)).replace(/\0.*$/, "").trim();
+    values[tag.trim()] = value;
+    cursor = dataOffset + size * 2;
+  }
+  return values;
+}
+
+/**
+ * Lit un fichier OPUS binaire natif. Le répertoire de blocs (à partir de
+ * l'octet 24) est parcouru ; les blocs de paramètres contenant NPT/FXV/LXV
+ * décrivent chacun une série, appariée au bloc de données de NPT flottants.
+ * La grandeur (absorbance / transmittance) est déduite de la plage des
+ * valeurs, l'identifiant de type de bloc n'étant pas documenté publiquement.
+ */
+export function parseOpusBinary(buffer, options = {}) {
+  if (!isOpusBinary(buffer)) throw new Error("Ce fichier n'est pas un OPUS binaire.");
+  const view = new DataView(buffer);
+  const blocks = [];
+  // Répertoire : entrées de 12 octets (type, taille en mots de 4 octets, offset).
+  for (let cursor = 24; cursor + 12 <= Math.min(buffer.byteLength, 504); cursor += 12) {
+    const blockType = view.getUint32(cursor, true);
+    const size = view.getUint32(cursor + 4, true);
+    const offset = view.getUint32(cursor + 8, true);
+    if (!size || !offset || offset + size * 4 > buffer.byteLength) continue;
+    blocks.push({ blockType, byteLength: size * 4, offset });
+  }
+  if (!blocks.length) throw new Error("Répertoire OPUS vide ou illisible.");
+
+  const parameterBlocks = blocks
+    .map((block) => ({ ...block, parameters: opusBinaryParameters(view, block.offset, block.byteLength) }))
+    .filter((block) => Object.keys(block.parameters).length >= 2);
+  const dataStatusBlocks = parameterBlocks.filter((block) => Number.isFinite(Number(block.parameters.NPT)) && block.parameters.FXV !== undefined && block.parameters.LXV !== undefined);
+  const mergedParameters = {};
+  parameterBlocks.forEach((block) => { if (!dataStatusBlocks.includes(block)) Object.assign(mergedParameters, block.parameters); });
+
+  const consumed = new Set(parameterBlocks.map((block) => block.offset));
+  const spectra = [];
+  for (const status of dataStatusBlocks) {
+    const count = Math.round(Number(status.parameters.NPT));
+    if (!(count >= 5)) continue;
+    // Bloc de données associé : premier bloc non-paramètre dont la taille
+    // correspond à NPT flottants (à un mot près, certains fichiers arrondissent).
+    const candidate = blocks.find((block) => !consumed.has(block.offset)
+      && Math.abs(block.byteLength - count * 4) <= 4
+      && !spectra.some((spectrum) => spectrum.dataOffset === block.offset));
+    if (!candidate) continue;
+    const y = new Array(count);
+    let valid = true;
+    for (let index = 0; index < count; index += 1) {
+      const value = view.getFloat32(candidate.offset + index * 4, true);
+      if (!Number.isFinite(value)) { valid = false; break; }
+      y[index] = value;
+    }
+    if (!valid) continue;
+    const first = Number(status.parameters.FXV);
+    const last = Number(status.parameters.LXV);
+    if (!Number.isFinite(first) || !Number.isFinite(last)) continue;
+    const step = count > 1 ? (last - first) / (count - 1) : 0;
+    let xs = Array.from({ length: count }, (_, index) => first + index * step);
+    let ys = y;
+    if (step < 0) { xs = xs.slice().reverse(); ys = ys.slice().reverse(); }
+    // Heuristique de grandeur : les interférogrammes sont écartés (X non
+    // spectral), transmittance si valeurs en pourcentage, absorbance sinon.
+    const dxu = String(status.parameters.DXU || "");
+    if (dxu && dxu !== "WN") continue;
+    let minimum = Infinity; let maximum = -Infinity;
+    for (const value of ys) { if (value < minimum) minimum = value; if (value > maximum) maximum = value; }
+    let quantity = "singlechannel";
+    if (maximum <= 12 && minimum >= -2) quantity = "absorbance";
+    else if (maximum <= 150 && minimum >= -5 && maximum > 20) quantity = "transmittance";
+    spectra.push({
+      key: `bloc_${status.blockType}`,
+      label: quantity === "absorbance" ? "Absorbance" : quantity === "transmittance" ? "Transmittance" : `Bloc ${status.blockType}`,
+      quantity,
+      xUnit: "cm⁻¹",
+      x: xs,
+      y: ys,
+      pointCount: count,
+      xmin: xs[0],
+      xmax: xs[xs.length - 1],
+      parameters: status.parameters,
+      dataOffset: candidate.offset,
+    });
+  }
+  if (!spectra.length) throw new Error("Aucun spectre exploitable dans ce fichier OPUS binaire (interférogrammes seuls ?).");
+
+  const metadata = { Format: "Bruker OPUS binaire" };
+  const metadataKeys = { SNM: "Échantillon", INS: "Instrument", RES: "Résolution (cm⁻¹)", NSS: "Accumulations", DAT: "Date", TIM: "Heure", CNM: "Opérateur", SRC: "Source", DTC: "Détecteur", BMS: "Séparatrice" };
+  for (const [key, label] of Object.entries(metadataKeys)) {
+    if (mergedParameters[key] !== undefined && mergedParameters[key] !== "") metadata[label] = mergedParameters[key];
+  }
+  return {
+    blocks: spectra,
+    metadata,
+    name: mergedParameters.SNM || options.fallbackName || "Spectre IR",
+    parameters: mergedParameters,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Intégration des zones nommées (Raman / IR)
+// ---------------------------------------------------------------------------
+
+function trapezoidBetween(x, y, xmin, xmax) {
+  let area = 0;
+  for (let i = 1; i < x.length; i += 1) {
+    if (x[i] < xmin || x[i - 1] > xmax) continue;
+    const x0 = Math.max(x[i - 1], xmin);
+    const x1 = Math.min(x[i], xmax);
+    if (x1 <= x0) continue;
+    const y0 = interpolateLinear(x, y, x0) ?? y[i - 1];
+    const y1 = interpolateLinear(x, y, x1) ?? y[i];
+    area += (x1 - x0) * (y0 + y1) / 2;
+  }
+  return area;
+}
+
+/**
+ * Aire de chaque zone nommée pour chaque patron visible, sur le signal choisi
+ * (corrigé du fond par défaut). Sert aux rapports de bandes, typiquement
+ * carbonate / phosphate.
+ */
+export function computeZoneAreas(processedPatterns, zones, signal = "corrected") {
+  const rows = [];
+  for (const pattern of processedPatterns) {
+    const y = signal === "normalized" ? pattern.normalizedY : signal === "raw" ? pattern.sourceRawY : pattern.correctedY;
+    if (!pattern.sourceX?.length || !y?.length) continue;
+    const areas = {};
+    for (const zone of zones) {
+      const xmin = Number(zone.xmin);
+      const xmax = Number(zone.xmax);
+      if (!(Number.isFinite(xmin) && Number.isFinite(xmax) && xmax > xmin)) continue;
+      areas[zone.id] = trapezoidBetween(pattern.sourceX, y, xmin, xmax);
+    }
+    rows.push({ patternId: pattern.id, pattern: pattern.label, areas });
+  }
+  return rows;
+}
+
+export function zoneAreasToCsv(rows, zones, ratio = null) {
+  const escape = (value) => `"${String(value ?? "").replaceAll('"', '""')}"`;
+  const header = ["pattern", ...zones.map((zone) => `aire ${zone.name} (${zone.xmin}-${zone.xmax})`)];
+  if (ratio) header.push(`ratio ${ratio.label}`);
+  const lines = [header.map(escape).join(";")];
+  rows.forEach((row) => {
+    const cells = [escape(row.pattern), ...zones.map((zone) => row.areas[zone.id] ?? "")];
+    if (ratio) {
+      const numerator = row.areas[ratio.zoneA];
+      const denominator = row.areas[ratio.zoneB];
+      cells.push(Number.isFinite(numerator) && Number.isFinite(denominator) && Math.abs(denominator) > 1e-12 ? numerator / denominator : "");
+    }
+    lines.push(cells.join(";"));
+  });
+  return lines.join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// Ajustement multi-pics (déconvolution de massifs)
+// ---------------------------------------------------------------------------
+
+/**
+ * Ajuste simultanément plusieurs profils pseudo-Voigt (η partagé) plus un fond
+ * linéaire sur une fenêtre. Optimisation de Gauss-Newton amortie
+ * (Levenberg-Marquardt) avec jacobien numérique ; η est exploré sur une grille.
+ */
+export function fitMultiPeaks(x, y, options = {}) {
+  const xmin = Number(options.xmin);
+  const xmax = Number(options.xmax);
+  const centers = (options.centers || []).map(Number).filter(Number.isFinite).sort((a, b) => a - b);
+  if (!(xmax > xmin) || centers.length < 1) return null;
+  const pointsX = [];
+  const pointsY = [];
+  for (let i = 0; i < x.length; i += 1) {
+    if (x[i] >= xmin && x[i] <= xmax) { pointsX.push(x[i]); pointsY.push(y[i]); }
+  }
+  const n = pointsX.length;
+  if (n < centers.length * 3 + 4) return null;
+  const span = xmax - xmin;
+  const step = span / Math.max(1, n - 1);
+  const yRange = arrayMinMax(pointsY);
+  const model = options.model || "pseudoVoigt";
+  const etaGrid = model === "gaussian" ? [0] : model === "lorentzian" ? [1] : [0, 0.3, 0.5, 0.7, 1];
+
+  const profile = (xi, center, fwhm, eta) => {
+    const width = Math.max(step, fwhm);
+    const z = (xi - center) / width;
+    return eta / (1 + 4 * z * z) + (1 - eta) * Math.exp(-4 * Math.log(2) * z * z);
+  };
+  const evaluate = (parameters, eta) => {
+    const output = new Float64Array(n);
+    for (let i = 0; i < n; i += 1) {
+      let value = parameters[0] + parameters[1] * (pointsX[i] - xmin);
+      for (let p = 0; p < centers.length; p += 1) {
+        value += Math.max(0, parameters[2 + p * 3 + 2]) * profile(pointsX[i], parameters[2 + p * 3], Math.max(step, parameters[2 + p * 3 + 1]), eta);
+      }
+      output[i] = value;
+    }
+    return output;
+  };
+  const sumSquares = (parameters, eta) => {
+    const fitted = evaluate(parameters, eta);
+    let sse = 0;
+    for (let i = 0; i < n; i += 1) sse += (pointsY[i] - fitted[i]) ** 2;
+    return sse;
+  };
+
+  let best = null;
+  for (const eta of etaGrid) {
+    // Initialisation : fond depuis les bords, largeur = espacement/3 des centres.
+    const edge = Math.max(2, Math.round(n * 0.04));
+    const leftMean = pointsY.slice(0, edge).reduce((sum, value) => sum + value, 0) / edge;
+    const rightMean = pointsY.slice(-edge).reduce((sum, value) => sum + value, 0) / edge;
+    const parameters = [leftMean, (rightMean - leftMean) / span];
+    centers.forEach((center) => {
+      const local = interpolateLinear(pointsX, pointsY, center) ?? yRange.maximum;
+      const spacing = centers.length > 1
+        ? Math.min(...centers.filter((other) => other !== center).map((other) => Math.abs(other - center)))
+        : span / 4;
+      parameters.push(center, Math.max(step * 3, spacing / 3), Math.max(1e-9, local - leftMean));
+    });
+    let lambda = 1e-3;
+    let sse = sumSquares(parameters, eta);
+    const parameterCount = parameters.length;
+    for (let iteration = 0; iteration < 80; iteration += 1) {
+      const fitted = evaluate(parameters, eta);
+      // Jacobien numérique.
+      const jacobian = [];
+      for (let p = 0; p < parameterCount; p += 1) {
+        const delta = Math.max(1e-7, Math.abs(parameters[p]) * 1e-4);
+        const perturbed = parameters.slice();
+        perturbed[p] += delta;
+        const shifted = evaluate(perturbed, eta);
+        const column = new Float64Array(n);
+        for (let i = 0; i < n; i += 1) column[i] = (shifted[i] - fitted[i]) / delta;
+        jacobian.push(column);
+      }
+      const gradient = new Array(parameterCount).fill(0);
+      const hessian = Array.from({ length: parameterCount }, () => new Array(parameterCount).fill(0));
+      for (let i = 0; i < n; i += 1) {
+        const residual = pointsY[i] - fitted[i];
+        for (let a = 0; a < parameterCount; a += 1) {
+          gradient[a] += jacobian[a][i] * residual;
+          for (let b = a; b < parameterCount; b += 1) hessian[a][b] += jacobian[a][i] * jacobian[b][i];
+        }
+      }
+      for (let a = 0; a < parameterCount; a += 1) for (let b = 0; b < a; b += 1) hessian[a][b] = hessian[b][a];
+      let improved = false;
+      for (let attempt = 0; attempt < 6 && !improved; attempt += 1) {
+        const damped = hessian.map((row, index) => row.map((value, column) => column === index ? value * (1 + lambda) + 1e-12 : value));
+        const delta = solveLinearSystem(damped, gradient);
+        const candidate = parameters.map((value, index) => value + delta[index]);
+        // Contraintes : centres dans la fenêtre, largeurs et amplitudes positives.
+        for (let p = 0; p < centers.length; p += 1) {
+          candidate[2 + p * 3] = Math.max(xmin, Math.min(xmax, candidate[2 + p * 3]));
+          candidate[2 + p * 3 + 1] = Math.max(step, Math.min(span, Math.abs(candidate[2 + p * 3 + 1])));
+          candidate[2 + p * 3 + 2] = Math.max(0, candidate[2 + p * 3 + 2]);
+        }
+        const candidateSse = sumSquares(candidate, eta);
+        if (candidateSse < sse) {
+          for (let p = 0; p < parameterCount; p += 1) parameters[p] = candidate[p];
+          const relative = (sse - candidateSse) / Math.max(sse, 1e-30);
+          sse = candidateSse;
+          lambda = Math.max(1e-9, lambda / 3);
+          improved = true;
+          if (relative < 1e-8) iteration = 1e9;
+        } else lambda *= 5;
+      }
+      if (!improved) break;
+    }
+    if (!best || sse < best.sse) best = { parameters: parameters.slice(), eta, sse };
+  }
+  if (!best) return null;
+
+  const meanY = pointsY.reduce((sum, value) => sum + value, 0) / n;
+  const sst = pointsY.reduce((sum, value) => sum + (value - meanY) ** 2, 0) || 1;
+  const components = [];
+  for (let p = 0; p < centers.length; p += 1) {
+    const center = best.parameters[2 + p * 3];
+    const fwhm = best.parameters[2 + p * 3 + 1];
+    const amplitude = best.parameters[2 + p * 3 + 2];
+    const gaussianArea = amplitude * fwhm * Math.sqrt(Math.PI / (4 * Math.log(2)));
+    const lorentzArea = amplitude * Math.PI * fwhm / 2;
+    const area = (1 - best.eta) * gaussianArea + best.eta * lorentzArea;
+    components.push({
+      center,
+      fwhm,
+      amplitude,
+      area,
+      curve: pointsX.map((xi) => amplitude * profile(xi, center, fwhm, best.eta)),
+    });
+  }
+  const totalArea = components.reduce((sum, component) => sum + component.area, 0) || 1;
+  components.forEach((component) => { component.areaPct = (component.area / totalArea) * 100; });
+  const background = pointsX.map((xi) => best.parameters[0] + best.parameters[1] * (xi - xmin));
+  const total = pointsX.map((xi, index) => background[index] + components.reduce((sum, component) => sum + component.curve[index], 0));
+  return {
+    x: pointsX,
+    y: pointsY,
+    background,
+    total,
+    components,
+    eta: best.eta,
+    model,
+    r2: 1 - best.sse / sst,
+    xmin,
+    xmax,
+  };
+}
+
+export function multiPeakFitToCsv(result) {
+  const lines = ["peak,center,fwhm,amplitude,area,area_pct,eta,r2"];
+  result.components.forEach((component, index) => {
+    lines.push([index + 1, component.center, component.fwhm, component.amplitude, component.area, component.areaPct, result.eta, result.r2].join(","));
+  });
+  return lines.join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// Jeux de données d'exemple (synthétiques)
+// ---------------------------------------------------------------------------
+
+function pseudoRandom(seed) {
+  let state = seed;
+  return () => {
+    state = (state * 1664525 + 1013904223) % 4294967296;
+    return state / 4294967296;
+  };
+}
+
+function syntheticSpectrum(xmin, xmax, points, bands, backgroundFn, noiseAmplitude, seed) {
+  const random = pseudoRandom(seed);
+  const x = [];
+  const y = [];
+  const step = (xmax - xmin) / (points - 1);
+  for (let i = 0; i < points; i += 1) {
+    const xi = xmin + i * step;
+    let value = backgroundFn(xi);
+    for (const [center, height, fwhm, eta = 0.4] of bands) {
+      const z = (xi - center) / fwhm;
+      value += height * (eta / (1 + 4 * z * z) + (1 - eta) * Math.exp(-4 * Math.log(2) * z * z));
+    }
+    value += (random() - 0.5) * 2 * noiseAmplitude * Math.sqrt(Math.max(1, value)) * 0.08;
+    x.push(Math.round(xi * 1e4) / 1e4);
+    y.push(Math.max(0, Math.round(value * 100) / 100));
+  }
+  return { x, y };
+}
+
+/**
+ * Construit un jeu de démonstration pour l'espace demandé : deux séries
+ * synthétiques et des phases de référence (positions bibliographiques,
+ * intensités indicatives). Les données sont générées, pas mesurées.
+ */
+export function makeSampleData(mode) {
+  if (mode === "raman") {
+    const hapBands = [[430, 120, 12], [590, 160, 14], [962, 1000, 9], [1046, 130, 14], [1075, 90, 12]];
+    const carbonated = [...hapBands, [1070, 260, 13]];
+    return {
+      patterns: [
+        { label: "HAp exemple", ...syntheticSpectrum(150, 1400, 1600, hapBands, () => 60, 6, 11) },
+        { label: "HAp carbonatée exemple", ...syntheticSpectrum(150, 1400, 1600, carbonated, (x) => 60 + x * 0.02, 6, 23) },
+      ],
+      phases: [
+        { name: "Hydroxyapatite (Raman)", abbrev: "HAp", peaks: [[430, 15], [590, 20], [962, 100], [1046, 14], [1075, 10]] },
+        { name: "Calcite (Raman)", abbrev: "Cal", peaks: [[156, 12], [282, 20], [713, 8], [1086, 100]] },
+      ],
+      zones: [
+        { name: "ν1 PO₄", xmin: 930, xmax: 990, color: "#1f77b4", opacity: 0.1 },
+        { name: "ν1 CO₃", xmin: 1050, xmax: 1100, color: "#d62728", opacity: 0.1 },
+      ],
+    };
+  }
+  if (mode === "ir") {
+    const bands = [[563, 0.55, 20], [601, 0.6, 18], [1030, 1.2, 55], [1420, 0.35, 40], [1455, 0.3, 35], [3570, 0.12, 25]];
+    return {
+      patterns: [
+        { label: "HAp exemple (ATR)", ...syntheticSpectrum(400, 4000, 1800, bands, () => 0.03, 0.4, 31), irQuantity: "absorbance" },
+      ],
+      phases: [
+        { name: "Bandes phosphate", abbrev: "PO₄", peaks: [[563, 60], [601, 65], [1030, 100]] },
+        { name: "Bandes carbonate", abbrev: "CO₃", peaks: [[875, 30], [1420, 55], [1455, 50]] },
+      ],
+      zones: [
+        { name: "ν3 PO₄", xmin: 960, xmax: 1120, color: "#1f77b4", opacity: 0.1 },
+        { name: "ν3 CO₃", xmin: 1380, xmax: 1500, color: "#d62728", opacity: 0.1 },
+      ],
+    };
+  }
+  const hapPeaks = [[25.88, 320, 0.14], [28.13, 90, 0.14], [28.97, 140, 0.14], [31.77, 1000, 0.15], [32.2, 500, 0.15], [32.9, 560, 0.15], [34.05, 220, 0.15], [39.82, 180, 0.16], [46.71, 260, 0.16], [49.47, 300, 0.16], [53.14, 160, 0.17]];
+  const calcitePeaks = [[23.02, 90, 0.13], [29.4, 1000, 0.13], [35.97, 130, 0.14], [39.4, 170, 0.14], [43.15, 150, 0.14], [47.5, 180, 0.15], [48.51, 190, 0.15]];
+  const scale = (peaks, factor, width) => peaks.map(([c, h, w]) => [c, h * factor, w * width, 0.5]);
+  return {
+    patterns: [
+      { label: "HAp exemple", ...syntheticSpectrum(10, 58, 2400, scale(hapPeaks, 1, 1), (x) => 120 - x * 0.8, 12, 7) },
+      { label: "HAp + calcite exemple", ...syntheticSpectrum(10, 58, 2400, [...scale(hapPeaks, 0.7, 1), ...scale(calcitePeaks, 0.4, 1)], (x) => 130 - x * 0.8, 12, 13) },
+    ],
+    phases: [
+      { name: "Hydroxyapatite 09-0432", abbrev: "HAp", peaks: [[25.88, 40], [28.97, 18], [31.77, 100], [32.2, 55], [32.9, 60], [34.05, 25], [39.82, 20], [46.71, 30], [49.47, 32], [53.14, 18]] },
+      { name: "Calcite 05-0586", abbrev: "Cal", peaks: [[23.02, 12], [29.4, 100], [35.97, 14], [39.4, 18], [43.15, 18], [47.5, 17], [48.51, 17]] },
+    ],
+    zones: [],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Export PDF vectoriel
+// ---------------------------------------------------------------------------
+
+// Largeurs Helvetica (AFM standard) pour les caractères 32–126, en millièmes d'em.
+const HELVETICA_WIDTHS = [278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 278, 278, 584, 584, 584, 556, 1015, 667, 667, 722, 722, 667, 611, 778, 722, 278, 500, 667, 556, 833, 722, 778, 667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 278, 278, 278, 469, 556, 333, 556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500, 222, 833, 556, 556, 556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584];
+
+// Caractères grecs rendus avec la police Symbol (code Symbol correspondant).
+const SYMBOL_MAP = { "θ": "q", "λ": "l", "ν": "n", "α": "a", "β": "b", "γ": "g", "δ": "d", "Δ": "D", "μ": "m", "π": "p", "σ": "s", "ω": "w", "Ω": "W", "η": "h", "χ": "c" };
+// Exposants et indices Unicode : caractère de base + décalage vertical relatif.
+const SUPERSCRIPT_MAP = { "⁰": "0", "¹": "1", "²": "2", "³": "3", "⁴": "4", "⁵": "5", "⁶": "6", "⁷": "7", "⁸": "8", "⁹": "9", "⁻": "-", "⁺": "+" };
+const SUBSCRIPT_MAP = { "₀": "0", "₁": "1", "₂": "2", "₃": "3", "₄": "4", "₅": "5", "₆": "6", "₇": "7", "₈": "8", "₉": "9" };
+// Correspondances WinAnsi pour les caractères hors ASCII fréquents.
+const WINANSI_MAP = { "°": 176, "Å": 197, "å": 229, "é": 233, "è": 232, "ê": 234, "ë": 235, "à": 224, "â": 226, "ç": 231, "ù": 249, "û": 251, "ô": 244, "î": 238, "ï": 239, "É": 201, "È": 200, "À": 192, "Ç": 199, "±": 177, "·": 183, "×": 215, "µ": 181, "—": 151, "–": 150, "’": 146, "‘": 145, "«": 171, "»": 187, " ": 160, "…": 133 };
+
+function charWidth(code) {
+  if (code >= 32 && code <= 126) return HELVETICA_WIDTHS[code - 32];
+  return 556;
+}
+
+function segmentText(text) {
+  // Découpe une chaîne en segments homogènes : normal / grec (Symbol) /
+  // exposant / indice, pour émettre le moins d'opérateurs Tf/Ts possible.
+  const segments = [];
+  let current = null;
+  for (const character of String(text)) {
+    let kind = "normal";
+    let output = character;
+    if (SYMBOL_MAP[character]) { kind = "symbol"; output = SYMBOL_MAP[character]; }
+    else if (SUPERSCRIPT_MAP[character]) { kind = "sup"; output = SUPERSCRIPT_MAP[character]; }
+    else if (SUBSCRIPT_MAP[character]) { kind = "sub"; output = SUBSCRIPT_MAP[character]; }
+    else if (WINANSI_MAP[character] !== undefined) output = String.fromCharCode(WINANSI_MAP[character]);
+    else if (character.charCodeAt(0) > 126) output = "?";
+    if (current && current.kind === kind) current.text += output;
+    else { current = { kind, text: output }; segments.push(current); }
+  }
+  return segments;
+}
+
+function segmentsWidth(segments, fontSize) {
+  let width = 0;
+  for (const segment of segments) {
+    const size = segment.kind === "sup" || segment.kind === "sub" ? fontSize * 0.68 : fontSize;
+    for (let i = 0; i < segment.text.length; i += 1) width += (charWidth(segment.text.charCodeAt(i)) / 1000) * size;
+  }
+  return width;
+}
+
+function pdfEscape(text) {
+  return text.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+}
+
+function parseColor(value) {
+  const text = String(value || "").trim();
+  if (!text || text === "none" || text === "transparent") return null;
+  const hex = text.match(/^#([0-9a-f]{6})$/i);
+  if (hex) return [Number.parseInt(hex[1].slice(0, 2), 16) / 255, Number.parseInt(hex[1].slice(2, 4), 16) / 255, Number.parseInt(hex[1].slice(4, 6), 16) / 255];
+  const rgb = text.match(/^rgba?\(([^)]+)\)$/i);
+  if (rgb) {
+    const parts = rgb[1].split(",").map((part) => Number.parseFloat(part));
+    return [parts[0] / 255, parts[1] / 255, parts[2] / 255];
+  }
+  const named = { white: [1, 1, 1], black: [0, 0, 0] };
+  return named[text.toLowerCase()] || [0, 0, 0];
+}
+
+/**
+ * Convertit le SVG sérialisé de la figure en PDF réellement vectoriel :
+ * traits et remplissages en opérateurs de tracé, textes en polices standard
+ * (Helvetica / Times), grec via Symbol, exposants et indices via Ts.
+ * Périmètre : rect, line, circle, path (M/L/Z), text avec rotation, clip
+ * rectangulaire, opacité par ExtGState — soit l'ensemble des primitives
+ * émises par l'application.
+ */
+export function svgToVectorPdf(serializedSvg, svgWidth, svgHeight) {
+  if (typeof DOMParser === "undefined") throw new Error("Conversion indisponible dans cet environnement.");
+  const document_ = new DOMParser().parseFromString(serializedSvg, "image/svg+xml");
+  const root = document_.querySelector("svg");
+  if (!root) throw new Error("SVG illisible.");
+  const k = 0.75; // 96 dpi (px SVG) → 72 dpi (pt PDF)
+  const pageWidth = svgWidth * k;
+  const pageHeight = svgHeight * k;
+  const tx = (x) => x * k;
+  const ty = (y) => pageHeight - y * k;
+
+  // Clips rectangulaires déclarés dans <defs>.
+  const clips = {};
+  document_.querySelectorAll("clipPath").forEach((clip) => {
+    const rect = clip.querySelector("rect");
+    if (clip.id && rect) {
+      clips[clip.id] = {
+        x: Number(rect.getAttribute("x")) || 0,
+        y: Number(rect.getAttribute("y")) || 0,
+        width: Number(rect.getAttribute("width")) || 0,
+        height: Number(rect.getAttribute("height")) || 0,
+      };
+    }
+  });
+
+  const alphaStates = new Map(); // opacité → nom d'ExtGState
+  const alphaName = (opacity) => {
+    const rounded = Math.round(clampAlpha(opacity) * 100) / 100;
+    if (!alphaStates.has(rounded)) alphaStates.set(rounded, `GS${alphaStates.size + 1}`);
+    return alphaStates.get(rounded);
+  };
+  function clampAlpha(value) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? Math.max(0, Math.min(1, parsed)) : 1;
+  }
+
+  const fontsUsed = new Set();
+  const fontName = (family, weight, style) => {
+    const serif = /times|serif/i.test(family || "") && !/sans/i.test(family || "");
+    const bold = String(weight) === "700" || String(weight) === "bold";
+    const italic = /italic|oblique/i.test(style || "");
+    let name;
+    if (serif) name = bold && italic ? "Times-BoldItalic" : bold ? "Times-Bold" : italic ? "Times-Italic" : "Times-Roman";
+    else name = bold && italic ? "Helvetica-BoldOblique" : bold ? "Helvetica-Bold" : italic ? "Helvetica-Oblique" : "Helvetica";
+    fontsUsed.add(name);
+    return name;
+  };
+  fontsUsed.add("Symbol");
+  const FONT_KEYS = ["Helvetica", "Helvetica-Bold", "Helvetica-Oblique", "Helvetica-BoldOblique", "Times-Roman", "Times-Bold", "Times-Italic", "Times-BoldItalic", "Symbol"];
+  const fontResource = (name) => `F${FONT_KEYS.indexOf(name) + 1}`;
+
+  const stream = [];
+  const number = (value) => (Math.round(value * 100) / 100).toString();
+
+  const emitPaint = (element, defaultFill = null, defaultStroke = null) => {
+    const fill = parseColor(element.getAttribute("fill") ?? defaultFill);
+    const stroke = parseColor(element.getAttribute("stroke") ?? defaultStroke);
+    const opacity = element.getAttribute("opacity");
+    const fillOpacity = element.getAttribute("fill-opacity");
+    const strokeOpacity = element.getAttribute("stroke-opacity");
+    const alpha = clampAlpha(opacity ?? 1) * clampAlpha(fillOpacity ?? 1);
+    const strokeAlpha = clampAlpha(opacity ?? 1) * clampAlpha(strokeOpacity ?? 1);
+    if (fill) stream.push(`${number(fill[0])} ${number(fill[1])} ${number(fill[2])} rg`);
+    if (stroke) {
+      stream.push(`${number(stroke[0])} ${number(stroke[1])} ${number(stroke[2])} RG`);
+      const width = Number.parseFloat(element.getAttribute("stroke-width") ?? "1");
+      stream.push(`${number((Number.isFinite(width) ? width : 1) * k)} w`);
+      const dash = (element.getAttribute("stroke-dasharray") || "").trim();
+      if (dash && dash !== "none") {
+        const parts = dash.split(/[\s,]+/).map((part) => Number.parseFloat(part) * k).filter(Number.isFinite);
+        stream.push(`[${parts.map(number).join(" ")}] 0 d`);
+      } else stream.push("[] 0 d");
+    }
+    stream.push(`/${alphaName(Math.min(alpha, strokeAlpha))} gs`);
+    return { fill: Boolean(fill), stroke: Boolean(stroke) };
+  };
+
+  const paintOperator = ({ fill, stroke }) => fill && stroke ? "B" : fill ? "f" : stroke ? "S" : "n";
+
+  const emitText = (element) => {
+    const raw = element.textContent || "";
+    if (!raw.trim()) return;
+    const fontSize = (Number.parseFloat(element.getAttribute("font-size")) || 12) * k;
+    const font = fontName(element.getAttribute("font-family"), element.getAttribute("font-weight"), element.getAttribute("font-style"));
+    const fill = parseColor(element.getAttribute("fill") ?? "#000000") || [0, 0, 0];
+    const alpha = clampAlpha(element.getAttribute("opacity") ?? 1);
+    let x = Number.parseFloat(element.getAttribute("x")) || 0;
+    let y = Number.parseFloat(element.getAttribute("y")) || 0;
+    if ((element.getAttribute("dominant-baseline") || "") === "middle") y += (fontSize / k) * 0.35;
+    const anchor = element.getAttribute("text-anchor") || "start";
+    const segments = segmentText(raw);
+    const width = segmentsWidth(segments, fontSize);
+    // Rotation SVG (horaire, y vers le bas) → rotation PDF (anti-horaire, y vers le haut).
+    let angle = 0;
+    const rotate = (element.getAttribute("transform") || "").match(/rotate\(\s*([-\d.]+)/);
+    if (rotate) angle = -Number.parseFloat(rotate[1]) * Math.PI / 180;
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    let shift = 0;
+    if (anchor === "middle") shift = -width / 2;
+    else if (anchor === "end") shift = -width;
+    const originX = tx(x) + shift * cos;
+    const originY = ty(y) + shift * sin;
+    stream.push("BT");
+    stream.push(`${number(fill[0])} ${number(fill[1])} ${number(fill[2])} rg`);
+    stream.push(`/${alphaName(alpha)} gs`);
+    stream.push(`${number(cos)} ${number(sin)} ${number(-sin)} ${number(cos)} ${number(originX)} ${number(originY)} Tm`);
+    for (const segment of segments) {
+      const small = segment.kind === "sup" || segment.kind === "sub";
+      const size = small ? fontSize * 0.68 : fontSize;
+      const rise = segment.kind === "sup" ? fontSize * 0.33 : segment.kind === "sub" ? -fontSize * 0.16 : 0;
+      const face = segment.kind === "symbol" ? "Symbol" : font;
+      stream.push(`/${fontResource(face)} ${number(size)} Tf`);
+      stream.push(`${number(rise)} Ts`);
+      stream.push(`(${pdfEscape(segment.text)}) Tj`);
+    }
+    stream.push("ET");
+  };
+
+  const emitCircle = (element) => {
+    const cx = tx(Number.parseFloat(element.getAttribute("cx")) || 0);
+    const cy = ty(Number.parseFloat(element.getAttribute("cy")) || 0);
+    const r = (Number.parseFloat(element.getAttribute("r")) || 0) * k;
+    if (!(r > 0)) return;
+    const paint = emitPaint(element, "#000000", null);
+    const c = r * 0.5523;
+    stream.push(`${number(cx + r)} ${number(cy)} m`);
+    stream.push(`${number(cx + r)} ${number(cy + c)} ${number(cx + c)} ${number(cy + r)} ${number(cx)} ${number(cy + r)} c`);
+    stream.push(`${number(cx - c)} ${number(cy + r)} ${number(cx - r)} ${number(cy + c)} ${number(cx - r)} ${number(cy)} c`);
+    stream.push(`${number(cx - r)} ${number(cy - c)} ${number(cx - c)} ${number(cy - r)} ${number(cx)} ${number(cy - r)} c`);
+    stream.push(`${number(cx + c)} ${number(cy - r)} ${number(cx + r)} ${number(cy - c)} ${number(cx + r)} ${number(cy)} c`);
+    stream.push(paintOperator(paint));
+  };
+
+  const emitPath = (element) => {
+    const d = element.getAttribute("d") || "";
+    const commands = d.match(/[MLZmlz][^MLZmlz]*/g);
+    if (!commands) return;
+    const paint = emitPaint(element, null, null);
+    let emitted = false;
+    for (const command of commands) {
+      const letter = command[0].toUpperCase();
+      if (letter === "Z") { stream.push("h"); continue; }
+      const coordinates = command.slice(1).trim().split(/[\s,]+/).map(Number.parseFloat).filter(Number.isFinite);
+      for (let i = 0; i + 1 < coordinates.length; i += 2) {
+        const operator = letter === "M" && i === 0 ? "m" : "l";
+        stream.push(`${number(tx(coordinates[i]))} ${number(ty(coordinates[i + 1]))} ${operator}`);
+        emitted = true;
+      }
+    }
+    if (emitted) stream.push(paintOperator({ fill: paint.fill, stroke: paint.stroke }));
+  };
+
+  const walk = (node) => {
+    for (const element of node.children) {
+      const tag = element.tagName;
+      if (tag === "defs" || tag === "title") continue;
+      const clipReference = (element.getAttribute("clip-path") || "").match(/url\(#([^)]+)\)/);
+      const clip = clipReference ? clips[clipReference[1]] : null;
+      if (clip) {
+        stream.push("q");
+        stream.push(`${number(tx(clip.x))} ${number(ty(clip.y + clip.height))} ${number(clip.width * k)} ${number(clip.height * k)} re W n`);
+      }
+      if (tag === "g" || tag === "svg") walk(element);
+      else if (tag === "rect") {
+        const x = Number.parseFloat(element.getAttribute("x")) || 0;
+        const y = Number.parseFloat(element.getAttribute("y")) || 0;
+        const width = Number.parseFloat(element.getAttribute("width")) || 0;
+        const height = Number.parseFloat(element.getAttribute("height")) || 0;
+        if (width > 0 && height > 0) {
+          const paint = emitPaint(element, "#000000", null);
+          stream.push(`${number(tx(x))} ${number(ty(y + height))} ${number(width * k)} ${number(height * k)} re`);
+          stream.push(paintOperator(paint));
+        }
+      } else if (tag === "line") {
+        const paint = emitPaint(element, "none", "#000000");
+        if (paint.stroke) {
+          stream.push(`${number(tx(Number.parseFloat(element.getAttribute("x1")) || 0))} ${number(ty(Number.parseFloat(element.getAttribute("y1")) || 0))} m`);
+          stream.push(`${number(tx(Number.parseFloat(element.getAttribute("x2")) || 0))} ${number(ty(Number.parseFloat(element.getAttribute("y2")) || 0))} l`);
+          stream.push("S");
+        }
+      } else if (tag === "path") emitPath(element);
+      else if (tag === "circle") emitCircle(element);
+      else if (tag === "text") emitText(element);
+      if (clip) stream.push("Q");
+    }
+  };
+  walk(root);
+
+  // Assemblage du document. L'encodage est latin1 (un octet par caractère) :
+  // les codes WinAnsi doivent traverser tels quels, un encodage UTF-8
+  // dédoublerait les caractères accentués.
+  const encoder = { encode: (text) => {
+    const bytes = new Uint8Array(text.length);
+    for (let index = 0; index < text.length; index += 1) bytes[index] = text.charCodeAt(index) & 0xff;
+    return bytes;
+  } };
+  const content = stream.join("\n");
+  const objects = [];
+  const addObject = (body) => { objects.push(body); return objects.length; };
+  const fontIds = {};
+  FONT_KEYS.forEach((name) => {
+    if (!fontsUsed.has(name) && name !== "Helvetica") return;
+    fontIds[name] = addObject(`<< /Type /Font /Subtype /Type1 /BaseFont /${name}${name === "Symbol" ? "" : " /Encoding /WinAnsiEncoding"} >>`);
+  });
+  const gsIds = {};
+  alphaStates.forEach((name, alpha) => { gsIds[name] = addObject(`<< /Type /ExtGState /ca ${alpha} /CA ${alpha} >>`); });
+  const contentBytes = encoder.encode(content);
+  const contentId = addObject(`<< /Length ${contentBytes.length} >>\nstream\n${content}\nendstream`);
+  const fontEntries = Object.entries(fontIds).map(([name, id]) => `/${fontResource(name)} ${id} 0 R`).join(" ");
+  const gsEntries = Object.entries(gsIds).map(([name, id]) => `/${name} ${id} 0 R`).join(" ");
+  const pageId = addObject(`<< /Type /Page /Parent PAGES_ID 0 R /MediaBox [0 0 ${pageWidth.toFixed(2)} ${pageHeight.toFixed(2)}] /Resources << /Font << ${fontEntries} >> /ExtGState << ${gsEntries} >> >> /Contents ${contentId} 0 R >>`);
+  const pagesId = addObject(`<< /Type /Pages /Kids [${pageId} 0 R] /Count 1 >>`);
+  const catalogId = addObject(`<< /Type /Catalog /Pages ${pagesId} 0 R >>`);
+  objects[pageId - 1] = objects[pageId - 1].replace("PAGES_ID", String(pagesId));
+
+  const parts = [encoder.encode("%PDF-1.4\n")];
+  const offsets = [0];
+  let currentOffset = parts[0].length;
+  objects.forEach((body, index) => {
+    offsets[index + 1] = currentOffset;
+    const bytes = encoder.encode(`${index + 1} 0 obj\n${body}\nendobj\n`);
+    parts.push(bytes);
+    currentOffset += bytes.length;
+  });
+  let xref = `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  for (let index = 1; index <= objects.length; index += 1) xref += `${String(offsets[index]).padStart(10, "0")} 00000 n \n`;
+  xref += `trailer\n<< /Size ${objects.length + 1} /Root ${catalogId} 0 R >>\nstartxref\n${currentOffset}\n%%EOF`;
+  parts.push(encoder.encode(xref));
+  const totalLength = parts.reduce((sum, part) => sum + part.length, 0);
+  const output = new Uint8Array(totalLength);
+  let position = 0;
+  for (const part of parts) { output.set(part, position); position += part.length; }
+  return output;
 }
