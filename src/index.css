@@ -474,9 +474,9 @@ textarea:focus { border-color: var(--selection); }
   --mode-secondary: #d95da7;
 }
 .mode-ir {
-  --mode-accent: #3aa7bd;
-  --mode-accent-soft: rgba(58, 167, 189, .15);
-  --mode-secondary: #5f8bff;
+  --mode-accent: #d97a6c;
+  --mode-accent-soft: rgba(217, 122, 108, .15);
+  --mode-secondary: #b85f8a;
 }
 
 .app-shell {
