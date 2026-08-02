@@ -2992,6 +2992,8 @@ export default function App() {
         setDragPreview({ type: "patternLabelResize", id: interaction.payload.id, fontSize: clamp(interaction.payload.fontSize + (point.svgX - interaction.start.svgX) / 4, 6, 42) });
       } else if (interaction.type === "phaseLegendMove") {
         setDragPreview({ type: "phaseLegendMove", x: interaction.payload.x + (point.svgX - interaction.start.svgX), y: interaction.payload.y + (point.svgY - interaction.start.svgY), width: interaction.payload.width });
+      } else if (interaction.type === "overlayLegendMove") {
+        setDragPreview({ type: "overlayLegendMove", x: interaction.payload.x + (point.svgX - interaction.start.svgX), y: interaction.payload.y + (point.svgY - interaction.start.svgY) });
       } else if (interaction.type === "phaseLegendResize") {
         setDragPreview({ type: "phaseLegendResize", x: interaction.payload.x, y: interaction.payload.y, width: clamp(interaction.payload.width + (point.svgX - interaction.start.svgX), 140, Math.max(160, plotWidth - 10)) });
       } else if (interaction.type === "insetMove") {
@@ -3087,6 +3089,11 @@ export default function App() {
       updateZone(dragPreview.id, dragPreview.edge === "min" ? "xmin" : "xmax", dragPreview.x);
     } else if (dragPreview?.type === "curveOrder") {
       commitCanvasReorder(dragPreview.id, dragPreview.svgY ?? point.svgY);
+    } else if (dragPreview?.type === "overlayLegendMove") {
+      history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
+        ...currentWorkspace,
+        settings: { ...currentWorkspace.settings, overlayLegendX: dragPreview.x, overlayLegendY: dragPreview.y },
+      })));
     } else if (["phaseLegendMove", "phaseLegendResize"].includes(dragPreview?.type)) {
       history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
         ...currentWorkspace,
@@ -3151,6 +3158,28 @@ export default function App() {
     })));
     setMessage(`Pic à ${Number(peak.x).toFixed(activeMode === "drx" ? 3 : 1)} retiré.`);
   }, [activeMode, history, peakEditTolerance]);
+
+  /**
+   * Inverse l'affichage de la valeur d'un bâtonnet de référence superposé.
+   * Les positions listées dans overlayValueExceptions sont dans l'état opposé
+   * au réglage global de la phase (overlayShowValues).
+   */
+  const togglePhaseOverlayValue = useCallback((phaseId, x) => {
+    history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
+      ...currentWorkspace,
+      phases: currentWorkspace.phases.map((phase) => {
+        if (phase.id !== phaseId) return phase;
+        const exceptions = Array.isArray(phase.overlayValueExceptions) ? phase.overlayValueExceptions : [];
+        const exists = exceptions.some((value) => Math.abs(value - x) < 1e-6);
+        return {
+          ...phase,
+          overlayValueExceptions: exists
+            ? exceptions.filter((value) => Math.abs(value - x) >= 1e-6)
+            : [...exceptions, x],
+        };
+      }),
+    })));
+  }, [activeMode, history]);
 
   const resetPeakEdits = useCallback((patternId) => {
     history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
@@ -3950,18 +3979,73 @@ export default function App() {
                           if (breakActive && x > Number(S.brokenAxisStart) && x < Number(S.brokenAxisEnd)) return null;
                           const px = xToPx(x);
                           const baseY = Math.min(M.top + mainHeight, yToPx(0));
-                          const topY = S.phaseOverlayFullHeight
+                          const topY = Math.max(M.top, S.phaseOverlayFullHeight
                             ? M.top
-                            : yToPx((intensity / 100) * (Number(S.phaseOverlayScale) || 0.85) * Math.max(0.2, curveMaximum));
-                          return <line
-                            key={`phase-overlay-line-${phase.id}-${index}`}
-                            x1={px} x2={px} y1={baseY} y2={Math.max(M.top, topY)}
-                            stroke={phase.color} strokeWidth={Number(S.phaseOverlayWidth) || 1}
-                            opacity={Number(S.phaseOverlayOpacity) || 0.7}
-                          />;
+                            : yToPx((intensity / 100) * (Number(S.phaseOverlayScale) || 0.85) * Math.max(0.2, curveMaximum)));
+                          const isException = (phase.overlayValueExceptions || []).some((value) => Math.abs(value - x) < 1e-6);
+                          const showValue = phase.overlayShowValues ? !isException : isException;
+                          const valueText = x.toFixed(S.mode === "drx" ? 2 : 0);
+                          const valueSize = Number(S.phaseOverlayValueSize) || 8.5;
+                          // Le label est placé au-dessus du bâtonnet ; s'il déborderait du
+                          // cadre, il bascule le long du bâtonnet, sous son sommet.
+                          const valueLength = valueText.length * valueSize * 0.62;
+                          const fitsAbove = topY - 4 - valueLength >= M.top + 2;
+                          const valueAnchor = fitsAbove ? "start" : "end";
+                          const valueY = fitsAbove ? topY - 4 : topY + 6;
+                          return <g key={`phase-overlay-line-${phase.id}-${index}`}>
+                            <line
+                              x1={px} x2={px} y1={baseY} y2={topY}
+                              stroke={phase.color} strokeWidth={Number(S.phaseOverlayWidth) || 1}
+                              opacity={Number(S.phaseOverlayOpacity) || 0.7}
+                            />
+                            <line
+                              data-ui-only="true"
+                              x1={px} x2={px} y1={baseY} y2={topY}
+                              stroke="transparent" strokeWidth="9"
+                              style={{ cursor: "pointer" }}
+                              onClick={(event) => { event.stopPropagation(); togglePhaseOverlayValue(phase.id, x); }}
+                            >
+                              <title>{`${phase.name} · ${valueText} — cliquer pour ${showValue ? "masquer" : "afficher"} la valeur`}</title>
+                            </line>
+                            {showValue && <text
+                              x={px} y={valueY} textAnchor={valueAnchor} fontSize={valueSize}
+                              fill={phase.color} fontFamily="Arial, Helvetica, sans-serif"
+                              transform={`rotate(-90 ${px} ${valueY})`}
+                              style={{ cursor: "pointer", userSelect: "none" }}
+                              onClick={(event) => { event.stopPropagation(); togglePhaseOverlayValue(phase.id, x); }}
+                            >{valueText}</text>}
+                          </g>;
                         })}
                       </g>
                     ))}
+                    {S.figureLayoutMode === "single" && S.showOverlayLegend && (() => {
+                      const overlayPhases = phases.filter((phase) => phase.visible && phase.inOverlay);
+                      if (!overlayPhases.length) return null;
+                      const preview = dragPreview?.type === "overlayLegendMove" ? dragPreview : null;
+                      const fontSize = clamp(Number(S.overlayLegendFontSize) || 10, 6, 20);
+                      const lineHeight = fontSize + 8;
+                      const longest = overlayPhases.reduce((max, phase) => Math.max(max, String(phase.name || "").length), 6);
+                      const boxWidth = clamp(46 + longest * fontSize * 0.6, 90, plotWidth * 0.5);
+                      const boxHeight = overlayPhases.length * lineHeight + 12;
+                      const defaultX = M.left + plotWidth - boxWidth - 10;
+                      const defaultY = M.top + 10;
+                      const boxX = clamp(preview?.x ?? (Number.isFinite(Number(S.overlayLegendX)) && S.overlayLegendX !== null ? Number(S.overlayLegendX) : defaultX), M.left, M.left + plotWidth - boxWidth);
+                      const boxY = clamp(preview?.y ?? (Number.isFinite(Number(S.overlayLegendY)) && S.overlayLegendY !== null ? Number(S.overlayLegendY) : defaultY), M.top, M.top + mainHeight - boxHeight);
+                      return <g
+                        style={{ cursor: "move" }}
+                        onDoubleClick={(event) => openContextOptions(event, { tab: "references", target: "overlay-legend-options" })}
+                        onPointerDown={(event) => { if (event.detail >= 2) return; beginCanvasDrag(event, "overlayLegendMove", { x: boxX, y: boxY }); }}
+                      >
+                        <rect x={boxX} y={boxY} width={boxWidth} height={boxHeight} fill={S.pageBackground} opacity="0.88" stroke="none" />
+                        {overlayPhases.map((phase, index) => {
+                          const y = boxY + 10 + index * lineHeight + fontSize * 0.5;
+                          return <g key={`overlay-legend-${phase.id}`}>
+                            <line x1={boxX + 8} x2={boxX + 34} y1={y - fontSize * 0.32} y2={y - fontSize * 0.32} stroke={phase.color} strokeWidth={Math.max(1.4, (Number(S.phaseOverlayWidth) || 1) * 1.6)} />
+                            <text x={boxX + 40} y={y} fontSize={fontSize} fill="#15191f" fontFamily="Arial, Helvetica, sans-serif" style={{ userSelect: "none" }}>{phase.name}</text>
+                          </g>;
+                        })}
+                      </g>;
+                    })()}
 
                     {S.figureLayoutMode === "single" && peakFitResult && activeProcessedPattern && (() => {
                       const offset = activeProcessedPattern.stackOffset || 0;
@@ -4424,12 +4508,30 @@ export default function App() {
                   <Toggle label="Afficher les annotations" checked={S.showAnnotations} onChange={(value) => patchSettings("showAnnotations", value)} />
                   {S.showAnnotations && <><SliderField label="Seuil des bâtonnets" value={S.tickMinI} min={0} max={50} step={0.5} suffix="%" onChange={(value) => patchSettings("tickMinI", value)} /><SliderField label="Seuil des labels" value={S.labelMinI} min={0} max={100} step={1} suffix="%" onChange={(value) => patchSettings("labelMinI", value)} /><SliderField label="Séparation des labels" value={S.labelMinSep} min={0.1} max={10} step={0.1} onChange={(value) => patchSettings("labelMinSep", value)} /><SliderField label="Hauteur" value={S.tickScale} min={0.1} max={1.5} step={0.02} onChange={(value) => patchSettings("tickScale", value)} /><SliderField label="Écart au patron" value={S.annotGap} min={0.3} max={3} step={0.02} onChange={(value) => patchSettings("annotGap", value)} /><SliderField label="Taille des labels" value={S.annotFontSize} min={5} max={18} step={0.5} onChange={(value) => patchSettings("annotFontSize", value)} /><Toggle label="Clé des abréviations" checked={S.showAbbrevKey} onChange={(value) => patchSettings("showAbbrevKey", value)} /></>}
                 </Section>
-                <Section title="Références sur la figure" defaultOpen={phases.some((phase) => phase.inOverlay)}>
-                  <div className="callout">Superpose les bâtonnets des phases marquées « figure » directement dans la zone de tracé, à la manière d’EVA ou HighScore. Activer phase par phase via la liste des phases ou l’inspecteur.</div>
-                  <Toggle label="Lignes pleine hauteur" checked={Boolean(S.phaseOverlayFullHeight)} onChange={(value) => patchSettings("phaseOverlayFullHeight", value)} />
-                  {!S.phaseOverlayFullHeight && <SliderField label="Hauteur relative" value={S.phaseOverlayScale ?? 0.85} min={0.1} max={2} step={0.05} onChange={(value) => patchSettings("phaseOverlayScale", value)} />}
-                  <SliderField label="Épaisseur" value={S.phaseOverlayWidth ?? 1} min={0.3} max={4} step={0.05} onChange={(value) => patchSettings("phaseOverlayWidth", value)} />
-                  <SliderField label="Opacité" value={S.phaseOverlayOpacity ?? 0.7} min={0.05} max={1} step={0.05} onChange={(value) => patchSettings("phaseOverlayOpacity", value)} />
+                <Section title="Références sur la figure" defaultOpen={phases.some((phase) => phase.inOverlay)} targetId="overlay-legend-options">
+                  <div className="callout">Trace les bâtonnets des phases cochées ci-dessous directement dans la zone du graphe, superposés aux courbes (style EVA/HighScore), avec une légende intégrée déplaçable à la souris.</div>
+                  {phases.length ? phases.map((phase) => (
+                    <div key={`overlay-toggle-${phase.id}`}>
+                      <Toggle label={phase.name} checked={Boolean(phase.inOverlay)} onChange={(value) => updatePhase(phase.id, "inOverlay", value)} />
+                      {phase.inOverlay && <>
+                        <Toggle label={`— Valeurs des pics (${S.mode === "drx" ? "2θ" : "cm⁻¹"})`} checked={Boolean(phase.overlayShowValues)} onChange={(value) => updatePhase(phase.id, "overlayShowValues", value)} />
+                        {(phase.overlayValueExceptions?.length || 0) > 0 && <div className="inline-actions"><Button variant="secondary" icon="reset" onClick={() => updatePhase(phase.id, "overlayValueExceptions", [])}>Réinitialiser les {phase.overlayValueExceptions.length} exception(s)</Button></div>}
+                      </>}
+                    </div>
+                  )) : <div className="callout">Importer d’abord des phases de référence.</div>}
+                  {phases.some((phase) => phase.inOverlay) && <div className="callout">Cliquer sur un bâtonnet (ou sur sa valeur) dans la figure pour afficher ou masquer sa valeur individuellement, quel que soit le réglage global de la phase.</div>}
+                  {phases.some((phase) => phase.inOverlay) && <>
+                    <Toggle label="Lignes pleine hauteur" checked={Boolean(S.phaseOverlayFullHeight)} onChange={(value) => patchSettings("phaseOverlayFullHeight", value)} />
+                    {!S.phaseOverlayFullHeight && <SliderField label="Hauteur relative" value={S.phaseOverlayScale ?? 0.85} min={0.1} max={2} step={0.05} onChange={(value) => patchSettings("phaseOverlayScale", value)} />}
+                    <SliderField label="Épaisseur" value={S.phaseOverlayWidth ?? 1} min={0.3} max={4} step={0.05} onChange={(value) => patchSettings("phaseOverlayWidth", value)} />
+                    <SliderField label="Opacité" value={S.phaseOverlayOpacity ?? 0.7} min={0.05} max={1} step={0.05} onChange={(value) => patchSettings("phaseOverlayOpacity", value)} />
+                    <SliderField label="Taille des valeurs" value={S.phaseOverlayValueSize ?? 8.5} min={5} max={16} step={0.5} suffix="pt" onChange={(value) => patchSettings("phaseOverlayValueSize", value)} />
+                    <Toggle label="Légende dans la figure" checked={S.showOverlayLegend !== false} onChange={(value) => patchSettings("showOverlayLegend", value)} />
+                    {S.showOverlayLegend !== false && <>
+                      <SliderField label="Taille du texte de légende" value={S.overlayLegendFontSize ?? 10} min={6} max={20} step={0.5} suffix="pt" onChange={(value) => patchSettings("overlayLegendFontSize", value)} />
+                      <div className="inline-actions"><Button variant="secondary" icon="reset" onClick={() => patchSettingsValues({ overlayLegendX: null, overlayLegendY: null })}>Réinitialiser la position de la légende</Button></div>
+                    </>}
+                  </>}
                 </Section>
                 <Section title="Panneau de références" targetId="reference-panel-options">
                   <Toggle label="Afficher le panneau" checked={S.showPdfPanel} onChange={(value) => patchSettings("showPdfPanel", value)} />
