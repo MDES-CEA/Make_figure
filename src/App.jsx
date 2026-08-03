@@ -3177,6 +3177,10 @@ export default function App() {
         setDragPreview({ type: "patternLabelResize", id: interaction.payload.id, fontSize: clamp(interaction.payload.fontSize + (point.svgX - interaction.start.svgX) / 4, 6, 42) });
       } else if (interaction.type === "phaseLegendMove") {
         setDragPreview({ type: "phaseLegendMove", x: interaction.payload.x + (point.svgX - interaction.start.svgX), y: interaction.payload.y + (point.svgY - interaction.start.svgY), width: interaction.payload.width });
+      } else if (interaction.type === "annotationTickScale") {
+        const dataY = yMinimum + ((M.top + mainHeight - point.svgY) / mainHeight) * (yMaximum - yMinimum);
+        const unit = Math.max(1e-6, Number(interaction.payload.intensity) / 100);
+        setDragPreview({ type: "annotationTickScale", scale: clamp((dataY - annotationBase) / unit, 0.05, 3) });
       } else if (interaction.type === "phaseOverlayScale") {
         const dataY = yMinimum + ((M.top + mainHeight - point.svgY) / mainHeight) * (yMaximum - yMinimum);
         const unit = Math.max(1e-6, (Number(interaction.payload.intensity) / 100) * interaction.payload.reference);
@@ -3285,6 +3289,8 @@ export default function App() {
       updateZone(dragPreview.id, dragPreview.edge === "min" ? "xmin" : "xmax", dragPreview.x);
     } else if (dragPreview?.type === "curveOrder") {
       commitCanvasReorder(dragPreview.id, dragPreview.svgY ?? point.svgY);
+    } else if (dragPreview?.type === "annotationTickScale") {
+      patchSettings("tickScale", Math.round(dragPreview.scale * 1000) / 1000);
     } else if (dragPreview?.type === "phaseOverlayScale") {
       updatePhase(dragPreview.id, "overlayScale", Math.round(dragPreview.scale * 1000) / 1000);
     } else if (dragPreview?.type === "noteVlineTop" || dragPreview?.type === "noteVlineBottom") {
@@ -4314,15 +4320,16 @@ export default function App() {
                                 >{valueText}</text>}
                               </g>;
                             })}
-                            {!S.phaseOverlayFullHeight && strongest && isSelected("phase", phase.id) && (() => {
+                            {!S.phaseOverlayFullHeight && strongest && S.showOverlayHandles !== false && (() => {
                               const px = xToPx(strongest[0]);
                               const py = stickTop(strongest[1]);
-                              return <g data-ui-only="true">
+                              const grab = (event) => beginCanvasDrag(event, "phaseOverlayScale", { id: phase.id, scale, intensity: strongest[1], reference });
+                              return <g data-ui-only="true" style={{ cursor: "ns-resize" }} onPointerDown={grab}>
+                                <rect x={px - 14} y={py - 9} width="28" height="18" fill="transparent" />
+                                <line x1={px - 9} x2={px + 9} y1={py} y2={py} stroke={phase.color} strokeWidth="1.4" opacity="0.9" />
                                 <rect
                                   x={px - 4.5} y={py - 4.5} width="9" height="9" rx="2"
-                                  fill="#fff" stroke={phase.color} strokeWidth="1.2"
-                                  style={{ cursor: "ns-resize" }}
-                                  onPointerDown={(event) => beginCanvasDrag(event, "phaseOverlayScale", { id: phase.id, scale, intensity: strongest[1], reference })}
+                                  fill="#fff" stroke={phase.color} strokeWidth="1.4"
                                 >
                                   <title>{`Hauteur des bâtonnets de ${phase.name} — glisser verticalement`}</title>
                                 </rect>
@@ -4478,9 +4485,26 @@ export default function App() {
                     })()}
 
                     {S.figureLayoutMode === "single" && hasAnnotations && annotationData.ticks.map((tick, index) => {
-                      const height = (tick.intensity / 100) * S.tickScale;
+                      const height = (tick.intensity / 100) * (dragPreview?.type === "annotationTickScale" ? dragPreview.scale : S.tickScale);
                       return <line key={`annotation-tick-${index}`} x1={xToPx(tick.x)} x2={xToPx(tick.x)} y1={yToPx(annotationBase)} y2={yToPx(annotationBase + height)} stroke={tick.color} strokeWidth="0.85" strokeDasharray={tick.dashed ? "3 2" : undefined} opacity="0.88" />;
                     })}
+                    {S.figureLayoutMode === "single" && hasAnnotations && S.showOverlayHandles !== false && annotationData.ticks.length > 0 && (() => {
+                      // Poignée de hauteur des bâtonnets d'annotation : elle agit
+                      // sur le facteur global tickScale.
+                      const drag = dragPreview?.type === "annotationTickScale" ? dragPreview : null;
+                      const currentScale = drag ? drag.scale : S.tickScale;
+                      const strongest = annotationData.ticks.reduce((best, tick) => !best || tick.intensity > best.intensity ? tick : best, null);
+                      if (!strongest) return null;
+                      const px = xToPx(strongest.x);
+                      const py = yToPx(annotationBase + (strongest.intensity / 100) * currentScale);
+                      return <g data-ui-only="true" style={{ cursor: "ns-resize" }} onPointerDown={(event) => beginCanvasDrag(event, "annotationTickScale", { intensity: strongest.intensity })}>
+                        <rect x={px - 14} y={py - 9} width="28" height="18" fill="transparent" />
+                        <line x1={px - 9} x2={px + 9} y1={py} y2={py} stroke={strongest.color} strokeWidth="1.4" opacity="0.9" />
+                        <rect x={px - 4.5} y={py - 4.5} width="9" height="9" rx="2" fill="#fff" stroke={strongest.color} strokeWidth="1.4">
+                          <title>Hauteur des bâtonnets d’annotation — glisser verticalement</title>
+                        </rect>
+                      </g>;
+                    })()}
                     {S.figureLayoutMode === "single" && hasAnnotations && annotationData.labels.map((tick, index) => {
                       const height = (tick.intensity / 100) * S.tickScale;
                       const preview = dragPreview?.type === "phaseLabel" && dragPreview.id === tick.phaseId ? dragPreview : null;
@@ -4987,7 +5011,7 @@ export default function App() {
                     <SliderField label="Taille des valeurs" value={S.phaseOverlayValueSize ?? 8.5} min={5} max={16} step={0.5} suffix="pt" onChange={(value) => patchSettings("phaseOverlayValueSize", value)} />
                     <SelectField label="Position des valeurs" value={S.phaseOverlayValueAnchor === "peak" ? "peak" : "stick"} onChange={(value) => patchSettings("phaseOverlayValueAnchor", value)} options={[["stick", "À l'extrémité du bâtonnet"], ["peak", "Au-dessus du pic mesuré"]]} />
                     {S.phaseOverlayValueAnchor === "peak" && <NumberField label={`Fenêtre de recherche du sommet (${activeMode === "drx" ? "°" : "cm⁻¹"})`} value={S.phaseOverlayValueWindow ?? 0} min={0} step={activeMode === "drx" ? 0.05 : 1} onChange={(value) => patchSettings("phaseOverlayValueWindow", value)} hint={`0 = automatique (${activeMode === "drx" ? "0,2°" : "8 cm⁻¹"}).`} />}
-                    <div className="callout">Sélectionner une phase dans la liste de gauche fait apparaître une poignée carrée au sommet de son bâtonnet le plus intense : la glisser verticalement règle la hauteur de tous ses bâtonnets.</div>
+                    <Toggle label="Poignées de hauteur sur la figure" checked={S.showOverlayHandles !== false} onChange={(value) => patchSettings("showOverlayHandles", value)} description="Une poignée au sommet du bâtonnet le plus intense de chaque phase ; la glisser verticalement règle la hauteur de tous ses bâtonnets. Les poignées ne sont pas exportées." />
                     <Toggle label="Légende dans la figure" checked={S.showOverlayLegend !== false} onChange={(value) => patchSettings("showOverlayLegend", value)} />
                     {S.showOverlayLegend !== false && <>
                       <SliderField label="Taille du texte de légende" value={S.overlayLegendFontSize ?? 10} min={6} max={20} step={0.5} suffix="pt" onChange={(value) => patchSettings("overlayLegendFontSize", value)} />
