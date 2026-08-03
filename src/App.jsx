@@ -3183,12 +3183,12 @@ export default function App() {
         setDragPreview({ type: "annotationTickScale", scale: clamp((dataY - annotationBase) / unit, 0.05, 3) });
       } else if (interaction.type === "phaseOverlayPeakScale") {
         const dataY = yMinimum + ((M.top + mainHeight - point.svgY) / mainHeight) * (yMaximum - yMinimum);
-        const unit = Math.max(1e-6, (Number(interaction.payload.intensity) / 100) * interaction.payload.reference);
-        setDragPreview({ type: "phaseOverlayPeakScale", id: interaction.payload.id, x: interaction.payload.x, scale: clamp(dataY / unit, 0.01, 5) });
+        const unit = Math.max(1e-6, Number(interaction.payload.unit));
+        setDragPreview({ type: "phaseOverlayPeakScale", id: interaction.payload.id, x: interaction.payload.x, scale: clamp(dataY / unit, 0.005, 50) });
       } else if (interaction.type === "phaseOverlayScale") {
         const dataY = yMinimum + ((M.top + mainHeight - point.svgY) / mainHeight) * (yMaximum - yMinimum);
-        const unit = Math.max(1e-6, (Number(interaction.payload.intensity) / 100) * interaction.payload.reference);
-        setDragPreview({ type: "phaseOverlayScale", id: interaction.payload.id, scale: clamp(dataY / unit, 0.02, 5) });
+        const unit = Math.max(1e-6, Number(interaction.payload.unit));
+        setDragPreview({ type: "phaseOverlayScale", id: interaction.payload.id, scale: clamp(dataY / unit, 0.005, 50) });
       } else if (interaction.type === "noteVlineTop" || interaction.type === "noteVlineBottom") {
         const frac = clamp(1 - ((point.svgY - M.top) / mainHeight), 0, 1);
         setDragPreview({ type: interaction.type, id: interaction.payload.id, frac: Math.round(frac * 1000) / 1000 });
@@ -4318,7 +4318,14 @@ export default function App() {
                           const searchWindow = Number(S.phaseOverlayValueWindow) > 0
                             ? Number(S.phaseOverlayValueWindow)
                             : (S.mode === "drx" ? 0.2 : 8);
-                          const stickTop = (intensity, x) => Math.max(M.top, S.phaseOverlayFullHeight ? M.top : yToPx((intensity / 100) * (x === undefined ? scale : peakScaleFor(x)) * reference));
+                          // Sur la figure, l'intensité relative des fiches n'entre
+                          // en compte que si l'option est réactivée ; par défaut
+                          // tous les bâtonnets partent à la même hauteur, réglable
+                          // ensuite un par un. Les panneaux et les annotations
+                          // gardent l'intensité dans tous les cas.
+                          const useIntensity = Boolean(S.phaseOverlayUseIntensity);
+                          const stickUnit = (intensity) => (useIntensity ? (intensity / 100) : 1) * reference;
+                          const stickTop = (intensity, x) => Math.max(M.top, S.phaseOverlayFullHeight ? M.top : yToPx(stickUnit(intensity) * (x === undefined ? scale : peakScaleFor(x))));
                           return <>
                             {visiblePeaks.map(([x, intensity], index) => {
                               const px = xToPx(x);
@@ -4366,7 +4373,7 @@ export default function App() {
                                   return <g
                                     data-ui-only="true"
                                     style={{ cursor: "ns-resize" }}
-                                    onPointerDown={(event) => beginCanvasDrag(event, "phaseOverlayPeakScale", { id: phase.id, x, scale: peakScaleFor(x), intensity, reference })}
+                                    onPointerDown={(event) => beginCanvasDrag(event, "phaseOverlayPeakScale", { id: phase.id, x, scale: peakScaleFor(x), unit: stickUnit(intensity) })}
                                     onDoubleClick={(event) => { event.stopPropagation(); resetPhaseOverlayPeakScale(phase.id, x); }}
                                   >
                                     <rect x={px - 7} y={topY - 7} width="14" height="14" fill="transparent" />
@@ -4381,21 +4388,6 @@ export default function App() {
                                 })()}
                               </g>;
                             })}
-                            {!S.phaseOverlayFullHeight && strongest && S.showOverlayHandles !== false && (() => {
-                              const px = xToPx(strongest[0]);
-                              const py = stickTop(strongest[1]);  // hauteur de la phase, hors réglages individuels
-                              const grab = (event) => beginCanvasDrag(event, "phaseOverlayScale", { id: phase.id, scale, intensity: strongest[1], reference });
-                              return <g data-ui-only="true" style={{ cursor: "ns-resize" }} onPointerDown={grab}>
-                                <rect x={px - 14} y={py - 9} width="28" height="18" fill="transparent" />
-                                <line x1={px - 9} x2={px + 9} y1={py} y2={py} stroke={phase.color} strokeWidth="1.4" opacity="0.9" />
-                                <rect
-                                  x={px - 4.5} y={py - 4.5} width="9" height="9" rx="2"
-                                  fill="#fff" stroke={phase.color} strokeWidth="1.4"
-                                >
-                                  <title>{`Hauteur des bâtonnets de ${phase.name} — glisser verticalement`}</title>
-                                </rect>
-                              </g>;
-                            })()}
                           </>;
                         })()}
                       </g>
@@ -5057,7 +5049,7 @@ export default function App() {
                       <Toggle label={phase.name} checked={Boolean(phase.inOverlay)} onChange={(value) => updatePhase(phase.id, "inOverlay", value)} />
                       {phase.inOverlay && <>
                         <Toggle label={`— Valeurs des pics (${S.mode === "drx" ? "2θ" : "cm⁻¹"})`} checked={Boolean(phase.overlayShowValues)} onChange={(value) => updatePhase(phase.id, "overlayShowValues", value)} />
-                        {!S.phaseOverlayFullHeight && <SliderField label="— Hauteur propre à la phase" value={Number.isFinite(Number(phase.overlayScale)) && phase.overlayScale !== null && phase.overlayScale !== undefined ? Number(phase.overlayScale) : (S.phaseOverlayScale ?? 0.85)} min={0.05} max={2.5} step={0.05} onChange={(value) => updatePhase(phase.id, "overlayScale", value)} />}
+                        {!S.phaseOverlayFullHeight && <SliderField label="— Hauteur propre à la phase" value={Number.isFinite(Number(phase.overlayScale)) && phase.overlayScale !== null && phase.overlayScale !== undefined ? Number(phase.overlayScale) : (S.phaseOverlayScale ?? 0.85)} min={0.05} max={3} step={0.05} onChange={(value) => updatePhase(phase.id, "overlayScale", value)} />}
                         {phase.overlayScale !== null && phase.overlayScale !== undefined && <div className="inline-actions"><Button variant="secondary" icon="reset" onClick={() => updatePhase(phase.id, "overlayScale", null)}>Revenir à la hauteur globale</Button></div>}
                         {(phase.overlayPeakScales?.length || 0) > 0 && <div className="inline-actions"><Button variant="secondary" icon="reset" onClick={() => updatePhase(phase.id, "overlayPeakScales", [])}>Réinitialiser les {phase.overlayPeakScales.length} hauteur(s) individuelle(s)</Button></div>}
                         {(phase.overlayValueExceptions?.length || 0) > 0 && <div className="inline-actions"><Button variant="secondary" icon="reset" onClick={() => updatePhase(phase.id, "overlayValueExceptions", [])}>Réinitialiser les {phase.overlayValueExceptions.length} exception(s)</Button></div>}
@@ -5067,13 +5059,14 @@ export default function App() {
                   {phases.some((phase) => phase.inOverlay) && <div className="callout">Cliquer sur un bâtonnet (ou sur sa valeur) dans la figure pour afficher ou masquer sa valeur individuellement, quel que soit le réglage global de la phase.</div>}
                   {phases.some((phase) => phase.inOverlay) && <>
                     <Toggle label="Lignes pleine hauteur" checked={Boolean(S.phaseOverlayFullHeight)} onChange={(value) => patchSettings("phaseOverlayFullHeight", value)} />
-                    {!S.phaseOverlayFullHeight && <SliderField label="Hauteur relative" value={S.phaseOverlayScale ?? 0.85} min={0.1} max={2} step={0.05} onChange={(value) => patchSettings("phaseOverlayScale", value)} />}
+                    {!S.phaseOverlayFullHeight && <SliderField label="Hauteur relative" value={S.phaseOverlayScale ?? 0.85} min={0.05} max={3} step={0.05} onChange={(value) => patchSettings("phaseOverlayScale", value)} />}
+                    <Toggle label="Tenir compte de l’intensité des fiches" checked={Boolean(S.phaseOverlayUseIntensity)} onChange={(value) => patchSettings("phaseOverlayUseIntensity", value)} description="Désactivé, tous les bâtonnets superposés partent de la même hauteur, ajustable individuellement. Les panneaux et les annotations conservent l’intensité dans tous les cas." />
                     <SliderField label="Épaisseur" value={S.phaseOverlayWidth ?? 1} min={0.3} max={4} step={0.05} onChange={(value) => patchSettings("phaseOverlayWidth", value)} />
                     <SliderField label="Opacité" value={S.phaseOverlayOpacity ?? 0.7} min={0.05} max={1} step={0.05} onChange={(value) => patchSettings("phaseOverlayOpacity", value)} />
                     <SliderField label="Taille des valeurs" value={S.phaseOverlayValueSize ?? 8.5} min={5} max={16} step={0.5} suffix="pt" onChange={(value) => patchSettings("phaseOverlayValueSize", value)} />
                     <SelectField label="Position des valeurs" value={S.phaseOverlayValueAnchor === "peak" ? "peak" : "stick"} onChange={(value) => patchSettings("phaseOverlayValueAnchor", value)} options={[["stick", "À l'extrémité du bâtonnet"], ["peak", "Au-dessus du pic mesuré"]]} />
                     {S.phaseOverlayValueAnchor === "peak" && <NumberField label={`Fenêtre de recherche du sommet (${activeMode === "drx" ? "°" : "cm⁻¹"})`} value={S.phaseOverlayValueWindow ?? 0} min={0} step={activeMode === "drx" ? 0.05 : 1} onChange={(value) => patchSettings("phaseOverlayValueWindow", value)} hint={`0 = automatique (${activeMode === "drx" ? "0,2°" : "8 cm⁻¹"}).`} />}
-                    <Toggle label="Poignées de hauteur sur la figure" checked={S.showOverlayHandles !== false} onChange={(value) => patchSettings("showOverlayHandles", value)} description="Petite poignée au sommet de chaque bâtonnet pour régler sa hauteur individuellement, double-clic pour revenir à la hauteur de la phase ; poignée plus grande au sommet du bâtonnet le plus intense pour régler toute la phase. Les poignées ne sont pas exportées." />
+                    <Toggle label="Poignées de hauteur sur la figure" checked={S.showOverlayHandles !== false} onChange={(value) => patchSettings("showOverlayHandles", value)} description="Une poignée au sommet de chaque bâtonnet : la glisser ne règle que ce bâtonnet, double-clic pour revenir à la hauteur commune de la phase. Les poignées ne sont pas exportées." />
                     <Toggle label="Légende dans la figure" checked={S.showOverlayLegend !== false} onChange={(value) => patchSettings("showOverlayLegend", value)} />
                     {S.showOverlayLegend !== false && <>
                       <SliderField label="Taille du texte de légende" value={S.overlayLegendFontSize ?? 10} min={6} max={20} step={0.5} suffix="pt" onChange={(value) => patchSettings("overlayLegendFontSize", value)} />
