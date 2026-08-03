@@ -189,6 +189,10 @@ function safeNoteModel(note, xmin = 0, xmax = 1) {
     fontSize: clamp(finiteNumber(note?.fontSize, 10), 5, 60),
     rotation: clamp(finiteNumber(note?.rotation, 0), -180, 180),
     vline: Boolean(note?.vline),
+    // Extension du trait, en fraction de la hauteur tracée (0 = bas du cadre,
+    // 1 = haut). Par défaut le trait traverse toute la zone.
+    vlineTopFrac: clamp(finiteNumber(note?.vlineTopFrac, 1), 0, 1),
+    vlineBottomFrac: clamp(finiteNumber(note?.vlineBottomFrac, 0), 0, 1),
     visible: note?.visible !== false,
   };
 }
@@ -723,6 +727,7 @@ function PhaseItem({ phase, selected, onSelect, onUpdate, onDelete, onAppend, on
           <button type="button" className={phase.inAnnot ? "chip is-on" : "chip"} onClick={(event) => { event.stopPropagation(); onUpdate("inAnnot", !phase.inAnnot); }}>annotation</button>
           <button type="button" className={phase.inPanel ? "chip is-on" : "chip"} onClick={(event) => { event.stopPropagation(); onUpdate("inPanel", !phase.inPanel); }}>panneau</button>
           <button type="button" className={phase.inOverlay ? "chip is-on" : "chip"} title="Superposer les bâtonnets directement sur la figure" onClick={(event) => { event.stopPropagation(); onUpdate("inOverlay", !phase.inOverlay); }}>figure</button>
+          <button type="button" className={phase.dashed ? "chip is-on" : "chip"} title="Tracer les bâtonnets en pointillés dans tous les types d’annotation" onClick={(event) => { event.stopPropagation(); onUpdate("dashed", !phase.dashed); }}>pointillés</button>
           <button type="button" className="chip chip--action" onClick={(event) => { event.stopPropagation(); onAppend(); }}>+ fiche</button>
         </div>
       </div>
@@ -2515,7 +2520,9 @@ export default function App() {
     patchSettingsValues({ insetXMin: nativeWindow.xmin, insetXMax: nativeWindow.xmax });
     return true;
   }, [activeMode, drxAxisMode, insetAxisWindow.maximum, insetAxisWindow.minimum, patchSettingsValues, wavelength]);
-  const breakActive = activeMode === "drx" && drxAxisMode === "2theta" && S.brokenAxisEnabled && Number(S.brokenAxisEnd) > Number(S.brokenAxisStart) && Number(S.brokenAxisStart) > viewXMin && Number(S.brokenAxisEnd) < viewXMax;
+  // La coupure vaut pour les trois espaces ; en DRX elle suppose l'axe 2θ,
+  // les axes d et Q n'étant pas linéaires en 2θ.
+  const breakActive = (activeMode !== "drx" || drxAxisMode === "2theta") && S.brokenAxisEnabled && Number(S.brokenAxisEnd) > Number(S.brokenAxisStart) && Number(S.brokenAxisStart) > viewXMin && Number(S.brokenAxisEnd) < viewXMax;
   // Axe X décroissant : miroir horizontal autour du centre de la zone tracée.
   // Appliqué en dernier, il vaut pour la courbe, les graduations, le curseur,
   // les annotations et l’export.
@@ -2865,6 +2872,7 @@ export default function App() {
             abbreviation: phase.abbrev,
             color: phase.color,
             phaseId: phase.id,
+            dashed: Boolean(phase.dashed),
             labelOffsetX: Number(phase.labelOffsetX) || 0,
             labelOffsetY: Number(phase.labelOffsetY) || 0,
           });
@@ -3169,6 +3177,13 @@ export default function App() {
         setDragPreview({ type: "patternLabelResize", id: interaction.payload.id, fontSize: clamp(interaction.payload.fontSize + (point.svgX - interaction.start.svgX) / 4, 6, 42) });
       } else if (interaction.type === "phaseLegendMove") {
         setDragPreview({ type: "phaseLegendMove", x: interaction.payload.x + (point.svgX - interaction.start.svgX), y: interaction.payload.y + (point.svgY - interaction.start.svgY), width: interaction.payload.width });
+      } else if (interaction.type === "phaseOverlayScale") {
+        const dataY = yMinimum + ((M.top + mainHeight - point.svgY) / mainHeight) * (yMaximum - yMinimum);
+        const unit = Math.max(1e-6, (Number(interaction.payload.intensity) / 100) * interaction.payload.reference);
+        setDragPreview({ type: "phaseOverlayScale", id: interaction.payload.id, scale: clamp(dataY / unit, 0.02, 5) });
+      } else if (interaction.type === "noteVlineTop" || interaction.type === "noteVlineBottom") {
+        const frac = clamp(1 - ((point.svgY - M.top) / mainHeight), 0, 1);
+        setDragPreview({ type: interaction.type, id: interaction.payload.id, frac: Math.round(frac * 1000) / 1000 });
       } else if (interaction.type === "overlayLegendMove") {
         setDragPreview({ type: "overlayLegendMove", x: interaction.payload.x + (point.svgX - interaction.start.svgX), y: interaction.payload.y + (point.svgY - interaction.start.svgY) });
       } else if (interaction.type === "curveLegendMove") {
@@ -3270,6 +3285,10 @@ export default function App() {
       updateZone(dragPreview.id, dragPreview.edge === "min" ? "xmin" : "xmax", dragPreview.x);
     } else if (dragPreview?.type === "curveOrder") {
       commitCanvasReorder(dragPreview.id, dragPreview.svgY ?? point.svgY);
+    } else if (dragPreview?.type === "phaseOverlayScale") {
+      updatePhase(dragPreview.id, "overlayScale", Math.round(dragPreview.scale * 1000) / 1000);
+    } else if (dragPreview?.type === "noteVlineTop" || dragPreview?.type === "noteVlineBottom") {
+      updateNote(dragPreview.id, dragPreview.type === "noteVlineTop" ? "vlineTopFrac" : "vlineBottomFrac", dragPreview.frac);
     } else if (dragPreview?.type === "overlayLegendMove") {
       history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
         ...currentWorkspace,
@@ -3479,6 +3498,8 @@ export default function App() {
       fontSize: 10,
       rotation: 0,
       vline: false,
+      vlineTopFrac: 1,
+      vlineBottomFrac: 0,
       visible: true,
     };
     history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({ ...currentWorkspace, notes: [...currentWorkspace.notes, note] })));
@@ -3694,6 +3715,7 @@ export default function App() {
         <Toggle label="Visible" checked={activePhase.visible} onChange={(value) => updatePhase(activePhase.id, "visible", value)} />
         <Toggle label="Annotations supérieures" checked={activePhase.inAnnot} onChange={(value) => updatePhase(activePhase.id, "inAnnot", value)} />
         <Toggle label="Panneau de références" checked={activePhase.inPanel} onChange={(value) => updatePhase(activePhase.id, "inPanel", value)} />
+        <Toggle label="Bâtonnets en pointillés" checked={Boolean(activePhase.dashed)} onChange={(value) => updatePhase(activePhase.id, "dashed", value)} description="S'applique aux annotations, au panneau de références et à la superposition sur la figure." />
         <Toggle label="Superposer sur la figure" checked={Boolean(activePhase.inOverlay)} onChange={(value) => updatePhase(activePhase.id, "inOverlay", value)} />
         <div className="two-columns"><NumberField label="Décalage label X" value={activePhase.labelOffsetX || 0} step={S.mode === "drx" ? 0.05 : 1} onChange={(value) => updatePhase(activePhase.id, "labelOffsetX", value)} /><NumberField label="Décalage label Y" value={activePhase.labelOffsetY || 0} step={0.05} onChange={(value) => updatePhase(activePhase.id, "labelOffsetY", value)} /></div>
         <div className="inline-actions"><Button variant="secondary" icon="reset" onClick={() => { updatePhase(activePhase.id, "labelOffsetX", 0); updatePhase(activePhase.id, "labelOffsetY", 0); }}>Réinitialiser la position des labels</Button></div>
@@ -3745,6 +3767,10 @@ export default function App() {
       </div>
       <Field label="Couleur"><div className="color-field"><input type="color" value={safeNoteModel(activeNote, S.xmin, S.xmax).color} onChange={(event) => updateNote(activeNote.id, "color", event.target.value)} /><code>{activeNote.color}</code></div></Field>
       <Toggle label="Visible" checked={activeNote.visible !== false} onChange={(value) => updateNote(activeNote.id, "visible", value)} /><Toggle label="Ligne verticale" checked={activeNote.vline} onChange={(value) => updateNote(activeNote.id, "vline", value)} />
+      {activeNote.vline && <div className="two-columns">
+        <SliderField label="Extrémité haute" value={Math.round((activeNote.vlineTopFrac ?? 1) * 100)} min={0} max={100} step={1} suffix="%" onChange={(value) => updateNote(activeNote.id, "vlineTopFrac", clamp(value / 100, 0, 1))} />
+        <SliderField label="Extrémité basse" value={Math.round((activeNote.vlineBottomFrac ?? 0) * 100)} min={0} max={100} step={1} suffix="%" onChange={(value) => updateNote(activeNote.id, "vlineBottomFrac", clamp(value / 100, 0, 1))} />
+      </div>}
     </Section>
   ) : (
     <>
@@ -4231,55 +4257,79 @@ export default function App() {
 
                     {S.figureLayoutMode === "single" && phases.filter((phase) => phase.visible && phase.inOverlay).map((phase) => (
                       <g key={`phase-overlay-${phase.id}`} clipPath="url(#plot-clip)">
-                        {phase.peaks.map(([x, intensity], index) => {
-                          if (!(x >= viewXMin && x <= viewXMax)) return null;
-                          if (breakActive && x > Number(S.brokenAxisStart) && x < Number(S.brokenAxisEnd)) return null;
-                          const px = xToPx(x);
+                        {(() => {
+                          // Poignée de hauteur : elle agit sur le facteur d'échelle
+                          // propre à la phase, appliqué à tous ses bâtonnets.
+                          const scaleDrag = dragPreview?.type === "phaseOverlayScale" && dragPreview.id === phase.id ? dragPreview : null;
+                          const scale = scaleDrag ? scaleDrag.scale : (Number.isFinite(Number(phase.overlayScale)) && phase.overlayScale !== null && phase.overlayScale !== undefined ? Number(phase.overlayScale) : (Number(S.phaseOverlayScale) || 0.85));
+                          const reference = Math.max(0.2, curveMaximum);
                           const baseY = Math.min(M.top + mainHeight, yToPx(0));
-                          const topY = Math.max(M.top, S.phaseOverlayFullHeight
-                            ? M.top
-                            : yToPx((intensity / 100) * (Number(S.phaseOverlayScale) || 0.85) * Math.max(0.2, curveMaximum)));
-                          const isException = (phase.overlayValueExceptions || []).some((value) => Math.abs(value - x) < 1e-6);
-                          const showValue = phase.overlayShowValues ? !isException : isException;
-                          const valueText = x.toFixed(S.mode === "drx" ? 2 : 0);
+                          const visiblePeaks = phase.peaks.filter(([x]) => x >= viewXMin && x <= viewXMax && !(breakActive && x > Number(S.brokenAxisStart) && x < Number(S.brokenAxisEnd)));
+                          const strongest = visiblePeaks.reduce((best, peak) => !best || peak[1] > best[1] ? peak : best, null);
                           const valueSize = Number(S.phaseOverlayValueSize) || 8.5;
-                          // Le label se pose au-dessus du sommet de la courbe la plus
-                          // haute au voisinage de la position (pic mesuré), et non au
-                          // sommet du bâtonnet ; à défaut de courbe, il retombe sur le
-                          // bâtonnet. S'il déborderait du cadre, il bascule vers le bas.
-                          const window = Number(S.phaseOverlayValueWindow) > 0
+                          const anchorMode = S.phaseOverlayValueAnchor === "peak" ? "peak" : "stick";
+                          const searchWindow = Number(S.phaseOverlayValueWindow) > 0
                             ? Number(S.phaseOverlayValueWindow)
                             : (S.mode === "drx" ? 0.2 : 8);
-                          const curveTop = curveTopPxNear(x, window);
-                          const anchorY = clamp(curveTop ?? topY, M.top, baseY);
-                          const valueLength = valueText.length * valueSize * 0.62;
-                          const fitsAbove = anchorY - 4 - valueLength >= M.top + 2;
-                          const valueAnchor = fitsAbove ? "start" : "end";
-                          const valueY = fitsAbove ? anchorY - 4 : anchorY + 6;
-                          return <g key={`phase-overlay-line-${phase.id}-${index}`}>
-                            <line
-                              x1={px} x2={px} y1={baseY} y2={topY}
-                              stroke={phase.color} strokeWidth={Number(S.phaseOverlayWidth) || 1}
-                              opacity={Number(S.phaseOverlayOpacity) || 0.7}
-                            />
-                            <line
-                              data-ui-only="true"
-                              x1={px} x2={px} y1={baseY} y2={topY}
-                              stroke="transparent" strokeWidth="9"
-                              style={{ cursor: "pointer" }}
-                              onClick={(event) => { event.stopPropagation(); togglePhaseOverlayValue(phase.id, x); }}
-                            >
-                              <title>{`${phase.name} · ${valueText} — cliquer pour ${showValue ? "masquer" : "afficher"} la valeur`}</title>
-                            </line>
-                            {showValue && <text
-                              x={px} y={valueY} textAnchor={valueAnchor} fontSize={valueSize}
-                              fill={phase.color} fontFamily={figureFont}
-                              transform={`rotate(-90 ${px} ${valueY})`}
-                              style={{ cursor: "pointer", userSelect: "none" }}
-                              onClick={(event) => { event.stopPropagation(); togglePhaseOverlayValue(phase.id, x); }}
-                            >{valueText}</text>}
-                          </g>;
-                        })}
+                          const stickTop = (intensity) => Math.max(M.top, S.phaseOverlayFullHeight ? M.top : yToPx((intensity / 100) * scale * reference));
+                          return <>
+                            {visiblePeaks.map(([x, intensity], index) => {
+                              const px = xToPx(x);
+                              const topY = stickTop(intensity);
+                              const isException = (phase.overlayValueExceptions || []).some((value) => Math.abs(value - x) < 1e-6);
+                              const showValue = phase.overlayShowValues ? !isException : isException;
+                              const valueText = x.toFixed(S.mode === "drx" ? 2 : 0);
+                              // Ancrage de la valeur : extrémité du bâtonnet par défaut,
+                              // sommet de la courbe mesurée en option. Si le texte
+                              // déborderait du cadre, il bascule vers le bas.
+                              const anchorY = anchorMode === "peak"
+                                ? clamp(curveTopPxNear(x, searchWindow) ?? topY, M.top, baseY)
+                                : topY;
+                              const valueLength = valueText.length * valueSize * 0.62;
+                              const fitsAbove = anchorY - 4 - valueLength >= M.top + 2;
+                              const valueAnchor = fitsAbove ? "start" : "end";
+                              const valueY = fitsAbove ? anchorY - 4 : anchorY + 6;
+                              return <g key={`phase-overlay-line-${phase.id}-${index}`}>
+                                <line
+                                  x1={px} x2={px} y1={baseY} y2={topY}
+                                  stroke={phase.color} strokeWidth={Number(S.phaseOverlayWidth) || 1}
+                                  strokeDasharray={phase.dashed ? "3 2" : undefined}
+                                  opacity={Number(S.phaseOverlayOpacity) || 0.7}
+                                />
+                                <line
+                                  data-ui-only="true"
+                                  x1={px} x2={px} y1={baseY} y2={topY}
+                                  stroke="transparent" strokeWidth="9"
+                                  style={{ cursor: "pointer" }}
+                                  onClick={(event) => { event.stopPropagation(); togglePhaseOverlayValue(phase.id, x); }}
+                                >
+                                  <title>{`${phase.name} · ${valueText} — cliquer pour ${showValue ? "masquer" : "afficher"} la valeur`}</title>
+                                </line>
+                                {showValue && <text
+                                  x={px} y={valueY} textAnchor={valueAnchor} fontSize={valueSize}
+                                  fill={phase.color} fontFamily={figureFont}
+                                  transform={`rotate(-90 ${px} ${valueY})`}
+                                  style={{ cursor: "pointer", userSelect: "none" }}
+                                  onClick={(event) => { event.stopPropagation(); togglePhaseOverlayValue(phase.id, x); }}
+                                >{valueText}</text>}
+                              </g>;
+                            })}
+                            {!S.phaseOverlayFullHeight && strongest && isSelected("phase", phase.id) && (() => {
+                              const px = xToPx(strongest[0]);
+                              const py = stickTop(strongest[1]);
+                              return <g data-ui-only="true">
+                                <rect
+                                  x={px - 4.5} y={py - 4.5} width="9" height="9" rx="2"
+                                  fill="#fff" stroke={phase.color} strokeWidth="1.2"
+                                  style={{ cursor: "ns-resize" }}
+                                  onPointerDown={(event) => beginCanvasDrag(event, "phaseOverlayScale", { id: phase.id, scale, intensity: strongest[1], reference })}
+                                >
+                                  <title>{`Hauteur des bâtonnets de ${phase.name} — glisser verticalement`}</title>
+                                </rect>
+                              </g>;
+                            })()}
+                          </>;
+                        })()}
                       </g>
                     ))}
                     {S.figureLayoutMode === "single" && S.showOverlayLegend && (() => {
@@ -4304,7 +4354,7 @@ export default function App() {
                         {overlayPhases.map((phase, index) => {
                           const y = boxY + 10 + index * lineHeight + fontSize * 0.5;
                           return <g key={`overlay-legend-${phase.id}`}>
-                            <line x1={boxX + 8} x2={boxX + 34} y1={y - fontSize * 0.32} y2={y - fontSize * 0.32} stroke={phase.color} strokeWidth={Math.max(1.4, (Number(S.phaseOverlayWidth) || 1) * 1.6)} />
+                            <line x1={boxX + 8} x2={boxX + 34} y1={y - fontSize * 0.32} y2={y - fontSize * 0.32} stroke={phase.color} strokeWidth={Math.max(1.4, (Number(S.phaseOverlayWidth) || 1) * 1.6)} strokeDasharray={phase.dashed ? "3 2" : undefined} />
                             <text x={boxX + 40} y={y} fontSize={fontSize} fill="#15191f" fontFamily={figureFont} style={{ userSelect: "none" }}>{phase.name}</text>
                           </g>;
                         })}
@@ -4429,7 +4479,7 @@ export default function App() {
 
                     {S.figureLayoutMode === "single" && hasAnnotations && annotationData.ticks.map((tick, index) => {
                       const height = (tick.intensity / 100) * S.tickScale;
-                      return <line key={`annotation-tick-${index}`} x1={xToPx(tick.x)} x2={xToPx(tick.x)} y1={yToPx(annotationBase)} y2={yToPx(annotationBase + height)} stroke={tick.color} strokeWidth="0.85" opacity="0.88" />;
+                      return <line key={`annotation-tick-${index}`} x1={xToPx(tick.x)} x2={xToPx(tick.x)} y1={yToPx(annotationBase)} y2={yToPx(annotationBase + height)} stroke={tick.color} strokeWidth="0.85" strokeDasharray={tick.dashed ? "3 2" : undefined} opacity="0.88" />;
                     })}
                     {S.figureLayoutMode === "single" && hasAnnotations && annotationData.labels.map((tick, index) => {
                       const height = (tick.intensity / 100) * S.tickScale;
@@ -4469,9 +4519,27 @@ export default function App() {
                       const estimatedWidth = Math.max(24, safe.text.length * fontSize * 0.58);
                       const boxLeft = x - estimatedWidth / 2 - 4;
                       const boxTop = y - fontSize - 4;
+                      // Extrémités du trait : fractions de la hauteur tracée,
+                      // ajustables à la souris via les deux poignées.
+                      const topDrag = dragPreview?.type === "noteVlineTop" && dragPreview.id === safe.id ? dragPreview : null;
+                      const bottomDrag = dragPreview?.type === "noteVlineBottom" && dragPreview.id === safe.id ? dragPreview : null;
+                      const topFrac = topDrag ? topDrag.frac : safe.vlineTopFrac;
+                      const bottomFrac = bottomDrag ? bottomDrag.frac : safe.vlineBottomFrac;
+                      const lineTopY = M.top + mainHeight * (1 - Math.max(topFrac, bottomFrac));
+                      const lineBottomY = M.top + mainHeight * (1 - Math.min(topFrac, bottomFrac));
                       return (
                         <g key={safe.id} opacity={selected ? 1 : 0.92}>
-                          {safe.vline && <line x1={x} x2={x} y1={M.top} y2={M.top + mainHeight} stroke={safe.color} strokeWidth="0.75" strokeDasharray="4 3" opacity="0.75" />}
+                          {safe.vline && <>
+                            <line x1={x} x2={x} y1={lineTopY} y2={lineBottomY} stroke={safe.color} strokeWidth="0.75" strokeDasharray="4 3" opacity="0.75" />
+                            {selected && <g data-ui-only="true">
+                              <rect x={x - 4} y={lineTopY - 4} width="8" height="8" rx="2" fill="#fff" stroke={safe.color} strokeWidth="1.1" style={{ cursor: "ns-resize" }} onPointerDown={(event) => beginCanvasDrag(event, "noteVlineTop", { id: safe.id, frac: topFrac })}>
+                                <title>Extrémité haute du trait</title>
+                              </rect>
+                              <rect x={x - 4} y={lineBottomY - 4} width="8" height="8" rx="2" fill="#fff" stroke={safe.color} strokeWidth="1.1" style={{ cursor: "ns-resize" }} onPointerDown={(event) => beginCanvasDrag(event, "noteVlineBottom", { id: safe.id, frac: bottomFrac })}>
+                                <title>Extrémité basse du trait</title>
+                              </rect>
+                            </g>}
+                          </>}
                           <text
                             x={x} y={y} textAnchor="middle" fontSize={fontSize} fill={safe.color} fontFamily={figureFont}
                             transform={safe.rotation ? `rotate(${safe.rotation} ${x} ${y})` : undefined}
@@ -4513,7 +4581,7 @@ export default function App() {
                           return (
                             <g key={phase.id} onDoubleClick={(event) => openContextOptions(event, { tab: "inspector", type: "phase", id: phase.id, target: "phase-name" })} style={{ cursor: "pointer" }}>
                               {phase.peaks.map(([x, intensity], index) => x >= viewXMin && x <= viewXMax && (!breakActive || x <= Number(S.brokenAxisStart) || x >= Number(S.brokenAxisEnd)) ? (
-                                <line key={index} x1={xToPx(x)} x2={xToPx(x)} y1={rowTop + rowHeight - 4} y2={rowTop + rowHeight - 4 - (intensity / 100) * rowHeight * 0.78} stroke={phase.color} strokeWidth={S.pdfStickW} opacity="0.9" />
+                                <line key={index} x1={xToPx(x)} x2={xToPx(x)} y1={rowTop + rowHeight - 4} y2={rowTop + rowHeight - 4 - (intensity / 100) * rowHeight * 0.78} stroke={phase.color} strokeWidth={S.pdfStickW} strokeDasharray={phase.dashed ? "3 2" : undefined} opacity="0.9" />
                               ) : null)}
                               {S.showRowLabels && <>
                                 <text x={M.left + 8} y={rowTop + rowHeight * 0.3} fontSize="10.5" fontWeight="700" fill={phase.color} fontFamily={figureFont}>{phase.name}</text>
@@ -4728,13 +4796,22 @@ export default function App() {
                   <div className="callout">Les modes multi-panneaux utilisent un rendu volontairement simplifié : annotations de phases, notes et panneau de références sont réservés à la figure unique afin d’éviter une composition illisible.</div>
                 </Section>
 
+                <Section title="Axe X brisé" defaultOpen={false}>
+                  <Toggle label="Activer la coupure" checked={S.brokenAxisEnabled} onChange={(value) => patchSettings("brokenAxisEnabled", value)} description={activeMode === "drx" ? "En DRX, disponible lorsque l’axe principal est 2θ." : "Supprime une plage sans intérêt entre deux régions spectrales."} />
+                  {S.brokenAxisEnabled && <>
+                    <div className="two-columns">
+                      <NumberField label="Début de coupure" value={S.brokenAxisStart} step={activeMode === "drx" ? 0.5 : 10} suffix={primaryAxisUnit} onChange={(value) => patchSettings("brokenAxisStart", value)} />
+                      <NumberField label="Fin de coupure" value={S.brokenAxisEnd} step={activeMode === "drx" ? 0.5 : 10} suffix={primaryAxisUnit} onChange={(value) => patchSettings("brokenAxisEnd", value)} />
+                    </div>
+                    <SliderField label="Largeur visuelle de coupure" value={S.brokenAxisGapPx} min={8} max={50} step={1} suffix="px" onChange={(value) => patchSettings("brokenAxisGapPx", value)} />
+                    {!breakActive && <div className="callout">La coupure n’est pas appliquée : les bornes doivent être strictement comprises dans la fenêtre affichée{activeMode === "drx" ? " et l’axe principal doit être 2θ" : ""}.</div>}
+                  </>}
+                </Section>
                 {activeMode === "drx" && <Section title="Axes DRX avancés" defaultOpen={false} targetId="inset-options">
                   <SelectField label="Axe X principal" value={S.xAxisMode || "2theta"} onChange={(value) => patchSettingsValues({ xAxisMode: value, xTickStep: 0 })} options={[["2theta", "2θ"], ["d", "d-spacing"], ["q", "Q"]]} />
                   <Toggle label="Axe X secondaire en haut" checked={S.showSecondaryXAxis} onChange={(value) => patchSettings("showSecondaryXAxis", value)} />
                   {S.showSecondaryXAxis && <SelectField label="Unité secondaire" value={S.secondaryXAxisMode} onChange={(value) => patchSettings("secondaryXAxisMode", value)} options={[["d", "d-spacing (Å)"], ["q", "Q (Å⁻¹)"], ["2theta", "2θ (°)"]]} />}
                   <Toggle label="Axe Y secondaire" checked={S.showSecondaryYAxis} onChange={(value) => patchSettings("showSecondaryYAxis", value)} />
-                  <Toggle label="Axe X brisé" checked={S.brokenAxisEnabled} onChange={(value) => patchSettings("brokenAxisEnabled", value)} description="Disponible lorsque l’axe principal est 2θ." />
-                  {S.brokenAxisEnabled && <><div className="two-columns"><NumberField label="Début de coupure" value={S.brokenAxisStart} step={0.5} suffix="°" onChange={(value) => patchSettings("brokenAxisStart", value)} /><NumberField label="Fin de coupure" value={S.brokenAxisEnd} step={0.5} suffix="°" onChange={(value) => patchSettings("brokenAxisEnd", value)} /></div><SliderField label="Largeur visuelle de coupure" value={S.brokenAxisGapPx} min={8} max={50} step={1} suffix="px" onChange={(value) => patchSettings("brokenAxisGapPx", value)} /></>}
                   <Toggle label="Encart de zoom" checked={S.showInset} onChange={(value) => patchSettings("showInset", value)} />
                   {S.showInset && <><SelectField label="Patron de l’encart" value={S.insetPatternId || ""} onChange={(value) => patchSettings("insetPatternId", value)} options={[["", "Patron sélectionné"], ...patterns.filter((pattern) => pattern.visible).map((pattern) => [pattern.id, pattern.label])]} /><div className="two-columns"><NumberField label={`X min encart (${primaryAxisUnit})`} value={insetAxisWindow.minimum} step={primaryAxisStep} onChange={(value) => commitInsetAxisBound("minimum", value)} /><NumberField label={`X max encart (${primaryAxisUnit})`} value={insetAxisWindow.maximum} step={primaryAxisStep} onChange={(value) => commitInsetAxisBound("maximum", value)} /></div><SelectField label="Placement" value={S.insetPlacementMode || "overlay"} onChange={(value) => patchSettings("insetPlacementMode", value)} options={[["overlay", "Superposition libre"], ["dock-right", "Zone réservée à droite"], ["dock-top", "Zone réservée en haut"]]} /><SliderField label="Largeur de l’encart" value={S.insetWidthPct} min={15} max={70} step={1} suffix="%" onChange={(value) => patchSettings("insetWidthPct", value)} /><SliderField label="Hauteur de l’encart" value={S.insetHeightPct} min={15} max={70} step={1} suffix="%" onChange={(value) => patchSettings("insetHeightPct", value)} /><Toggle label="Rectangle de la zone agrandie" checked={S.insetShowSourceRect !== false} onChange={(value) => patchSettings("insetShowSourceRect", value)} />{S.insetShowSourceRect !== false && <Toggle label="Traits de liaison" checked={S.insetShowConnectors !== false} onChange={(value) => patchSettings("insetShowConnectors", value)} />}<div className="callout">En superposition, déplacer l’encart par sa barre supérieure et le redimensionner avec la poignée. Un contour rouge signale une collision probable avec les annotations. Les docks agrandissent la figure sans masquer les données.</div><div className="inline-actions"><Button variant="secondary" icon="reset" onClick={() => history.set((current) => updateWorkspaceProject(current, activeMode, (workspace) => ({ ...workspace, settings: { ...workspace.settings, insetXFrac: 0.63, insetYFrac: 0.06, insetWidthPct: 34, insetHeightPct: 34 } })))}>Réinitialiser l’encart</Button></div></>}
                 </Section>}
@@ -4895,6 +4972,8 @@ export default function App() {
                       <Toggle label={phase.name} checked={Boolean(phase.inOverlay)} onChange={(value) => updatePhase(phase.id, "inOverlay", value)} />
                       {phase.inOverlay && <>
                         <Toggle label={`— Valeurs des pics (${S.mode === "drx" ? "2θ" : "cm⁻¹"})`} checked={Boolean(phase.overlayShowValues)} onChange={(value) => updatePhase(phase.id, "overlayShowValues", value)} />
+                        {!S.phaseOverlayFullHeight && <SliderField label="— Hauteur propre à la phase" value={Number.isFinite(Number(phase.overlayScale)) && phase.overlayScale !== null && phase.overlayScale !== undefined ? Number(phase.overlayScale) : (S.phaseOverlayScale ?? 0.85)} min={0.05} max={2.5} step={0.05} onChange={(value) => updatePhase(phase.id, "overlayScale", value)} />}
+                        {phase.overlayScale !== null && phase.overlayScale !== undefined && <div className="inline-actions"><Button variant="secondary" icon="reset" onClick={() => updatePhase(phase.id, "overlayScale", null)}>Revenir à la hauteur globale</Button></div>}
                         {(phase.overlayValueExceptions?.length || 0) > 0 && <div className="inline-actions"><Button variant="secondary" icon="reset" onClick={() => updatePhase(phase.id, "overlayValueExceptions", [])}>Réinitialiser les {phase.overlayValueExceptions.length} exception(s)</Button></div>}
                       </>}
                     </div>
@@ -4906,7 +4985,9 @@ export default function App() {
                     <SliderField label="Épaisseur" value={S.phaseOverlayWidth ?? 1} min={0.3} max={4} step={0.05} onChange={(value) => patchSettings("phaseOverlayWidth", value)} />
                     <SliderField label="Opacité" value={S.phaseOverlayOpacity ?? 0.7} min={0.05} max={1} step={0.05} onChange={(value) => patchSettings("phaseOverlayOpacity", value)} />
                     <SliderField label="Taille des valeurs" value={S.phaseOverlayValueSize ?? 8.5} min={5} max={16} step={0.5} suffix="pt" onChange={(value) => patchSettings("phaseOverlayValueSize", value)} />
-                    <NumberField label={`Fenêtre de recherche du sommet (${activeMode === "drx" ? "°" : "cm⁻¹"})`} value={S.phaseOverlayValueWindow ?? 0} min={0} step={activeMode === "drx" ? 0.05 : 1} onChange={(value) => patchSettings("phaseOverlayValueWindow", value)} hint={`0 = automatique (${activeMode === "drx" ? "0,2°" : "8 cm⁻¹"}). La valeur se place au-dessus du maximum des courbes dans cette fenêtre.`} />
+                    <SelectField label="Position des valeurs" value={S.phaseOverlayValueAnchor === "peak" ? "peak" : "stick"} onChange={(value) => patchSettings("phaseOverlayValueAnchor", value)} options={[["stick", "À l'extrémité du bâtonnet"], ["peak", "Au-dessus du pic mesuré"]]} />
+                    {S.phaseOverlayValueAnchor === "peak" && <NumberField label={`Fenêtre de recherche du sommet (${activeMode === "drx" ? "°" : "cm⁻¹"})`} value={S.phaseOverlayValueWindow ?? 0} min={0} step={activeMode === "drx" ? 0.05 : 1} onChange={(value) => patchSettings("phaseOverlayValueWindow", value)} hint={`0 = automatique (${activeMode === "drx" ? "0,2°" : "8 cm⁻¹"}).`} />}
+                    <div className="callout">Sélectionner une phase dans la liste de gauche fait apparaître une poignée carrée au sommet de son bâtonnet le plus intense : la glisser verticalement règle la hauteur de tous ses bâtonnets.</div>
                     <Toggle label="Légende dans la figure" checked={S.showOverlayLegend !== false} onChange={(value) => patchSettings("showOverlayLegend", value)} />
                     {S.showOverlayLegend !== false && <>
                       <SliderField label="Taille du texte de légende" value={S.overlayLegendFontSize ?? 10} min={6} max={20} step={0.5} suffix="pt" onChange={(value) => patchSettings("overlayLegendFontSize", value)} />
