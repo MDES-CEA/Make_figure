@@ -3059,14 +3059,20 @@ export function svgToVectorPdf(serializedSvg, svgWidth, svgHeight) {
       for (const tspan of tspans) {
         cumulative += Number.parseFloat(tspan.getAttribute("dy")) || 0;
         const clone = element.cloneNode(false);
-        clone.textContent = tspan.textContent || "";
+        clone.textContent = [...tspan.childNodes].filter((node) => node.nodeType === 3).map((node) => node.textContent).join("") || tspan.textContent || "";
         if (tspan.getAttribute("x") !== null) clone.setAttribute("x", tspan.getAttribute("x"));
         clone.setAttribute("y", String((Number.parseFloat(element.getAttribute("y")) || 0) + cumulative));
         emitText(clone);
       }
       return;
     }
-    const raw = element.textContent || "";
+    // Le contenu textuel exclut les <title> et <desc> : ce sont des
+    // info-bulles, textContent les concatènerait au texte visible et le PDF
+    // afficherait « Glisser pour déplacer la valeur… » sur chaque étiquette.
+    const raw = [...element.childNodes]
+      .filter((node) => node.nodeType === 3 || (node.tagName && node.tagName !== "title" && node.tagName !== "desc"))
+      .map((node) => node.textContent || "")
+      .join("");
     if (!raw.trim()) return;
     const fontSize = (Number.parseFloat(element.getAttribute("font-size")) || 12) * k;
     const font = fontName(element.getAttribute("font-family"), element.getAttribute("font-weight"), element.getAttribute("font-style"));
