@@ -194,7 +194,9 @@ function safeNoteModel(note, xmin = 0, xmax = 1) {
     vlineTopFrac: clamp(finiteNumber(note?.vlineTopFrac, 1), 0, 1),
     vlineBottomFrac: clamp(finiteNumber(note?.vlineBottomFrac, 0), 0, 1),
     anchorLine: Boolean(note?.anchorLine),
-    anchorX: Number.isFinite(Number(note?.anchorX)) ? Number(note.anchorX) : null,
+    // Number(null) vaut 0 : sans test d'existence, une accroche jamais placée
+    // partait à x = 0, hors de la fenêtre affichée.
+    anchorX: note?.anchorX !== null && note?.anchorX !== undefined && Number.isFinite(Number(note.anchorX)) ? Number(note.anchorX) : null,
     anchorYFrac: clamp(finiteNumber(note?.anchorYFrac, 0.5), 0, 1),
     visible: note?.visible !== false,
   };
@@ -3190,12 +3192,12 @@ export default function App() {
         let dx = interaction.payload.dx + (point.svgX - interaction.start.svgX);
         let dy = interaction.payload.dy + (point.svgY - interaction.start.svgY);
         let snapped = null;
-        // Accrochage : près de l'extrémité du bâtonnet, le décalage s'annule ;
-        // près du sommet du pic mesuré, la valeur s'y colle.
-        if (Math.hypot(dx, dy) < 9) { dx = 0; dy = 0; snapped = "stick"; }
-        else if (Number.isFinite(interaction.payload.curveY)) {
-          const targetDy = interaction.payload.curveY - interaction.payload.stickY;
-          if (Math.hypot(dx, dy - targetDy) < 9) { dx = 0; dy = targetDy; snapped = "peak"; }
+        // Accrochage : près de l'ancrage courant (bâtonnet ou pic selon le mode),
+        // le décalage s'annule ; près de la cible alternative, la valeur s'y colle.
+        if (Math.hypot(dx, dy) < 12) { dx = 0; dy = 0; snapped = "anchor"; }
+        else if (Number.isFinite(interaction.payload.altY)) {
+          const targetDy = interaction.payload.altY - interaction.payload.stickY;
+          if (Math.abs(targetDy) > 4 && Math.hypot(dx, dy - targetDy) < 12) { dx = 0; dy = targetDy; snapped = "alt"; }
         }
         setDragPreview({ type: "overlayValueMove", phaseId: interaction.payload.phaseId, x: interaction.payload.x, dx, dy, snapped, stickX: interaction.payload.stickX, stickY: interaction.payload.stickY });
       } else if (interaction.type === "phaseOverlayPeakScale") {
@@ -3904,7 +3906,21 @@ export default function App() {
       </div>
       <Field label="Couleur"><div className="color-field"><input type="color" value={safeNoteModel(activeNote, S.xmin, S.xmax).color} onChange={(event) => updateNote(activeNote.id, "color", event.target.value)} /><code>{activeNote.color}</code></div></Field>
       <Toggle label="Visible" checked={activeNote.visible !== false} onChange={(value) => updateNote(activeNote.id, "visible", value)} /><Toggle label="Ligne verticale" checked={activeNote.vline} onChange={(value) => updateNote(activeNote.id, "vline", value)} />
-      <Toggle label="Ligne d'accroche" checked={Boolean(activeNote.anchorLine)} onChange={(value) => updateNote(activeNote.id, "anchorLine", value)} description="Trait de la note vers un point de la figure. Sélectionner la note puis glisser l'extrémité sur le pic visé ; elle s'aimante aux pics détectés." />
+      <Toggle label="Ligne d'accroche" checked={Boolean(activeNote.anchorLine)} onChange={(value) => {
+        // À l'activation, l'extrémité démarre juste sous la note, dans la
+        // fenêtre visible, pour être saisissable immédiatement.
+        history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
+          ...currentWorkspace,
+          notes: currentWorkspace.notes.map((note) => note.id === activeNote.id ? {
+            ...note,
+            anchorLine: value,
+            anchorX: value && (note.anchorX === null || note.anchorX === undefined || note.anchorX < viewXMin || note.anchorX > viewXMax)
+              ? clamp(Number(note.x), viewXMin, viewXMax)
+              : note.anchorX,
+            anchorYFrac: value && !Number.isFinite(Number(note.anchorYFrac)) ? clamp(finiteNumber(note.yFrac, 0.5) - 0.18, 0, 1) : (Number.isFinite(Number(note.anchorYFrac)) ? note.anchorYFrac : 0.5),
+          } : note),
+        })));
+      }} description="Trait de la note vers un point de la figure. Sélectionner la note puis glisser l'extrémité sur le pic visé ; elle s'aimante aux pics détectés." />
       {activeNote.vline && <div className="two-columns">
         <SliderField label="Extrémité haute" value={Math.round((activeNote.vlineTopFrac ?? 1) * 100)} min={0} max={100} step={1} suffix="%" onChange={(value) => updateNote(activeNote.id, "vlineTopFrac", clamp(value / 100, 0, 1))} />
         <SliderField label="Extrémité basse" value={Math.round((activeNote.vlineBottomFrac ?? 0) * 100)} min={0} max={100} step={1} suffix="%" onChange={(value) => updateNote(activeNote.id, "vlineBottomFrac", clamp(value / 100, 0, 1))} />
@@ -4497,7 +4513,12 @@ export default function App() {
                                     fill={phase.color} fontFamily={figureFont}
                                     transform={`rotate(-90 ${valueX} ${valueYFinal})`}
                                     style={{ cursor: "move", userSelect: "none" }}
-                                    onPointerDown={(event) => beginCanvasDrag(event, "overlayValueMove", { phaseId: phase.id, x, dx: offsetX, dy: offsetY, stickX: px, stickY: anchorY, curveY: curveTopPxNear(x, searchWindow, invertSticks) })}
+                                    onPointerDown={(event) => beginCanvasDrag(event, "overlayValueMove", {
+                                      phaseId: phase.id, x, dx: offsetX, dy: offsetY, stickX: px, stickY: anchorY,
+                                      // Cible alternative d'accrochage : le bâtonnet quand
+                                      // l'ancrage courant est le pic mesuré, et inversement.
+                                      altY: anchorMode === "peak" ? topY : curveTopPxNear(x, searchWindow, invertSticks),
+                                    })}
                                     onDoubleClick={(event) => { event.stopPropagation(); togglePhaseOverlayValue(phase.id, x); }}
                                   ><title>Glisser pour déplacer la valeur, relâcher près du bâtonnet ou du pic pour l’y raccrocher ; double-clic pour la masquer</title>{valueText}</text>
                                 </>}
@@ -4762,9 +4783,10 @@ export default function App() {
                             // poignée circulaire avec magnétisme sur les pics.
                             if (!safe.anchorLine) return null;
                             const anchorDrag = dragPreview?.type === "noteAnchorMove" && dragPreview.id === safe.id ? dragPreview : null;
-                            const targetDataX = anchorDrag ? anchorDrag.x : (Number.isFinite(Number(safe.anchorX)) ? Number(safe.anchorX) : safe.x);
-                            const targetFrac = anchorDrag ? anchorDrag.yFrac : clamp(finiteNumber(safe.anchorYFrac, 0.5), 0, 1);
-                            const targetX = xToPx(targetDataX);
+                            const storedX = safe.anchorX !== null && Number.isFinite(Number(safe.anchorX)) ? Number(safe.anchorX) : safe.x;
+                            const targetDataX = anchorDrag ? anchorDrag.x : clamp(storedX, viewXMin, viewXMax);
+                            const targetFrac = anchorDrag ? anchorDrag.yFrac : clamp(finiteNumber(safe.anchorYFrac, clamp(safe.yFrac - 0.18, 0, 1)), 0, 1);
+                            const targetX = clamp(xToPx(targetDataX), M.left, M.left + plotWidth);
                             const targetY = M.top + mainHeight * (1 - targetFrac);
                             const startY = targetY >= y ? y + 4 : y - fontSize - 2;
                             return <>
@@ -4877,7 +4899,7 @@ export default function App() {
                         </g>}
                       </g>;
                     })()}
-                    {dragPreview?.type === "overlayValueMove" && dragPreview.snapped && <circle data-ui-only="true" cx={dragPreview.stickX} cy={dragPreview.stickY + (dragPreview.snapped === "peak" ? dragPreview.dy : 0)} r="7" fill="none" stroke="#e0507a" strokeWidth="1.2" strokeDasharray="3 2" pointerEvents="none" />}
+                    {dragPreview?.type === "overlayValueMove" && dragPreview.snapped && <circle data-ui-only="true" cx={dragPreview.stickX} cy={dragPreview.stickY + dragPreview.dy} r="7" fill="none" stroke="#e0507a" strokeWidth="1.2" strokeDasharray="3 2" pointerEvents="none" />}
                     {dragPreview?.type === "zoomRect" && <rect data-ui-only="true" x={Math.min(dragPreview.x1, dragPreview.x2)} y={M.top} width={Math.abs(dragPreview.x2 - dragPreview.x1)} height={mainHeight} fill="#dc7848" opacity="0.12" stroke="#dc7848" strokeWidth="1" strokeDasharray="4 3" pointerEvents="none" />}
                     {dragPreview?.type === "curveOrder" && <line data-ui-only="true" x1={M.left} x2={M.left + plotWidth + S.rightMargin - 8} y1={dragPreview.svgY} y2={dragPreview.svgY} stroke="#dc7848" strokeWidth="1.2" strokeDasharray="4 3" opacity="0.8" />}
                     {cursor && <g data-ui-only="true" pointerEvents="none"><line x1={cursor.svgX} x2={cursor.svgX} y1={M.top} y2={M.top + mainHeight} stroke={cursor.snapped ? "#dc7848" : "#67707c"} strokeWidth="0.7" strokeDasharray="3 3" opacity="0.75"/></g>}
