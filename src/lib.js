@@ -178,8 +178,10 @@ export const INITIAL_SETTINGS = {
   overlayLegendFontSize: 10,
   phaseOverlayValueSize: 8.5,
   showOverlayHandles: true,
+  phaseOverlayUseIntensity: false,
   phaseOverlayValueWindow: 0,
   phaseOverlayValueAnchor: "stick",
+  phaseOverlayDisplay: "both",
   peakMinHeight: 10,
   peakMinProminence: 5,
   peakMinDistance: 0.5,
@@ -3049,6 +3051,21 @@ export function svgToVectorPdf(serializedSvg, svgWidth, svgHeight) {
   const paintOperator = ({ fill, stroke }) => fill && stroke ? "B" : fill ? "f" : stroke ? "S" : "n";
 
   const emitText = (element) => {
+    // Texte multi-lignes : les tspans dotés d'un dy sont émis comme des
+    // lignes séparées, sinon textContent concaténerait tout sur une ligne.
+    const tspans = [...element.children].filter((child) => child.tagName === "tspan");
+    if (tspans.length > 1) {
+      let cumulative = 0;
+      for (const tspan of tspans) {
+        cumulative += Number.parseFloat(tspan.getAttribute("dy")) || 0;
+        const clone = element.cloneNode(false);
+        clone.textContent = tspan.textContent || "";
+        if (tspan.getAttribute("x") !== null) clone.setAttribute("x", tspan.getAttribute("x"));
+        clone.setAttribute("y", String((Number.parseFloat(element.getAttribute("y")) || 0) + cumulative));
+        emitText(clone);
+      }
+      return;
+    }
     const raw = element.textContent || "";
     if (!raw.trim()) return;
     const fontSize = (Number.parseFloat(element.getAttribute("font-size")) || 12) * k;
@@ -3103,20 +3120,70 @@ export function svgToVectorPdf(serializedSvg, svgWidth, svgHeight) {
     stream.push(paintOperator(paint));
   };
 
+  /**
+   * Trace un chemin SVG. Les commandes relatives (m, l, h, v, c, q) sont
+   * converties en coordonnées absolues : les traiter comme absolues plaçait
+   * par exemple les marques de coupure d'axe, écrites « M… l5 8 », dans le
+   * coin de la page.
+   */
   const emitPath = (element) => {
     const d = element.getAttribute("d") || "";
-    const commands = d.match(/[MLZmlz][^MLZmlz]*/g);
-    if (!commands) return;
+    const tokens = d.match(/[MmLlHhVvCcSsQqTtZz]|-?\d*\.?\d+(?:e[-+]?\d+)?/gi);
+    if (!tokens) return;
     const paint = emitPaint(element, null, null);
+    let index = 0;
+    let command = null;
+    let currentX = 0;
+    let currentY = 0;
+    let startX = 0;
+    let startY = 0;
     let emitted = false;
-    for (const command of commands) {
-      const letter = command[0].toUpperCase();
-      if (letter === "Z") { stream.push("h"); continue; }
-      const coordinates = command.slice(1).trim().split(/[\s,]+/).map(Number.parseFloat).filter(Number.isFinite);
-      for (let i = 0; i + 1 < coordinates.length; i += 2) {
-        const operator = letter === "M" && i === 0 ? "m" : "l";
-        stream.push(`${number(tx(coordinates[i]))} ${number(ty(coordinates[i + 1]))} ${operator}`);
-        emitted = true;
+    const nextNumber = () => Number.parseFloat(tokens[index++]);
+    const moveTo = (x, y) => { stream.push(`${number(tx(x))} ${number(ty(y))} m`); currentX = x; currentY = y; startX = x; startY = y; emitted = true; };
+    const lineTo = (x, y) => { stream.push(`${number(tx(x))} ${number(ty(y))} l`); currentX = x; currentY = y; emitted = true; };
+    const curveTo = (x1, y1, x2, y2, x, y) => {
+      stream.push(`${number(tx(x1))} ${number(ty(y1))} ${number(tx(x2))} ${number(ty(y2))} ${number(tx(x))} ${number(ty(y))} c`);
+      currentX = x; currentY = y; emitted = true;
+    };
+    while (index < tokens.length) {
+      if (/[MmLlHhVvCcSsQqTtZz]/.test(tokens[index])) command = tokens[index++];
+      else if (command === "M") command = "L";
+      else if (command === "m") command = "l";
+      const relative = command === command.toLowerCase();
+      const letter = command.toUpperCase();
+      if (letter === "Z") { stream.push("h"); currentX = startX; currentY = startY; continue; }
+      if (letter === "M" || letter === "L") {
+        const x = nextNumber() + (relative ? currentX : 0);
+        const y = nextNumber() + (relative ? currentY : 0);
+        if (letter === "M") moveTo(x, y); else lineTo(x, y);
+      } else if (letter === "H") {
+        lineTo(nextNumber() + (relative ? currentX : 0), currentY);
+      } else if (letter === "V") {
+        lineTo(currentX, nextNumber() + (relative ? currentY : 0));
+      } else if (letter === "C") {
+        const x1 = nextNumber() + (relative ? currentX : 0);
+        const y1 = nextNumber() + (relative ? currentY : 0);
+        const x2 = nextNumber() + (relative ? currentX : 0);
+        const y2 = nextNumber() + (relative ? currentY : 0);
+        const x = nextNumber() + (relative ? currentX : 0);
+        const y = nextNumber() + (relative ? currentY : 0);
+        curveTo(x1, y1, x2, y2, x, y);
+      } else if (letter === "Q") {
+        // Quadratique convertie en cubique équivalente.
+        const qx = nextNumber() + (relative ? currentX : 0);
+        const qy = nextNumber() + (relative ? currentY : 0);
+        const x = nextNumber() + (relative ? currentX : 0);
+        const y = nextNumber() + (relative ? currentY : 0);
+        curveTo(currentX + (2 / 3) * (qx - currentX), currentY + (2 / 3) * (qy - currentY), x + (2 / 3) * (qx - x), y + (2 / 3) * (qy - y), x, y);
+      } else {
+        // S et T non émis par l'application : les coordonnées sont consommées
+        // et le point final rejoint par un segment.
+        const count = letter === "S" ? 4 : 2;
+        const values = [];
+        for (let i = 0; i < count; i += 1) values.push(nextNumber());
+        const x = values[count - 2] + (relative ? currentX : 0);
+        const y = values[count - 1] + (relative ? currentY : 0);
+        lineTo(x, y);
       }
     }
     if (emitted) stream.push(paintOperator({ fill: paint.fill, stroke: paint.stroke }));
