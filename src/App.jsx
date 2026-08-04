@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useHistoryState from "./useHistoryState";
+import { translate, SUPPORTED_LANGUAGES, defaultAxisLabels } from "./i18n.js";
 import ramanDatabaseSeed from "./ramanDatabaseSeed.json";
 import {
   CMAPS,
@@ -448,12 +449,12 @@ function Button({ children, icon, variant = "ghost", active = false, disabled = 
     <button
       type="button"
       className={`button button--${variant} ${active ? "is-active" : ""} ${className}`}
-      title={title}
+      title={tr(title)}
       disabled={disabled}
       onClick={onClick}
     >
       {icon && <Icon name={icon} />}
-      {children && <span>{children}</span>}
+      {children && <span>{typeof children === "string" ? tr(children) : children}</span>}
     </button>
   );
 }
@@ -463,7 +464,7 @@ function IconButton({ icon, title, active = false, disabled = false, danger = fa
     <button
       type="button"
       className={`icon-button ${active ? "is-active" : ""} ${danger ? "is-danger" : ""}`}
-      title={title}
+      title={tr(title)}
       disabled={disabled}
       onClick={onClick}
     >
@@ -472,13 +473,18 @@ function IconButton({ icon, title, active = false, disabled = false, danger = fa
   );
 }
 
+// Langue de l'interface. Les composants partagés étant recréés à chaque rendu
+// de App, la variable est positionnée en tête de rendu et lue par tr().
+let UI_LANGUAGE = "fr";
+const tr = (text) => translate(text, UI_LANGUAGE);
+
 function Section({ title, children, defaultOpen = true, badge, targetId }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
     <section className={`property-section ${open ? "is-open" : ""}`} data-context-target={targetId || undefined}>
       <button type="button" className="property-section__header" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
         <span className="property-section__chevron"><Icon name="chevronRight" size={14} /></span>
-        <span>{title}</span>
+        <span>{tr(title)}</span>
         {badge !== undefined && <span className="property-section__badge">{badge}</span>}
       </button>
       <div className="property-section__collapsible" aria-hidden={!open}>
@@ -491,9 +497,9 @@ function Section({ title, children, defaultOpen = true, badge, targetId }) {
 function Field({ label, children, hint, targetId }) {
   return (
     <label className="field" data-context-target={targetId || undefined}>
-      <span className="field__label">{label}</span>
+      <span className="field__label">{tr(label)}</span>
       {children}
-      {hint && <span className="field__hint">{hint}</span>}
+      {hint && <span className="field__hint">{tr(hint)}</span>}
     </label>
   );
 }
@@ -623,7 +629,7 @@ function SelectField({ label, value, onChange, options, targetId }) {
       <select value={value} onChange={(event) => onChange(event.target.value)}>
         {options.map((option) => {
           const [optionValue, optionLabel] = Array.isArray(option) ? option : [option, option];
-          return <option key={optionValue} value={optionValue}>{optionLabel}</option>;
+          return <option key={optionValue} value={optionValue}>{tr(optionLabel)}</option>;
         })}
       </select>
     </Field>
@@ -634,8 +640,8 @@ function Toggle({ label, checked, onChange, description }) {
   return (
     <button type="button" className="toggle-row" onClick={() => onChange(!checked)}>
       <span>
-        <span className="toggle-row__label">{label}</span>
-        {description && <span className="toggle-row__description">{description}</span>}
+        <span className="toggle-row__label">{tr(label)}</span>
+        {description && <span className="toggle-row__description">{tr(description)}</span>}
       </span>
       <span className={`switch ${checked ? "is-on" : ""}`}><span /></span>
     </button>
@@ -1227,6 +1233,12 @@ export default function App() {
     try { return JSON.parse(readLocalSetting("make-figure-style-templates", "[]")) || []; } catch { return []; }
   });
   const [templateName, setTemplateName] = useState("");
+  // Langue de l'interface, persistée hors projet : elle relève du poste de
+  // travail, pas de la figure.
+  const [language, setLanguage] = useState(() => (readLocalSetting("make-figure-language") === "en" ? "en" : "fr"));
+  UI_LANGUAGE = language;
+  useEffect(() => { writeLocalSetting("make-figure-language", language); }, [language]);
+
   const [reduceMotion, setReduceMotion] = useState(() => {
     try {
       const stored = readLocalSetting("make-figure-reduce-motion");
@@ -3997,6 +4009,12 @@ export default function App() {
               <IconButton icon="folder" title="Importer une session JSON · Ctrl+O" onClick={() => sessionInputRef.current?.click()} />
             </div>
             <div className="topbar__group topbar__group--export">
+              <button
+                type="button"
+                className="button button--ghost"
+                title={language === "fr" ? "Switch the interface to English" : "Basculer l’interface en français"}
+                onClick={() => setLanguage((value) => (value === "fr" ? "en" : "fr"))}
+              >{language === "fr" ? "FR" : "EN"}</button>
               <IconButton icon={reduceMotion ? "motionOff" : "motion"} active={reduceMotion} title={reduceMotion ? "Animations réduites" : "Réduire les animations"} onClick={() => setReduceMotion((value) => !value)} />
               <IconButton icon="duplicate" title="Copier la figure PNG dans le presse-papier" disabled={isExporting} onClick={copyPngToClipboard} />
               <Button variant="secondary" disabled={isExporting} onClick={downloadSvg}>SVG</Button>
@@ -4024,7 +4042,7 @@ export default function App() {
               ...(supportsZones ? [["zones", "Zones", zones.length]] : []),
               ["notes", "Notes", notes.length],
             ].map(([value, label, count]) => (
-              <button type="button" key={value} className={leftTab === value ? "is-active" : ""} onClick={() => setLeftTab(value)}><Icon name={value === "patterns" ? "waveform" : value === "phases" ? "phase" : value === "zones" ? "zone" : "note"} size={12} />{label}<span>{count}</span></button>
+              <button type="button" key={value} className={leftTab === value ? "is-active" : ""} onClick={() => setLeftTab(value)}><Icon name={value === "patterns" ? "waveform" : value === "phases" ? "phase" : value === "zones" ? "zone" : "note"} size={12} />{tr(label)}<span>{count}</span></button>
             ))}
           </nav>
           <BulkActionBar
@@ -4928,7 +4946,7 @@ export default function App() {
           {!rightCollapsed && <Resizer side="right" onReset={() => setRightWidth(350)} onResize={{ currentWidth: () => rightWidth, apply: (value) => setRightWidth(clamp(value, 280, 560)) }} />}
           <div className="panel-titlebar"><div><strong>Atelier</strong><span>{selectionCount ? `${selectionCount} sélectionné(s)` : "Aucune sélection"}</span></div><IconButton icon="panelRight" title="Replier le panneau de propriétés" onClick={() => setRightCollapsed(true)} /></div>
           <nav className="panel-tabs panel-tabs--right">
-            {[ ["inspector", "Inspecteur", "cursor"], ["processing", "Traitement", "waveform"], ["references", "Références", "phase"], ["appearance", "Apparence", "sparkles"], ["export", "Export", "download"] ].map(([value, label, icon]) => <button type="button" key={value} className={rightTab === value ? "is-active" : ""} onClick={() => setRightTab(value)}><Icon name={icon} size={12} />{label}{value === "inspector" && selectionCount > 0 && <span>{selectionCount}</span>}</button>)}
+            {[ ["inspector", "Inspecteur", "cursor"], ["processing", "Traitement", "waveform"], ["references", "Références", "phase"], ["appearance", "Apparence", "sparkles"], ["export", "Export", "download"] ].map(([value, label, icon]) => <button type="button" key={value} className={rightTab === value ? "is-active" : ""} onClick={() => setRightTab(value)}><Icon name={icon} size={12} />{tr(label)}{value === "inspector" && selectionCount > 0 && <span>{selectionCount}</span>}</button>)}
           </nav>
           <div className="side-panel__content properties-scroll">
             {rightTab === "appearance" && (
@@ -4967,18 +4985,10 @@ export default function App() {
                     <Toggle label="Grille horizontale" checked={Boolean(S.showGridHorizontal)} onChange={(value) => patchSettings("showGridHorizontal", value)} />
                   </>}
                   {(S.showGrid || (S.showYAxisTicks && S.showGridHorizontal)) && <SliderField label="Opacité de la grille" value={S.gridOpacity} min={0.1} max={1} step={0.05} onChange={(value) => patchSettings("gridOpacity", value)} />}
-                  <Field label="Libellés d'axes" hint="Applique les libellés par défaut de l'espace courant dans la langue choisie.">
+                  <Field label="Libellés d'axes" hint="Applique les libellés par défaut de l'espace courant dans la langue de l'interface.">
                     <div className="inline-actions">
-                      <Button variant="secondary" onClick={() => patchSettingsValues(activeMode === "drx"
-                        ? { xlabel: "2θ (°, Cu Kα, λ = 1.5406 Å)", ylabel: "Intensité (normalisée, décalée)" }
-                        : activeMode === "ir"
-                          ? { xlabel: "Nombre d’onde (cm⁻¹)", ylabel: irQuantity === "transmittance" ? "Transmittance (%)" : "Absorbance (u.a.)" }
-                          : { xlabel: "Décalage Raman (cm⁻¹)", ylabel: "Intensité (normalisée, décalée)" })}>Labels FR</Button>
-                      <Button variant="secondary" onClick={() => patchSettingsValues(activeMode === "drx"
-                        ? { xlabel: "2θ (°, Cu Kα, λ = 1.5406 Å)", ylabel: "Intensity (a.u.)" }
-                        : activeMode === "ir"
-                          ? { xlabel: "Wavenumber (cm⁻¹)", ylabel: irQuantity === "transmittance" ? "Transmittance (%)" : "Absorbance (a.u.)" }
-                          : { xlabel: "Raman shift (cm⁻¹)", ylabel: "Intensity (a.u.)" })}>Labels EN</Button>
+                      <Button variant="secondary" onClick={() => patchSettingsValues(defaultAxisLabels(activeMode, language, irQuantity))}>Appliquer les libellés par défaut</Button>
+                      <Button variant="secondary" onClick={() => patchSettingsValues(defaultAxisLabels(activeMode, language === "fr" ? "en" : "fr", irQuantity))}>{language === "fr" ? "Libellés en anglais" : "Libellés en français"}</Button>
                     </div>
                   </Field>
                   {activeMode === "drx" && <>
