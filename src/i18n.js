@@ -645,6 +645,25 @@ const EN = {
   "Activer le placement puis cliquer dans la zone principale de la figure.": "Enable placement, then click in the main plot area.",
   "Applique les libellés par défaut de l'espace courant dans la langue choisie": "Applies the default labels of the current workspace in the chosen language",
   "Premier patron visible": "First visible pattern",
+  "Données": "Data",
+  "acquisitions moyennées": "averaged acquisitions",
+  "ordre": "order",
+  "pics": "peaks",
+  "points": "points",
+  "éléments": "items",
+  "Les actions suivantes s’appliquent aux": "The following actions apply to the",
+  "patrons sélectionnés.": "selected patterns.",
+  "Premier projet": "First project",
+  "Supprimer ce pic ajouté manuellement": "Delete this manually added peak",
+  "X max de la zone": "Zone X max",
+  "X min de la zone": "Zone X min",
+  "acquisition(s) sélectionnée(s)": "acquisition(s) selected",
+  "fond": "background",
+  "individuel": "individual",
+  "lissage": "smoothing",
+  "normalisation": "normalisation",
+  "sélectionné": "selected",
+  "sélectionnés": "selected",
 };
 
 const DICTIONARIES = { en: EN };
@@ -661,6 +680,21 @@ export function translate(text, language) {
 export const SUPPORTED_LANGUAGES = [["fr", "Français"], ["en", "English"]];
 
 /** Libellés d'axes par défaut, par espace et par langue. */
+// Libellés d'axes par défaut réellement présents dans les réglages initiaux,
+// utilisés pour reconnaître un axe jamais personnalisé.
+export const STOCK_AXIS_LABELS = {
+  x: [
+    "2θ (°, Cu Kα, λ = 1.5406 Å)",
+    "Décalage Raman (cm⁻¹)", "Raman shift (cm⁻¹)",
+    "Nombre d’onde (cm⁻¹)", "Wavenumber (cm⁻¹)",
+  ],
+  y: [
+    "Intensité (normalisée, décalée)", "Intensité (u. a.)", "Intensity (a.u.)",
+    "Absorbance (u.a.)", "Absorbance (u. a.)", "Absorbance (a.u.)",
+    "Transmittance (%)",
+  ],
+};
+
 export function defaultAxisLabels(mode, language, irQuantity = "absorbance") {
   const english = language === "en";
   if (mode === "drx") {
