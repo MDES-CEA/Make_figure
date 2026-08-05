@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useHistoryState from "./useHistoryState";
-import { translate, translateMessage, defaultAxisLabels } from "./i18n.js";
+import { translate, translateMessage, defaultAxisLabels, STOCK_AXIS_LABELS } from "./i18n.js";
 import ramanDatabaseSeed from "./ramanDatabaseSeed.json";
 import {
   CMAPS,
@@ -477,6 +477,8 @@ function IconButton({ icon, title, active = false, disabled = false, danger = fa
 // de App, la variable est positionnée en tête de rendu et lue par tr().
 let UI_LANGUAGE = "fr";
 const tr = (text) => translate(text, UI_LANGUAGE);
+// Locale de formatage des nombres et des dates, alignée sur la langue.
+const uiLocale = () => (UI_LANGUAGE === "en" ? "en-GB" : "fr-FR");
 
 function Section({ title, children, defaultOpen = true, badge, targetId }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -582,7 +584,7 @@ function NumberField({ label, value, onChange, min, max, step = 1, suffix, compa
   return (
     <Field label={label} targetId={targetId} hint={hint}>
       <div className={`input-with-suffix ${compact ? "is-compact" : ""}`}>
-        <NumericInput value={value} min={min} max={max} step={step} onCommit={onChange} ariaLabel={label} />
+        <NumericInput value={value} min={min} max={max} step={step} onCommit={onChange} ariaLabel={tr(label)} />
         {suffix && <span>{suffix}</span>}
       </div>
     </Field>
@@ -599,7 +601,7 @@ function SliderField({ label, value, onChange, min, max, step = 1, suffix, targe
       <div className="slider-field">
         <input type="range" value={value} min={min} max={max} step={step} onChange={commitRange} />
         <div className="input-with-suffix is-compact">
-          <NumericInput value={value} min={min} max={max} step={step} onCommit={onChange} ariaLabel={label} />
+          <NumericInput value={value} min={min} max={max} step={step} onCommit={onChange} ariaLabel={tr(label)} />
           {suffix && <span>{suffix}</span>}
         </div>
       </div>
@@ -663,8 +665,8 @@ function PatternItem({
   averageSelectable = false, averageChecked = false, onAverageToggle,
 }) {
   const meta = pattern.isAverage
-    ? `${pattern.replicateCount || pattern.sourcePatternIds?.length || 0} acquisitions moyennées · ${pattern.x.length.toLocaleString("fr-FR")} points`
-    : `${pattern.x.length.toLocaleString("fr-FR")} points · #${index + 1}`;
+    ? `${pattern.replicateCount || pattern.sourcePatternIds?.length || 0} ${tr("acquisitions moyennées")} · ${pattern.x.length.toLocaleString(uiLocale())} ${tr("points")}`
+    : `${pattern.x.length.toLocaleString(uiLocale())} ${tr("points")} · #${index + 1}`;
   return (
     <article
       className={`data-item ${selected ? "is-selected" : ""} ${!pattern.visible ? "is-hidden" : ""} ${pattern.isAverage ? "is-average" : ""} ${pattern.locked ? "is-locked" : ""}`}
@@ -684,11 +686,11 @@ function PatternItem({
           onClick={(event) => event.stopPropagation()}
           onChange={(event) => onUpdate("label", event.target.value)}
         />
-        <span className="data-item__meta">{meta}{pattern.orderValue !== undefined && pattern.orderValue !== null ? ` · ordre ${pattern.orderValue}` : ""}{pattern.groupName ? ` · ${pattern.groupName}` : ""}</span>
+        <span className="data-item__meta">{meta}{pattern.orderValue !== undefined && pattern.orderValue !== null ? ` · ${tr("ordre")} ${pattern.orderValue}` : ""}{pattern.groupName ? ` · ${pattern.groupName}` : ""}</span>
         {averageSelectable && (
           <label className={`average-pick ${averageChecked ? "is-checked" : ""}`} onClick={(event) => event.stopPropagation()}>
             <input type="checkbox" checked={averageChecked} onChange={(event) => onAverageToggle?.(event.target.checked)} />
-            <span>Inclure dans la moyenne</span>
+            <span>{tr("Inclure dans la moyenne")}</span>
           </label>
         )}
         <div className="data-item__chips">
@@ -732,13 +734,13 @@ function PhaseItem({ phase, selected, onSelect, onUpdate, onDelete, onAppend, on
           onClick={(event) => event.stopPropagation()}
           onChange={(event) => onUpdate("name", event.target.value)}
         />
-        <span className="data-item__meta">{phase.peaks.length} pics · {truncateLabel(phaseSubtitle(phase), 44)}</span>
+        <span className="data-item__meta">{phase.peaks.length} {tr("pics")} · {truncateLabel(phaseSubtitle(phase), 44)}</span>
         <div className="data-item__chips">
           <span className="type-badge"><Icon name="phase" size={10} /> {phase.sourceKind === "manual" ? "manuel" : phase.sourceKind === "raman-spectrum" ? "RRUFF" : "référence"}</span>
           <button type="button" className={phase.inAnnot ? "chip is-on" : "chip"} onClick={(event) => { event.stopPropagation(); onUpdate("inAnnot", !phase.inAnnot); }}>{tr("annotation")}</button>
           <button type="button" className={phase.inPanel ? "chip is-on" : "chip"} onClick={(event) => { event.stopPropagation(); onUpdate("inPanel", !phase.inPanel); }}>{tr("panneau")}</button>
           <button type="button" className={phase.inOverlay ? "chip is-on" : "chip"} title="Superposer les bâtonnets directement sur la figure" onClick={(event) => { event.stopPropagation(); onUpdate("inOverlay", !phase.inOverlay); }}>figure</button>
-          <button type="button" className={phase.dashed ? "chip is-on" : "chip"} title="Tracer les bâtonnets en pointillés dans tous les types d’annotation" onClick={(event) => { event.stopPropagation(); onUpdate("dashed", !phase.dashed); }}>pointillés</button>
+          <button type="button" className={phase.dashed ? "chip is-on" : "chip"} title="Tracer les bâtonnets en pointillés dans tous les types d’annotation" onClick={(event) => { event.stopPropagation(); onUpdate("dashed", !phase.dashed); }}>{tr("pointillés")}</button>
           <button type="button" className="chip chip--action" onClick={(event) => { event.stopPropagation(); onAppend(); }}>{tr("+ fiche")}</button>
         </div>
       </div>
@@ -757,7 +759,7 @@ function NoteItem({ note, selected, onSelect, onUpdate, onDelete }) {
       <span className="data-item__swatch" style={{ background: safe.color }} />
       <div className="data-item__content">
         <input className="data-item__name" value={safe.text} onClick={(event) => event.stopPropagation()} onChange={(event) => onUpdate("text", event.target.value)} />
-        <span className="data-item__meta">x = {safe.x.toLocaleString("fr-FR", { maximumFractionDigits: 3 })} · y = {Math.round(safe.yFrac * 100)} %</span>
+        <span className="data-item__meta">x = {safe.x.toLocaleString(uiLocale(), { maximumFractionDigits: 3 })} · y = {Math.round(safe.yFrac * 100)} %</span>
       </div>
       <div className="data-item__actions"><IconButton icon={safe.visible === false ? "eyeOff" : "eye"} title={safe.visible === false ? "Afficher" : "Masquer"} onClick={(event) => { event?.stopPropagation?.(); onUpdate("visible", safe.visible === false); }} /><IconButton icon="trash" title="Supprimer" danger onClick={(event) => { event?.stopPropagation?.(); onDelete(); }} /></div>
     </article>
@@ -792,7 +794,7 @@ function ZoneItem({ zone, selected, onSelect, onUpdate, onDelete }) {
       <input type="color" value={zone.color} className="color-dot" title="Couleur de la zone" onClick={(event) => event.stopPropagation()} onChange={(event) => onUpdate("color", event.target.value)} />
       <div className="data-item__content">
         <input className="data-item__name" value={zone.name} onClick={(event) => event.stopPropagation()} onChange={(event) => onUpdate("name", event.target.value)} />
-        <span className="data-item__meta">{Number(zone.xmin).toLocaleString("fr-FR")}–{Number(zone.xmax).toLocaleString("fr-FR")} cm⁻¹</span>
+        <span className="data-item__meta">{Number(zone.xmin).toLocaleString(uiLocale())}–{Number(zone.xmax).toLocaleString(uiLocale())} cm⁻¹</span>
       </div>
       <div className="data-item__actions">
         <IconButton icon={zone.visible ? "eye" : "eyeOff"} title={zone.visible ? "Masquer" : "Afficher"} onClick={(event) => { event?.stopPropagation?.(); onUpdate("visible", !zone.visible); }} />
@@ -834,12 +836,12 @@ function ProjectSwitcher({ project, entries, open, search, setSearch, onToggle, 
   return (
     <div className="project-switcher" ref={menuRef}>
       <button type="button" className={`project-switcher__trigger ${open ? 'is-open' : ''}`} onClick={onToggle} aria-expanded={open}>
-        <span className="project-switcher__kicker">Projet actif</span>
+        <span className="project-switcher__kicker">{tr("Projet actif")}</span>
         <strong title={project.name}>{project.name || 'Projet sans titre'}</strong>
         <Icon name="chevronDown" size={13} />
       </button>
       {open && (
-        <div className="project-menu" role="dialog" aria-label="Bibliothèque de projets">
+        <div className="project-menu" role="dialog" aria-label={tr("Bibliothèque de projets")}>
           <div className="project-menu__header">
             <div><span>Bibliothèque locale</span><strong>{entries.length} projet(s)</strong></div>
             <IconButton icon="close" title="Fermer" onClick={onToggle} />
@@ -871,7 +873,7 @@ function BulkActionBar({ count, onSelectAll, onShow, onHide, onDuplicate, onLock
   if (!count) return null;
   return (
     <div className="bulk-bar">
-      <div className="bulk-bar__count"><strong>{count}</strong><span>sélectionné{count > 1 ? 's' : ''}</span></div>
+      <div className="bulk-bar__count"><strong>{count}</strong><span>{tr(count > 1 ? "sélectionnés" : "sélectionné")}</span></div>
       <div className="bulk-bar__actions">
         <IconButton icon="selectAll" title="Tout sélectionner · Ctrl+A" onClick={onSelectAll} />
         <IconButton icon="eye" title="Afficher" onClick={onShow} />
@@ -1033,7 +1035,7 @@ function RangeNavigator({ patterns, fullRange, xmin, xmax, axisMode = "native", 
       onPointerUp={finish}
       onPointerCancel={finish}
     >
-      <svg viewBox="0 0 100 42" preserveAspectRatio="none" aria-label="Navigateur de plage X">
+      <svg viewBox="0 0 100 42" preserveAspectRatio="none" aria-label={tr("Navigateur de plage X")}>
         {overview.map((item, index) => <path key={item.id} d={item.path} fill="none" stroke="currentColor" opacity={0.14 + index * 0.04} strokeWidth="0.45" />)}
         <rect x="0" y="1" width={Math.max(0, leftPct)} height="40" className="range-navigator__outside" />
         <rect x={rightPct} y="1" width={Math.max(0, 100 - rightPct)} height="40" className="range-navigator__outside" />
@@ -1239,6 +1241,38 @@ export default function App() {
   UI_LANGUAGE = language;
   useEffect(() => { writeLocalSetting("make-figure-language", language); }, [language]);
 
+  // Les libellés d'axes jamais personnalisés suivent la langue de l'interface ;
+  // ceux saisis par l'utilisateur ne sont jamais écrasés.
+  useEffect(() => {
+    history.set((current) => {
+      if (!current?.workspaces) return current;
+      let changed = false;
+      // Nom de projet resté au libellé par défaut : il suit aussi la langue.
+      let name = current.name;
+      const stockNames = [["Premier projet", "First project"], ["Projet", "Project"]];
+      for (const [fr, en] of stockNames) {
+        const source = language === "en" ? fr : en;
+        const target = language === "en" ? en : fr;
+        if (name === source) { name = target; changed = true; break; }
+        const numbered = new RegExp(`^${source} (\\d+)$`);
+        const match = numbered.exec(name || "");
+        if (match) { name = `${target} ${match[1]}`; changed = true; break; }
+      }
+      const workspaces = { ...current.workspaces };
+      for (const mode of MODES) {
+        const workspace = workspaces[mode];
+        if (!workspace?.settings) continue;
+        const quantity = workspace.settings.irYQuantity === "transmittance" ? "transmittance" : "absorbance";
+        const defaults = defaultAxisLabels(mode, language, quantity);
+        const next = { ...workspace.settings };
+        if (STOCK_AXIS_LABELS.x.includes(next.xlabel) && next.xlabel !== defaults.xlabel) { next.xlabel = defaults.xlabel; changed = true; }
+        if (STOCK_AXIS_LABELS.y.includes(next.ylabel) && next.ylabel !== defaults.ylabel) { next.ylabel = defaults.ylabel; changed = true; }
+        if (changed) workspaces[mode] = { ...workspace, settings: next };
+      }
+      return changed ? { ...current, name, workspaces } : current;
+    }, { replace: true });
+  }, [language]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const [reduceMotion, setReduceMotion] = useState(() => {
     try {
       const stored = readLocalSetting("make-figure-reduce-motion");
@@ -1417,7 +1451,7 @@ export default function App() {
         if (preferred) restored = await loadStoredProject(preferred.id);
         if (!restored) {
           const legacy = await loadAutosave();
-          restored = legacy ? validateProject(legacy) : createEmptyProject("drx", { name: "Premier projet" });
+          restored = legacy ? validateProject(legacy) : createEmptyProject("drx", { name: tr("Premier projet") });
           await saveStoredProject(restored);
         }
         history.replace(restored);
@@ -2220,7 +2254,7 @@ export default function App() {
   };
 
   const createNewProject = async () => {
-    const defaultName = `Projet ${projectIndex.length + 1}`;
+    const defaultName = `${tr("Projet")} ${projectIndex.length + 1}`;
     const name = window.prompt("Nom du nouveau projet", defaultName);
     if (name === null) return;
     const next = createEmptyProject(activeMode, { name: name.trim() || defaultName });
@@ -3583,7 +3617,7 @@ export default function App() {
       yscale: 1,
       xoffset: 0,
       locked: false,
-      userNotes: "Données synthétiques de démonstration.",
+      userNotes: tr("Données synthétiques de démonstration."),
       orderValue: "",
       groupType: "",
       groupName: "",
@@ -3759,7 +3793,7 @@ export default function App() {
       </Section>
       {selectedByType.pattern.size > 0 && (
         <Section title="Patrons sélectionnés">
-          <div className="callout">Les actions suivantes s’appliquent aux {selectedByType.pattern.size} patrons sélectionnés.</div>
+          <div className="callout">{`${tr("Les actions suivantes s’appliquent aux")} ${selectedByType.pattern.size} ${tr("patrons sélectionnés.")}`}</div>
           <div className="inline-actions"><Button variant="secondary" icon="reset" onClick={resetSelectedPatternTransforms}>Réinitialiser Y et Δx</Button><Button variant="secondary" icon="lock" onClick={() => setSelectedLock(true)}>Verrouiller</Button><Button variant="secondary" icon="unlock" onClick={() => setSelectedLock(false)}>Déverrouiller</Button></div>
           <SelectField label="Déplacer vers" value={activeMode} onChange={moveSelectionToWorkspace} options={workspaceOptions} />
         </Section>
@@ -3819,10 +3853,10 @@ export default function App() {
         <TextField label="Nom du groupe" value={activePattern.groupName || ""} onChange={(value) => updatePattern(activePattern.id, "groupName", value)} />
         <div className="info-box">
           <span>{activePattern.fileName}</span>
-          <span>{activePattern.x.length.toLocaleString("fr-FR")} points</span>
-          <span>Plage : {Number(activePattern.x[0]).toLocaleString("fr-FR")} — {Number(activePattern.x.at(-1)).toLocaleString("fr-FR")}</span>
-          {activePattern.fileMetadata && <span>Fichier : {formatBytes(activePattern.fileMetadata.size)}{activePattern.fileMetadata.lastModified ? ` · ${new Date(activePattern.fileMetadata.lastModified).toLocaleString("fr-FR")}` : ""}</span>}
-          <span>Traitement : {activePattern.processingOverrides?.enabled ? "individuel" : "réglages globaux"} · lissage {activePattern.processingOverrides?.smoothW ?? S.smoothW} · fond {activePattern.processingOverrides?.baselineMode ?? S.baselineMode} · normalisation {activePattern.processingOverrides?.normalizeMode ?? S.normalizeMode}</span>
+          <span>{activePattern.x.length.toLocaleString(uiLocale())} points</span>
+          <span>Plage : {Number(activePattern.x[0]).toLocaleString(uiLocale())} — {Number(activePattern.x.at(-1)).toLocaleString(uiLocale())}</span>
+          {activePattern.fileMetadata && <span>Fichier : {formatBytes(activePattern.fileMetadata.size)}{activePattern.fileMetadata.lastModified ? ` · ${new Date(activePattern.fileMetadata.lastModified).toLocaleString(uiLocale())}` : ""}</span>}
+          <span>{tr("Traitement")} : {tr(activePattern.processingOverrides?.enabled ? "individuel" : "réglages globaux")} · {tr("lissage")} {activePattern.processingOverrides?.smoothW ?? S.smoothW} · {tr("fond")} {activePattern.processingOverrides?.baselineMode ?? S.baselineMode} · {tr("normalisation")} {activePattern.processingOverrides?.normalizeMode ?? S.normalizeMode}</span>
           {activePattern.isAverage && <span>Patron dérivé : {activePattern.replicateCount} acquisitions · {activePattern.averageMethod === "median" ? "médiane" : "moyenne"}</span>}
           {activePattern.isAverage && <span>Pré-normalisation : {activePattern.averageNormalizeMode || "none"}</span>}
           {activePattern.isAverage && <span>Sources : {(activePattern.sourceFiles || []).join(", ")}</span>}
@@ -3942,8 +3976,8 @@ export default function App() {
     <>
       <Section title="Projet actif">
         <TextField label="Nom du projet" value={project.name || ""} onChange={(value) => history.set((current) => ({ ...current, name: value, updatedAt: Date.now() }), { replace: true })} />
-        <TextAreaField label="Description" value={project.description || ""} onChange={(value) => history.set((current) => ({ ...current, description: value, updatedAt: Date.now() }), { replace: true })} rows={3} placeholder="Objet de la série, conditions expérimentales…" />
-        <div className="project-stats-grid">{MODES.map((mode) => <span key={mode}><strong>{workspaceStats[mode].total}</strong>{modeLabel(mode)}</span>)}<span><strong>{patterns.length + phases.length}</strong>éléments actifs</span><span><strong>{new Date(project.updatedAt || Date.now()).toLocaleDateString("fr-FR")}</strong>mise à jour</span></div>
+        <TextAreaField label="Description" value={project.description || ""} onChange={(value) => history.set((current) => ({ ...current, description: value, updatedAt: Date.now() }), { replace: true })} rows={3} placeholder={tr("Objet de la série, conditions expérimentales…")} />
+        <div className="project-stats-grid">{MODES.map((mode) => <span key={mode}><strong>{workspaceStats[mode].total}</strong>{modeLabel(mode)}</span>)}<span><strong>{patterns.length + phases.length}</strong>{tr("éléments actifs")}</span><span><strong>{new Date(project.updatedAt || Date.now()).toLocaleDateString(uiLocale())}</strong>{tr("mise à jour")}</span></div>
         <div className="inline-actions"><Button variant="primary" icon="plus" onClick={createNewProject}>Nouveau projet</Button><Button variant="secondary" icon="duplicate" onClick={duplicateCurrentProject}>Dupliquer</Button></div>
       </Section>
       <Section title="Disposition de l’interface">
@@ -3964,7 +3998,7 @@ export default function App() {
           <span>{project.name || "Projet sans titre"}</span>
           <span className={`autosave-state autosave-state--${autosaveState}`}>
             <i />
-            {autosaveState === "saving" ? "Enregistrement" : autosaveState === "error" ? "Autosauvegarde indisponible" : "Sauvegardé localement"}
+            {autosaveState === "saving" ? tr("Enregistrement") : autosaveState === "error" ? tr("Autosauvegarde indisponible") : tr("Sauvegardé localement")}
           </span>
         </div>
 
@@ -4012,7 +4046,7 @@ export default function App() {
               <button
                 type="button"
                 className="button button--ghost"
-                title={language === "fr" ? "Switch the interface to English" : "Basculer l’interface en français"}
+                title={language === "fr" ? "Switch the interface to English" : "Switch the interface to French"}
                 onClick={() => setLanguage((value) => (value === "fr" ? "en" : "fr"))}
               >{language === "fr" ? "FR" : "EN"}</button>
               <IconButton icon={reduceMotion ? "motionOff" : "motion"} active={reduceMotion} title={reduceMotion ? "Animations réduites" : "Réduire les animations"} onClick={() => setReduceMotion((value) => !value)} />
@@ -4023,18 +4057,18 @@ export default function App() {
           </div>
         </div>
 
-        <div className="masthead__ticker" aria-label="Résumé du projet actif">
+        <div className="masthead__ticker" aria-label={tr("Résumé du projet actif")}>
           <span className="masthead__breaking">{modeLabel(activeMode)}</span>
-          <span><b>{patterns.length}</b> patrons</span>
-          <span><b>{phases.length}</b> phases</span>
-          {supportsZones && <span><b>{zones.length}</b> zones</span>}
-          <span><b>{notes.length}</b> notes</span>
+          <span><b>{patterns.length}</b> {tr("patrons")}</span>
+          <span><b>{phases.length}</b> {tr("phases")}</span>
+          {supportsZones && <span><b>{zones.length}</b> {tr("zones")}</span>}
+          <span><b>{notes.length}</b> {tr("notes")}</span>
         </div>
       </header>
 
       <main className="workbench" style={{ gridTemplateColumns: `${leftCollapsed ? 0 : leftWidth}px minmax(300px, 1fr) ${rightCollapsed ? 0 : rightWidth}px` }}>
         <aside className={`side-panel side-panel--left ${leftCollapsed ? "is-collapsed" : ""}`} aria-hidden={leftCollapsed}>
-          <div className="panel-titlebar"><div><strong>Données · {modeLabel(activeMode)}</strong><span>{patterns.length + phases.length + notes.length + zones.length} éléments</span></div><IconButton icon="panelLeft" title="Replier le panneau de données" onClick={() => setLeftCollapsed(true)} /></div>
+          <div className="panel-titlebar"><div><strong>{tr("Données")} · {modeLabel(activeMode)}</strong><span>{patterns.length + phases.length + notes.length + zones.length} {tr("éléments")}</span></div><IconButton icon="panelLeft" title="Replier le panneau de données" onClick={() => setLeftCollapsed(true)} /></div>
           <nav className="panel-tabs">
             {[
               ["patterns", "Patrons", patterns.length],
@@ -4056,30 +4090,30 @@ export default function App() {
             onDelete={removeSelection}
             onClear={clearSelection}
           />
-          <div className="project-filter"><Icon name="cursor" size={12} /><input value={listFilter} onChange={(event) => setListFilter(event.target.value)} placeholder="Filtrer la liste active…" /><kbd>Ctrl+A</kbd></div>
+          <div className="project-filter"><Icon name="cursor" size={12} /><input value={listFilter} onChange={(event) => setListFilter(event.target.value)} placeholder={tr("Filtrer la liste active…")} /><kbd>Ctrl+A</kbd></div>
           <div className="side-panel__content">
             {leftTab === "patterns" && (
               <>
-                <button type="button" className="drop-button" onClick={() => patternInputRef.current?.click()}><span className="drop-button__asset"><Icon name="waveform" /></span><span><strong>Importer des patrons</strong><small>.xy · .txt · .csv · .dat · .xml OPUS</small></span><Icon name="upload" size={14} /></button>
+                <button type="button" className="drop-button" onClick={() => patternInputRef.current?.click()}><span className="drop-button__asset"><Icon name="waveform" /></span><span><strong>{tr("Importer des patrons")}</strong><small>.xy · .txt · .csv · .dat · .xml OPUS</small></span><Icon name="upload" size={14} /></button>
                 <div className="pattern-organizer">
                   <div className="pattern-organizer__row">
-                    <label><span><Icon name="sort" size={12} /> Trier</span><select value={patternSort.key} onChange={(event) => setPatternSort((current) => ({ ...current, key: event.target.value }))}><option value="manual">{tr("Ordre manuel")}</option><option value="filename">{tr("Nom du fichier")}</option><option value="date">{tr("Date du fichier")}</option><option value="numeric">{tr("Valeur numérique")}</option><option value="group">{tr("Groupe")}</option></select></label>
+                    <label><span><Icon name="sort" size={12} /> {tr("Trier")}</span><select value={patternSort.key} onChange={(event) => setPatternSort((current) => ({ ...current, key: event.target.value }))}><option value="manual">{tr("Ordre manuel")}</option><option value="filename">{tr("Nom du fichier")}</option><option value="date">{tr("Date du fichier")}</option><option value="numeric">{tr("Valeur numérique")}</option><option value="group">{tr("Groupe")}</option></select></label>
                     <button type="button" className="organizer-direction" onClick={() => setPatternSort((current) => ({ ...current, direction: current.direction === "asc" ? "desc" : "asc" }))}>{patternSort.direction === "asc" ? "↑" : "↓"}</button>
                     <Button variant="secondary" disabled={patternSort.key === "manual"} onClick={sortPatterns}>Appliquer</Button>
                   </div>
                   <div className="pattern-organizer__row">
-                    <label><span><Icon name="group" size={12} /> Grouper l’affichage</span><select value={groupViewBy} onChange={(event) => setGroupViewBy(event.target.value)}><option value="none">{tr("Aucun")}</option><option value="group">{tr("Tous les groupes")}</option><option value="sample">{tr("Échantillon")}</option><option value="time">{tr("Temps")}</option><option value="temperature">{tr("Température")}</option><option value="treatment">{tr("Traitement")}</option></select></label>
+                    <label><span><Icon name="group" size={12} /> {tr("Grouper l’affichage")}</span><select value={groupViewBy} onChange={(event) => setGroupViewBy(event.target.value)}><option value="none">{tr("Aucun")}</option><option value="group">{tr("Tous les groupes")}</option><option value="sample">{tr("Échantillon")}</option><option value="time">{tr("Temps")}</option><option value="temperature">{tr("Température")}</option><option value="treatment">{tr("Traitement")}</option></select></label>
                   </div>
                 </div>
                 {supportsAveraging && (
                   <div className="average-builder">
                     <div className="average-builder__header">
-                      <div><strong>Moyenne d’acquisitions</strong><span>{ramanAverageSelection.length} acquisition(s) sélectionnée(s)</span></div>
-                      <button type="button" onClick={() => setRamanAverageSelection(patterns.filter((pattern) => pattern.visible && !pattern.isAverage).map((pattern) => pattern.id))}>Sélectionner visibles</button>
+                      <div><strong>{tr("Moyenne d’acquisitions")}</strong><span>{ramanAverageSelection.length} {tr("acquisition(s) sélectionnée(s)")}</span></div>
+                      <button type="button" onClick={() => setRamanAverageSelection(patterns.filter((pattern) => pattern.visible && !pattern.isAverage).map((pattern) => pattern.id))}>{tr("Sélectionner visibles")}</button>
                     </div>
-                    <input type="text" value={ramanAverageLabel} placeholder="Nom du patron moyen" onChange={(event) => setRamanAverageLabel(event.target.value)} />
+                    <input type="text" value={ramanAverageLabel} placeholder={tr("Nom du patron moyen")} onChange={(event) => setRamanAverageLabel(event.target.value)} />
                     <div className="average-builder__grid">
-                      <label><span>Agrégation</span><select value={S.ramanAverageMethod} onChange={(event) => patchSettings("ramanAverageMethod", event.target.value)}><option value="mean">{tr("Moyenne")}</option><option value="median">{tr("Médiane")}</option></select></label>
+                      <label><span>{tr("Agrégation")}</span><select value={S.ramanAverageMethod} onChange={(event) => patchSettings("ramanAverageMethod", event.target.value)}><option value="mean">{tr("Moyenne")}</option><option value="median">{tr("Médiane")}</option></select></label>
                       <label><span>Avant moyenne</span><select value={S.ramanAverageNormalize} onChange={(event) => patchSettings("ramanAverageNormalize", event.target.value)}><option value="none">{tr("Intensités brutes")}</option><option value="max">{tr("Normaliser au maximum")}</option><option value="area">{tr("Normaliser à l’aire")}</option><option value="minmax">{tr("Min–max")}</option></select></label>
                     </div>
                     <Toggle label="Masquer les acquisitions source" checked={S.ramanAverageHideSources} onChange={(value) => patchSettings("ramanAverageHideSources", value)} />
@@ -4087,7 +4121,7 @@ export default function App() {
                       <Button variant="secondary" onClick={() => setRamanAverageSelection([])}>Effacer</Button>
                       <Button variant="primary" disabled={ramanAverageSelection.length < 2} onClick={createRamanAverage}>Créer la moyenne</Button>
                     </div>
-                    <p>Les acquisitions sont interpolées sur leur plage commune. Les données sources ne sont pas modifiées.</p>
+                    <p>{tr("Les acquisitions sont interpolées sur leur plage commune. Les données sources ne sont pas modifiées.")}</p>
                   </div>
                 )}
                 <div className="data-list">
@@ -4118,9 +4152,9 @@ export default function App() {
             )}
             {leftTab === "phases" && (
               <>
-                <button type="button" className="drop-button" onClick={() => phaseInputRef.current?.click()}><span className="drop-button__asset"><Icon name="phase" /></span><span><strong>Importer des phases</strong><small>{activeMode === "drx" ? ".dif ou liste de pics DRX" : activeMode === "ir" ? "Liste de bandes IR (cm⁻¹)" : "RRUFF ou liste de pics Raman"}</small></span><Icon name="upload" size={14} /></button>
+                <button type="button" className="drop-button" onClick={() => phaseInputRef.current?.click()}><span className="drop-button__asset"><Icon name="phase" /></span><span><strong>{tr("Importer des phases")}</strong><small>{activeMode === "drx" ? ".dif ou liste de pics DRX" : activeMode === "ir" ? "Liste de bandes IR (cm⁻¹)" : "RRUFF ou liste de pics Raman"}</small></span><Icon name="upload" size={14} /></button>
                 <div className="manual-builder">
-                  <div className="manual-builder__header"><strong>Ajouter une phase manuellement</strong><span>Positions seules ou position:intensité</span></div>
+                  <div className="manual-builder__header"><strong>{tr("Ajouter une phase manuellement")}</strong><span>{tr("Positions seules ou position:intensité")}</span></div>
                   <div className="manual-builder__grid">
                     <input type="text" value={manualPhase.name} placeholder="Nom, ex. Vatérite" onChange={(event) => setManualPhase((current) => ({ ...current, name: event.target.value }))} />
                     <input type="text" value={manualPhase.abbrev} placeholder="Abréviation" onChange={(event) => setManualPhase((current) => ({ ...current, abbrev: event.target.value }))} />
@@ -4151,11 +4185,11 @@ export default function App() {
             {leftTab === "zones" && (
               <>
                 <div className="manual-builder zone-builder">
-                  <div className="manual-builder__header"><strong>Ajouter une zone</strong><span>Bandes, vibrations ou domaines d’attribution</span></div>
+                  <div className="manual-builder__header"><strong>{tr("Ajouter une zone")}</strong><span>Bandes, vibrations ou domaines d’attribution</span></div>
                   <input type="text" value={zoneDraft.name} placeholder="Nom, ex. ν IO — iode" onChange={(event) => setZoneDraft((current) => ({ ...current, name: event.target.value }))} />
                   <div className="manual-builder__grid">
-                    <label><span>X min</span><NumericInput value={zoneDraft.xmin} step={1} onCommit={(value) => setZoneDraft((current) => ({ ...current, xmin: value }))} ariaLabel="X min de la zone" /></label>
-                    <label><span>X max</span><NumericInput value={zoneDraft.xmax} step={1} onCommit={(value) => setZoneDraft((current) => ({ ...current, xmax: value }))} ariaLabel="X max de la zone" /></label>
+                    <label><span>X min</span><NumericInput value={zoneDraft.xmin} step={1} onCommit={(value) => setZoneDraft((current) => ({ ...current, xmin: value }))} ariaLabel={tr("X min de la zone")} /></label>
+                    <label><span>X max</span><NumericInput value={zoneDraft.xmax} step={1} onCommit={(value) => setZoneDraft((current) => ({ ...current, xmax: value }))} ariaLabel={tr("X max de la zone")} /></label>
                   </div>
                   <div className="manual-builder__footer">
                     <input type="color" value={zoneDraft.color} onChange={(event) => setZoneDraft((current) => ({ ...current, color: event.target.value }))} />
@@ -4178,7 +4212,7 @@ export default function App() {
             )}
             {leftTab === "notes" && (
               <>
-                <button type="button" className={`drop-button ${addNoteMode ? "is-active" : ""}`} onClick={() => { setAddNoteMode((value) => !value); setTool("cursor"); }}><span className="drop-button__asset"><Icon name="note" /></span><span><strong>{addNoteMode ? "Cliquer sur la figure…" : "Ajouter une note"}</strong><small>Placement interactif</small></span><Icon name="plus" size={14} /></button>
+                <button type="button" className={`drop-button ${addNoteMode ? "is-active" : ""}`} onClick={() => { setAddNoteMode((value) => !value); setTool("cursor"); }}><span className="drop-button__asset"><Icon name="note" /></span><span><strong>{tr(addNoteMode ? "Cliquer sur la figure…" : "Ajouter une note")}</strong><small>{tr("Placement interactif")}</small></span><Icon name="plus" size={14} /></button>
                 <div className="data-list">
                   {filteredNotes.length ? filteredNotes.map((note) => (
                     <NoteItem
@@ -4276,7 +4310,7 @@ export default function App() {
                 <h1>{activeMode === "drx" ? "Composer une figure de diffraction" : activeMode === "ir" ? "Composer une figure infrarouge" : "Composer une figure Raman"}</h1>
                 <p>Importer les acquisitions, ajouter les références, appliquer le traitement du signal puis produire une figure scientifique prête à publier.</p>
                 <div className="welcome-card__actions">
-                  <Button variant="primary" icon="upload" onClick={() => patternInputRef.current?.click()}>Importer des patrons</Button>
+                  <Button variant="primary" icon="upload" onClick={() => patternInputRef.current?.click()}>{tr("Importer des patrons")}</Button>
                   <Button variant="secondary" icon="phase" onClick={() => phaseInputRef.current?.click()}>Ajouter des phases</Button>
                   <Button variant="secondary" icon="sparkles" onClick={loadSampleData}>Jeu d’exemple</Button>
                 </div>
@@ -4880,7 +4914,7 @@ export default function App() {
                           return <g onDoubleClick={(event) => openContextOptions(event, { tab: "references", target: "reference-panel-options" })}>
                             <rect x={boxX} y={boxY} width={boxWidth} height={boxHeight} fill="#ffffff" opacity="0.94" stroke="#8f969e" strokeWidth="0.8" rx="3" />
                             <rect data-ui-only="true" x={boxX} y={boxY} width={boxWidth} height="20" fill="#eef1f4" opacity="0.85" style={{ cursor: "move" }} onPointerDown={(event) => { if (event.detail >= 2) { openContextOptions(event, { tab: "references", target: "reference-panel-options" }); return; } beginCanvasDrag(event, "phaseLegendMove", { x: boxX, y: boxY, width: boxWidth }); }} />
-                            <text x={boxX + boxWidth / 2} y={boxY + 14} textAnchor="middle" fontSize={fontSize + 1} fontWeight="700" fill="#343a40" pointerEvents="none">Références de phase</text>
+                            <text x={boxX + boxWidth / 2} y={boxY + 14} textAnchor="middle" fontSize={fontSize + 1} fontWeight="700" fill="#343a40" pointerEvents="none">{tr("Références de phase")}</text>
                             {panelPhases.map((phase, index) => {
                               const subtitle = truncateLabel(phaseSubtitle(phase), S.phaseSubtitleMaxLength);
                               const suffix = S.showRowSubtitles && phase.showSubtitle !== false && subtitle ? ` — ${subtitle}` : "";
@@ -4931,20 +4965,20 @@ export default function App() {
           </div>
 
           <footer className="statusbar">
-            <span title={project.name}><strong>{truncateLabel(project.name, 24)}</strong></span><span><strong>{modeLabel(activeMode)}</strong></span><span><strong>{patterns.length}</strong> patrons</span>
-            <span><strong>{phases.length}</strong> phases</span>
-            <span><strong>{visibleCount}</strong> visibles</span>
-            {selectionCount > 0 && <span className="statusbar__selection"><strong>{selectionCount}</strong> sélectionné(s)</span>}
-            <span><strong>{processed.reduce((sum, pattern) => sum + (pattern.detectedPeaks?.length || 0), 0)}</strong> pics détectés</span>
+            <span title={project.name}><strong>{truncateLabel(project.name, 24)}</strong></span><span><strong>{modeLabel(activeMode)}</strong></span><span><strong>{patterns.length}</strong> {tr("patrons")}</span>
+            <span><strong>{phases.length}</strong> {tr("phases")}</span>
+            <span><strong>{visibleCount}</strong> {tr("visibles")}</span>
+            {selectionCount > 0 && <span className="statusbar__selection"><strong>{selectionCount}</strong> {tr("sélectionné(s)")}</span>}
+            <span><strong>{processed.reduce((sum, pattern) => sum + (pattern.detectedPeaks?.length || 0), 0)}</strong> {tr("pics détectés")}</span>
             <span>{LAYOUT_OPTIONS.find(([value]) => value === S.layoutMode)?.[1]}</span>
             <span className="statusbar__spacer" />
-            {cursor ? <><span>x = <strong>{cursor.dataX.toFixed(S.mode === "drx" ? 3 : 1)}</strong></span>{cursor.nearest && <span>{activePattern?.label}: <strong>{cursor.nearest.y.toFixed(4)}</strong></span>}</> : <span>Déplacer le curseur sur la figure pour lire les coordonnées.</span>}
+            {cursor ? <><span>x = <strong>{cursor.dataX.toFixed(S.mode === "drx" ? 3 : 1)}</strong></span>{cursor.nearest && <span>{activePattern?.label}: <strong>{cursor.nearest.y.toFixed(4)}</strong></span>}</> : <span>{tr("Déplacer le curseur sur la figure pour lire les coordonnées.")}</span>}
           </footer>
         </section>
 
         <aside className={`side-panel side-panel--right ${rightCollapsed ? "is-collapsed" : ""}`} aria-hidden={rightCollapsed}>
           {!rightCollapsed && <Resizer side="right" onReset={() => setRightWidth(350)} onResize={{ currentWidth: () => rightWidth, apply: (value) => setRightWidth(clamp(value, 280, 560)) }} />}
-          <div className="panel-titlebar"><div><strong>Atelier</strong><span>{selectionCount ? `${selectionCount} sélectionné(s)` : "Aucune sélection"}</span></div><IconButton icon="panelRight" title="Replier le panneau de propriétés" onClick={() => setRightCollapsed(true)} /></div>
+          <div className="panel-titlebar"><div><strong>{tr("Atelier")}</strong><span>{selectionCount ? `${selectionCount} ${tr("sélectionné(s)")}` : tr("Aucune sélection")}</span></div><IconButton icon="panelRight" title="Replier le panneau de propriétés" onClick={() => setRightCollapsed(true)} /></div>
           <nav className="panel-tabs panel-tabs--right">
             {[ ["inspector", "Inspecteur", "cursor"], ["processing", "Traitement", "waveform"], ["references", "Références", "phase"], ["appearance", "Apparence", "sparkles"], ["export", "Export", "download"] ].map(([value, label, icon]) => <button type="button" key={value} className={rightTab === value ? "is-active" : ""} onClick={() => setRightTab(value)}><Icon name={icon} size={12} />{tr(label)}{value === "inspector" && selectionCount > 0 && <span>{selectionCount}</span>}</button>)}
           </nav>
@@ -5087,7 +5121,7 @@ export default function App() {
                 <Section title="Styles réutilisables" defaultOpen={false}>
                   <TextField label="Nom du style" value={templateName} onChange={setTemplateName} placeholder="Ex. Water Research · DRX" />
                   <div className="inline-actions"><Button variant="secondary" icon="save" onClick={saveStyleTemplate}>Enregistrer le style courant</Button></div>
-                  {styleTemplates.length ? <div className="library-list">{styleTemplates.map((entry) => <div key={entry.id} className="library-row"><span><strong>{entry.name}</strong><small>{new Date(entry.savedAt).toLocaleDateString("fr-FR")}</small></span><Button variant="secondary" onClick={() => applyStyleTemplate(entry)}>Appliquer</Button><IconButton icon="trash" danger title="Supprimer" onClick={() => setStyleTemplates((current) => current.filter((item) => item.id !== entry.id))} /></div>)}</div> : <div className="callout">{tr("Aucun style local enregistré.")}</div>}
+                  {styleTemplates.length ? <div className="library-list">{styleTemplates.map((entry) => <div key={entry.id} className="library-row"><span><strong>{entry.name}</strong><small>{new Date(entry.savedAt).toLocaleDateString(uiLocale())}</small></span><Button variant="secondary" onClick={() => applyStyleTemplate(entry)}>Appliquer</Button><IconButton icon="trash" danger title="Supprimer" onClick={() => setStyleTemplates((current) => current.filter((item) => item.id !== entry.id))} /></div>)}</div> : <div className="callout">{tr("Aucun style local enregistré.")}</div>}
                 </Section>
               </>
             )}
@@ -5126,7 +5160,7 @@ export default function App() {
                   <SliderField label="Nombre maximal de labels" value={S.peakMaxLabels} min={0} max={100} step={1} onChange={(value) => patchSettings("peakMaxLabels", Math.round(value))} />
                   {activeProcessedPattern ? <div className="peak-results">
                     <div className="peak-results__header"><strong>{truncateLabel(activeProcessedPattern.label, 28)}</strong><span>{activeProcessedPattern.detectedPeaks?.length || 0} maximum(s)</span></div>
-                    <div className="peak-results__table"><div className="peak-results__row is-head"><span>{tr("Position")}</span><span>{tr("Hauteur")}</span><span>{tr("Prom.")}</span><span>Actions</span></div>{(activeProcessedPattern.detectedPeaks || []).slice(0, 30).map((peak, index) => <div className="peak-results__row" key={`${peak.x}-${index}`}><span>{Number(peak.x).toFixed(activeMode === "drx" ? 4 : 1)}{peak.manual ? " ✎" : ""}</span><span>{Number(peak.heightPct).toFixed(1)} %</span><span>{Number(peak.prominencePct).toFixed(1)} %</span><span><button type="button" title="Ajouter au suivi de série" onClick={() => addDetectedPeakToTracking(peak, index)}>Suivre</button>{activeMode === "drx" && <button type="button" title="Ajuster ce pic" onClick={() => fitDetectedPeak(peak)}>Ajuster</button>}<button type="button" title={peak.manual ? "Supprimer ce pic ajouté manuellement" : "Exclure ce pic de la détection"} onClick={() => removePeak(activeProcessedPattern.id, peak)}>Retirer</button></span></div>)}</div>
+                    <div className="peak-results__table"><div className="peak-results__row is-head"><span>{tr("Position")}</span><span>{tr("Hauteur")}</span><span>{tr("Prom.")}</span><span>{tr("Actions")}</span></div>{(activeProcessedPattern.detectedPeaks || []).slice(0, 30).map((peak, index) => <div className="peak-results__row" key={`${peak.x}-${index}`}><span>{Number(peak.x).toFixed(activeMode === "drx" ? 4 : 1)}{peak.manual ? " ✎" : ""}</span><span>{Number(peak.heightPct).toFixed(1)} %</span><span>{Number(peak.prominencePct).toFixed(1)} %</span><span><button type="button" title={tr("Ajouter au suivi de série")} onClick={() => addDetectedPeakToTracking(peak, index)}>{tr("Suivre")}</button>{activeMode === "drx" && <button type="button" title={tr("Ajuster ce pic")} onClick={() => fitDetectedPeak(peak)}>{tr("Ajuster")}</button>}<button type="button" title={tr(peak.manual ? "Supprimer ce pic ajouté manuellement" : "Exclure ce pic de la détection")} onClick={() => removePeak(activeProcessedPattern.id, peak)}>{tr("Retirer")}</button></span></div>)}</div>
                   </div> : <div className="callout">{tr("Sélectionner un patron visible pour afficher sa table de maxima.")}</div>}
                   <div className="inline-actions"><Button variant="secondary" icon="csv" onClick={exportDetectedPeaksCsv}>Exporter la table complète</Button></div>
                 </Section>
@@ -5317,7 +5351,7 @@ export default function App() {
       <input ref={appendPhaseInputRef} type="file" accept=".dif,.txt,.csv,.dat" hidden onChange={(event) => { appendPhaseFile([...event.target.files]); event.target.value = ""; }} />
 
       {message && <div className="toast"><span className="toast__icon"><Icon name="check" size={13} /></span><span>{translateMessage(message, language)}</span><button type="button" onClick={() => setMessage("")}><Icon name="close" size={14} /></button></div>}
-      {isExporting && <div className="export-overlay"><div className="export-orbit"><Icon name="download" size={20} /></div><strong>Génération de la figure</strong><span>Préparation du fichier haute résolution…</span></div>}
+      {isExporting && <div className="export-overlay"><div className="export-orbit"><Icon name="download" size={20} /></div><strong>{tr("Génération de la figure")}</strong><span>{tr("Préparation du fichier haute résolution…")}</span></div>}
       {addNoteMode && <div className="mode-banner"><Icon name="note" /><span>Cliquer dans la zone principale de la figure pour placer la note.</span><button type="button" onClick={() => setAddNoteMode(false)}>Annuler</button></div>}
     </div>
   );
