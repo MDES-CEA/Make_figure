@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useHistoryState from "./useHistoryState";
-import { translate, SUPPORTED_LANGUAGES, defaultAxisLabels } from "./i18n.js";
+import { translate, translateMessage, defaultAxisLabels } from "./i18n.js";
 import ramanDatabaseSeed from "./ramanDatabaseSeed.json";
 import {
   CMAPS,
@@ -652,8 +652,8 @@ function EmptyPanel({ title, body, kind = "pattern" }) {
   return (
     <div className={`empty-panel empty-panel--${kind}`}>
       <MiniAsset kind={kind} />
-      <strong>{title}</strong>
-      <p>{body}</p>
+      <strong>{tr(title)}</strong>
+      <p>{tr(body)}</p>
     </div>
   );
 }
@@ -735,11 +735,11 @@ function PhaseItem({ phase, selected, onSelect, onUpdate, onDelete, onAppend, on
         <span className="data-item__meta">{phase.peaks.length} pics · {truncateLabel(phaseSubtitle(phase), 44)}</span>
         <div className="data-item__chips">
           <span className="type-badge"><Icon name="phase" size={10} /> {phase.sourceKind === "manual" ? "manuel" : phase.sourceKind === "raman-spectrum" ? "RRUFF" : "référence"}</span>
-          <button type="button" className={phase.inAnnot ? "chip is-on" : "chip"} onClick={(event) => { event.stopPropagation(); onUpdate("inAnnot", !phase.inAnnot); }}>annotation</button>
-          <button type="button" className={phase.inPanel ? "chip is-on" : "chip"} onClick={(event) => { event.stopPropagation(); onUpdate("inPanel", !phase.inPanel); }}>panneau</button>
+          <button type="button" className={phase.inAnnot ? "chip is-on" : "chip"} onClick={(event) => { event.stopPropagation(); onUpdate("inAnnot", !phase.inAnnot); }}>{tr("annotation")}</button>
+          <button type="button" className={phase.inPanel ? "chip is-on" : "chip"} onClick={(event) => { event.stopPropagation(); onUpdate("inPanel", !phase.inPanel); }}>{tr("panneau")}</button>
           <button type="button" className={phase.inOverlay ? "chip is-on" : "chip"} title="Superposer les bâtonnets directement sur la figure" onClick={(event) => { event.stopPropagation(); onUpdate("inOverlay", !phase.inOverlay); }}>figure</button>
           <button type="button" className={phase.dashed ? "chip is-on" : "chip"} title="Tracer les bâtonnets en pointillés dans tous les types d’annotation" onClick={(event) => { event.stopPropagation(); onUpdate("dashed", !phase.dashed); }}>pointillés</button>
-          <button type="button" className="chip chip--action" onClick={(event) => { event.stopPropagation(); onAppend(); }}>+ fiche</button>
+          <button type="button" className="chip chip--action" onClick={(event) => { event.stopPropagation(); onAppend(); }}>{tr("+ fiche")}</button>
         </div>
       </div>
       <div className="data-item__actions">
@@ -1064,7 +1064,7 @@ function RawComparisonPreview({ data, colors, width, height, xmin, xmax }) {
   return (
     <svg viewBox={`0 0 ${width} ${height}`} width="100%" height="100%" className="raw-comparison-svg">
       <rect width={width} height={height} fill="#fff" />
-      <text x={margin.left} y="21" fontSize="12" fontWeight="700" fill="#303743">DONNÉES BRUTES</text>
+      <text x={margin.left} y="21" fontSize="12" fontWeight="700" fill="#303743">{tr("DONNÉES BRUTES")}</text>
       <defs><clipPath id="raw-compare-clip"><rect x={margin.left} y={margin.top} width={plotWidth} height={plotHeight} /></clipPath></defs>
       <g clipPath="url(#raw-compare-clip)">{data.map((pattern) => {
         const path = pattern.px.map((x, index) => `${index ? "L" : "M"}${xTo(x).toFixed(2)},${yTo(pattern.py[index] + pattern.stackOffset).toFixed(2)}`).join("");
@@ -3786,7 +3786,7 @@ export default function App() {
           <SelectField label="Déplacer vers" value={activeMode} onChange={moveSelectionToWorkspace} options={workspaceOptions} />
         </Section>
       )}
-      <Section title="Raccourcis" defaultOpen={false}><div className="shortcut-list"><span><kbd>Ctrl/Cmd</kbd> Ajouter ou retirer</span><span><kbd>Shift</kbd> Sélectionner une plage</span><span><kbd>Ctrl/Cmd+A</kbd> Tout sélectionner dans l’onglet</span><span><kbd>Suppr.</kbd> Supprimer la sélection</span></div></Section>
+      <Section title="Raccourcis" defaultOpen={false}><div className="shortcut-list"><span><kbd>Ctrl/Cmd</kbd> Ajouter ou retirer</span><span><kbd>Shift</kbd> Sélectionner une plage</span><span><kbd>Ctrl/Cmd+A</kbd> Tout sélectionner dans l’onglet</span><span><kbd>{tr("Suppr.")}</kbd> Supprimer la sélection</span></div></Section>
     </>
   ) : activePattern ? (
     <>
@@ -3886,7 +3886,7 @@ export default function App() {
           <NumberField label="Distance minimale" value={activePhase.ramanOptions?.minDistance ?? 5} min={0} step={0.5} suffix="cm⁻¹" onChange={(value) => updatePhase(activePhase.id, "ramanOptions", { ...(activePhase.ramanOptions || {}), minDistance: value })} />
           <SliderField label="Nombre maximal" value={activePhase.ramanOptions?.maxCount ?? 30} min={3} max={80} step={1} onChange={(value) => updatePhase(activePhase.id, "ramanOptions", { ...(activePhase.ramanOptions || {}), maxCount: Math.round(value) })} />
           <div className="inline-actions"><Button variant="primary" onClick={() => recalculateRamanPhase(activePhase)}>Recalculer les pics</Button></div>
-          <div className="callout">Les fichiers Raman RRUFF sont lus comme des spectres continus. Seuls les maxima répondant à ces critères sont transformés en bâtonnets de référence.</div>
+          <div className="callout">{tr("Les fichiers Raman RRUFF sont lus comme des spectres continus. Seuls les maxima répondant à ces critères sont transformés en bâtonnets de référence.")}</div>
         </Section>
       )}
       <Section title="Édition manuelle des pics" defaultOpen={activePhase.sourceKind === "manual"}>
@@ -4063,12 +4063,12 @@ export default function App() {
                 <button type="button" className="drop-button" onClick={() => patternInputRef.current?.click()}><span className="drop-button__asset"><Icon name="waveform" /></span><span><strong>Importer des patrons</strong><small>.xy · .txt · .csv · .dat · .xml OPUS</small></span><Icon name="upload" size={14} /></button>
                 <div className="pattern-organizer">
                   <div className="pattern-organizer__row">
-                    <label><span><Icon name="sort" size={12} /> Trier</span><select value={patternSort.key} onChange={(event) => setPatternSort((current) => ({ ...current, key: event.target.value }))}><option value="manual">Ordre manuel</option><option value="filename">Nom du fichier</option><option value="date">Date du fichier</option><option value="numeric">Valeur numérique</option><option value="group">Groupe</option></select></label>
+                    <label><span><Icon name="sort" size={12} /> Trier</span><select value={patternSort.key} onChange={(event) => setPatternSort((current) => ({ ...current, key: event.target.value }))}><option value="manual">{tr("Ordre manuel")}</option><option value="filename">{tr("Nom du fichier")}</option><option value="date">{tr("Date du fichier")}</option><option value="numeric">{tr("Valeur numérique")}</option><option value="group">{tr("Groupe")}</option></select></label>
                     <button type="button" className="organizer-direction" onClick={() => setPatternSort((current) => ({ ...current, direction: current.direction === "asc" ? "desc" : "asc" }))}>{patternSort.direction === "asc" ? "↑" : "↓"}</button>
                     <Button variant="secondary" disabled={patternSort.key === "manual"} onClick={sortPatterns}>Appliquer</Button>
                   </div>
                   <div className="pattern-organizer__row">
-                    <label><span><Icon name="group" size={12} /> Grouper l’affichage</span><select value={groupViewBy} onChange={(event) => setGroupViewBy(event.target.value)}><option value="none">Aucun</option><option value="group">Tous les groupes</option><option value="sample">Échantillon</option><option value="time">Temps</option><option value="temperature">Température</option><option value="treatment">Traitement</option></select></label>
+                    <label><span><Icon name="group" size={12} /> Grouper l’affichage</span><select value={groupViewBy} onChange={(event) => setGroupViewBy(event.target.value)}><option value="none">{tr("Aucun")}</option><option value="group">{tr("Tous les groupes")}</option><option value="sample">{tr("Échantillon")}</option><option value="time">{tr("Temps")}</option><option value="temperature">{tr("Température")}</option><option value="treatment">{tr("Traitement")}</option></select></label>
                   </div>
                 </div>
                 {supportsAveraging && (
@@ -4079,8 +4079,8 @@ export default function App() {
                     </div>
                     <input type="text" value={ramanAverageLabel} placeholder="Nom du patron moyen" onChange={(event) => setRamanAverageLabel(event.target.value)} />
                     <div className="average-builder__grid">
-                      <label><span>Agrégation</span><select value={S.ramanAverageMethod} onChange={(event) => patchSettings("ramanAverageMethod", event.target.value)}><option value="mean">Moyenne</option><option value="median">Médiane</option></select></label>
-                      <label><span>Avant moyenne</span><select value={S.ramanAverageNormalize} onChange={(event) => patchSettings("ramanAverageNormalize", event.target.value)}><option value="none">Intensités brutes</option><option value="max">Normaliser au maximum</option><option value="area">Normaliser à l’aire</option><option value="minmax">Min–max</option></select></label>
+                      <label><span>Agrégation</span><select value={S.ramanAverageMethod} onChange={(event) => patchSettings("ramanAverageMethod", event.target.value)}><option value="mean">{tr("Moyenne")}</option><option value="median">{tr("Médiane")}</option></select></label>
+                      <label><span>Avant moyenne</span><select value={S.ramanAverageNormalize} onChange={(event) => patchSettings("ramanAverageNormalize", event.target.value)}><option value="none">{tr("Intensités brutes")}</option><option value="max">{tr("Normaliser au maximum")}</option><option value="area">{tr("Normaliser à l’aire")}</option><option value="minmax">{tr("Min–max")}</option></select></label>
                     </div>
                     <Toggle label="Masquer les acquisitions source" checked={S.ramanAverageHideSources} onChange={(value) => patchSettings("ramanAverageHideSources", value)} />
                     <div className="average-builder__actions">
@@ -4268,7 +4268,7 @@ export default function App() {
             onPointerCancel={stopPan}
             onWheel={workspaceWheel}
           >
-            {dropActive && <div className="drop-overlay"><div className="drop-overlay__asset"><WorkspaceIllustration mode={activeMode} compact /></div><Icon name="upload" size={24} /><strong>Déposer les fichiers</strong><span>.dif → DRX · RRUFF Raman → Raman · .xml OPUS → IR · autres fichiers → espace actif.</span></div>}
+            {dropActive && <div className="drop-overlay"><div className="drop-overlay__asset"><WorkspaceIllustration mode={activeMode} compact /></div><Icon name="upload" size={24} /><strong>Déposer les fichiers</strong><span>{tr(".dif → DRX · RRUFF Raman → Raman · .xml OPUS → IR · autres fichiers → espace actif.")}</span></div>}
             {!visibleCount ? (
               <div className="welcome-card">
                 <div className="welcome-card__visual"><WorkspaceIllustration mode={activeMode} /></div>
@@ -4522,7 +4522,7 @@ export default function App() {
                                   style={{ cursor: "pointer" }}
                                   onClick={(event) => { event.stopPropagation(); togglePhaseOverlayValue(phase.id, x); }}
                                 >
-                                  <title>{`${phase.name} · ${valueText} — cliquer pour ${showValue ? "masquer" : "afficher"} la valeur`}</title>
+                                  <title>{`${phase.name} · ${valueText} — ${tr(showValue ? "cliquer pour masquer la valeur" : "cliquer pour afficher la valeur")}`}</title>
                                 </line>
                                 {overlayDisplay !== "sticks" && showValue && <>
                                   {(offsetX !== 0 || offsetY !== 0) && <line data-ui-only="true" x1={px} y1={anchorY} x2={valueX} y2={valueYFinal} stroke={phase.color} strokeWidth="0.6" strokeDasharray="2 2" opacity="0.5" pointerEvents="none" />}
@@ -4538,7 +4538,7 @@ export default function App() {
                                       altY: anchorMode === "peak" ? topY : curveTopPxNear(x, searchWindow, invertSticks),
                                     })}
                                     onDoubleClick={(event) => { event.stopPropagation(); togglePhaseOverlayValue(phase.id, x); }}
-                                  ><title>Glisser pour déplacer la valeur, relâcher près du bâtonnet ou du pic pour l’y raccrocher ; double-clic pour la masquer</title>{valueText}</text>
+                                  ><title>{tr("Glisser pour déplacer la valeur, relâcher près du bâtonnet ou du pic pour l’y raccrocher ; double-clic pour la masquer")}</title>{valueText}</text>
                                 </>}
                                 {overlayDisplay !== "values" && !S.phaseOverlayFullHeight && S.showOverlayHandles !== false && (() => {
                                   // Poignée propre à ce bâtonnet : elle fixe sa hauteur
@@ -4556,7 +4556,7 @@ export default function App() {
                                       fill={overridden ? phase.color : "#fff"} stroke={phase.color} strokeWidth="1"
                                       opacity={overridden ? 0.95 : 0.7}
                                     >
-                                      <title>{`${phase.name} · ${valueText} — glisser pour régler la hauteur de ce bâtonnet, double-clic pour revenir à la hauteur de la phase`}</title>
+                                      <title>{`${phase.name} · ${valueText} — ${tr("glisser pour régler la hauteur de ce bâtonnet, double-clic pour revenir à la hauteur de la phase")}`}</title>
                                     </rect>
                                   </g>;
                                 })()}
@@ -4706,7 +4706,7 @@ export default function App() {
                         <path d={path} fill="none" stroke={color} strokeWidth={S.lineWidth} vectorEffect="non-scaling-stroke"/>
                         <text x={left + 7} y={top + 13} fontSize="8" fontWeight="700" fill="#20252b" pointerEvents="none">{truncateLabel(insetPattern.label, 28)}</text>
                         <text x={(inner.left + inner.right) / 2} y={top + height - 7} textAnchor="middle" fontSize="7" fill="#343a40">{insetAxisMin.toFixed(drxAxisMode === "2theta" ? 1 : 2)}–{insetAxisMax.toFixed(drxAxisMode === "2theta" ? 1 : 2)} {primaryAxisUnit}</text>
-                        {collision && <text data-ui-only="true" x={left + width - 7} y={top + 13} textAnchor="end" fontSize="8" fontWeight="700" fill="#e05a47">collision</text>}
+                        {collision && <text data-ui-only="true" x={left + width - 7} y={top + 13} textAnchor="end" fontSize="8" fontWeight="700" fill="#e05a47">{tr("collision")}</text>}
                         <rect data-ui-only="true" x={left + width - 10} y={top + height - 10} width="10" height="10" rx="2" fill={color} stroke="#fff" strokeWidth="1" style={{ cursor: "nwse-resize" }} onPointerDown={(event) => beginCanvasDrag(event, "insetResize", { xFrac, yFrac, widthPct, heightPct })} />
                       </g>;
                     })()}
@@ -4728,7 +4728,7 @@ export default function App() {
                         <rect x={px - 14} y={py - 9} width="28" height="18" fill="transparent" />
                         <line x1={px - 9} x2={px + 9} y1={py} y2={py} stroke={strongest.color} strokeWidth="1.4" opacity="0.9" />
                         <rect x={px - 4.5} y={py - 4.5} width="9" height="9" rx="2" fill="#fff" stroke={strongest.color} strokeWidth="1.4">
-                          <title>Hauteur des bâtonnets d’annotation — glisser verticalement</title>
+                          <title>{tr("Hauteur des bâtonnets d’annotation — glisser verticalement")}</title>
                         </rect>
                       </g>;
                     })()}
@@ -4788,10 +4788,10 @@ export default function App() {
                             <line x1={x} x2={x} y1={lineTopY} y2={lineBottomY} stroke={safe.color} strokeWidth="0.75" strokeDasharray="4 3" opacity="0.75" />
                             {selected && <g data-ui-only="true">
                               <rect x={x - 4} y={lineTopY - 4} width="8" height="8" rx="2" fill="#fff" stroke={safe.color} strokeWidth="1.1" style={{ cursor: "ns-resize" }} onPointerDown={(event) => beginCanvasDrag(event, "noteVlineTop", { id: safe.id, frac: topFrac })}>
-                                <title>Extrémité haute du trait</title>
+                                <title>{tr("Extrémité haute du trait")}</title>
                               </rect>
                               <rect x={x - 4} y={lineBottomY - 4} width="8" height="8" rx="2" fill="#fff" stroke={safe.color} strokeWidth="1.1" style={{ cursor: "ns-resize" }} onPointerDown={(event) => beginCanvasDrag(event, "noteVlineBottom", { id: safe.id, frac: bottomFrac })}>
-                                <title>Extrémité basse du trait</title>
+                                <title>{tr("Extrémité basse du trait")}</title>
                               </rect>
                             </g>}
                           </>}
@@ -4811,7 +4811,7 @@ export default function App() {
                               <line x1={x} y1={startY} x2={targetX} y2={targetY} stroke={safe.color} strokeWidth="0.75" opacity="0.85" />
                               <circle cx={targetX} cy={targetY} r="1.6" fill={safe.color} />
                               {selected && <circle data-ui-only="true" cx={targetX} cy={targetY} r="6" fill="#fff" fillOpacity="0.01" stroke={safe.color} strokeWidth="1.1" strokeDasharray="2 2" style={{ cursor: "move" }} onPointerDown={(event) => beginCanvasDrag(event, "noteAnchorMove", { id: safe.id })}>
-                                <title>Extrémité de la ligne d'accroche — glisser sur le pic visé (magnétisme sur les pics détectés)</title>
+                                <title>{tr("Extrémité de la ligne d'accroche — glisser sur le pic visé (magnétisme sur les pics détectés)")}</title>
                               </circle>}
                             </>;
                           })()}
@@ -4964,14 +4964,14 @@ export default function App() {
                   <Toggle label="Navigateur de plage" checked={showNavigator} onChange={setShowNavigator} />
                   <Toggle label="Comparaison brut / traité" checked={comparisonView} onChange={setComparisonView} />
                   <Toggle label="Édition plein écran" checked={editorFullscreen} onChange={setEditorFullscreen} />
-                  <div className="callout">Interactions directes sur la figure : glisser les étiquettes, notes, légendes et l'encart ; double-clic sur un texte pour ouvrir ses réglages ; glisser les extrémités de l'axe X pour recadrer ; double-clic sur l'axe X pour réinitialiser le zoom ; ↕ pour réordonner les courbes. Raccourcis : V sélection, H main, P pics, Z zoom rectangle, N note, Ctrl+Z/Y historique, Suppr. suppression.</div>
+                  <div className="callout">{tr("Interactions directes sur la figure : glisser les étiquettes, notes, légendes et l'encart ; double-clic sur un texte pour ouvrir ses réglages ; glisser les extrémités de l'axe X pour recadrer ; double-clic sur l'axe X pour réinitialiser le zoom ; ↕ pour réordonner les courbes. Raccourcis : V sélection, H main, P pics, Z zoom rectangle, N note, Ctrl+Z/Y historique, Suppr. suppression.")}</div>
                 </Section>
                 <Section title="Texte et axes" targetId="axes-options">
                   <TextField targetId="figure-title" label="Titre" value={S.title} onChange={(value) => patchSettings("title", value)} placeholder="Titre facultatif" />
                   <TextField targetId="axis-x-label" label="Axe X" value={S.xlabel} onChange={(value) => patchSettings("xlabel", value)} />
                   <TextField targetId="axis-y-label" label="Axe Y" value={S.ylabel} onChange={(value) => patchSettings("ylabel", value)} />
                   <div className="two-columns"><NumberField label={`X minimum (${primaryAxisUnit})`} value={primaryAxisWindow.minimum} step={primaryAxisStep} onChange={(value) => commitPrimaryAxisBound("minimum", value)} /><NumberField label={`X maximum (${primaryAxisUnit})`} value={primaryAxisWindow.maximum} step={primaryAxisStep} onChange={(value) => commitPrimaryAxisBound("maximum", value)} /></div>
-                  <NumberField label={`Pas des graduations (${primaryAxisUnit})`} value={S.xTickStep} min={0} step={primaryAxisStep} onChange={(value) => patchSettings("xTickStep", value)} hint="0 = automatique" />
+                  <NumberField label={`${tr("Pas des graduations")} (${primaryAxisUnit})`} value={S.xTickStep} min={0} step={primaryAxisStep} onChange={(value) => patchSettings("xTickStep", value)} hint="0 = automatique" />
                   <Toggle
                     label="Axe X décroissant"
                     checked={Boolean(S.reverseXAxis)}
@@ -4985,10 +4985,10 @@ export default function App() {
                     <Toggle label="Grille horizontale" checked={Boolean(S.showGridHorizontal)} onChange={(value) => patchSettings("showGridHorizontal", value)} />
                   </>}
                   {(S.showGrid || (S.showYAxisTicks && S.showGridHorizontal)) && <SliderField label="Opacité de la grille" value={S.gridOpacity} min={0.1} max={1} step={0.05} onChange={(value) => patchSettings("gridOpacity", value)} />}
-                  <Field label="Libellés d'axes" hint="Applique les libellés par défaut de l'espace courant dans la langue de l'interface.">
+                  <Field label="Libellés d'axes" hint="Applique les libellés par défaut de l'espace courant dans la langue choisie">
                     <div className="inline-actions">
-                      <Button variant="secondary" onClick={() => patchSettingsValues(defaultAxisLabels(activeMode, language, irQuantity))}>Appliquer les libellés par défaut</Button>
-                      <Button variant="secondary" onClick={() => patchSettingsValues(defaultAxisLabels(activeMode, language === "fr" ? "en" : "fr", irQuantity))}>{language === "fr" ? "Libellés en anglais" : "Libellés en français"}</Button>
+                      <Button variant="secondary" onClick={() => patchSettingsValues(defaultAxisLabels(activeMode, "fr", irQuantity))}>Labels FR</Button>
+                      <Button variant="secondary" onClick={() => patchSettingsValues(defaultAxisLabels(activeMode, "en", irQuantity))}>Labels EN</Button>
                     </div>
                   </Field>
                   {activeMode === "drx" && <>
@@ -4998,7 +4998,7 @@ export default function App() {
                   {S.showSecondaryXAxis && <SelectField label="Unité secondaire" value={S.secondaryXAxisMode} onChange={(value) => patchSettings("secondaryXAxisMode", value)} options={[["d", "d-spacing (Å)"], ["q", "Q (Å⁻¹)"], ["2theta", "2θ (°)"]]} />}
                   <Toggle label="Axe Y secondaire" checked={S.showSecondaryYAxis} onChange={(value) => patchSettings("showSecondaryYAxis", value)} />
                   <Toggle label="Encart de zoom" checked={S.showInset} onChange={(value) => patchSettings("showInset", value)} />
-                  {S.showInset && <><SelectField label="Patron de l’encart" value={S.insetPatternId || ""} onChange={(value) => patchSettings("insetPatternId", value)} options={[["", "Patron sélectionné"], ...patterns.filter((pattern) => pattern.visible).map((pattern) => [pattern.id, pattern.label])]} /><div className="two-columns"><NumberField label={`X min encart (${primaryAxisUnit})`} value={insetAxisWindow.minimum} step={primaryAxisStep} onChange={(value) => commitInsetAxisBound("minimum", value)} /><NumberField label={`X max encart (${primaryAxisUnit})`} value={insetAxisWindow.maximum} step={primaryAxisStep} onChange={(value) => commitInsetAxisBound("maximum", value)} /></div><SelectField label="Placement" value={S.insetPlacementMode || "overlay"} onChange={(value) => patchSettings("insetPlacementMode", value)} options={[["overlay", "Superposition libre"], ["dock-right", "Zone réservée à droite"], ["dock-top", "Zone réservée en haut"]]} /><SliderField label="Largeur de l’encart" value={S.insetWidthPct} min={15} max={70} step={1} suffix="%" onChange={(value) => patchSettings("insetWidthPct", value)} /><SliderField label="Hauteur de l’encart" value={S.insetHeightPct} min={15} max={70} step={1} suffix="%" onChange={(value) => patchSettings("insetHeightPct", value)} /><Toggle label="Rectangle de la zone agrandie" checked={S.insetShowSourceRect !== false} onChange={(value) => patchSettings("insetShowSourceRect", value)} />{S.insetShowSourceRect !== false && <Toggle label="Traits de liaison" checked={S.insetShowConnectors !== false} onChange={(value) => patchSettings("insetShowConnectors", value)} />}<div className="callout">En superposition, déplacer l’encart par sa barre supérieure et le redimensionner avec la poignée. Un contour rouge signale une collision probable avec les annotations. Les docks agrandissent la figure sans masquer les données.</div><div className="inline-actions"><Button variant="secondary" icon="reset" onClick={() => history.set((current) => updateWorkspaceProject(current, activeMode, (workspace) => ({ ...workspace, settings: { ...workspace.settings, insetXFrac: 0.63, insetYFrac: 0.06, insetWidthPct: 34, insetHeightPct: 34 } })))}>Réinitialiser l’encart</Button></div></>}
+                  {S.showInset && <><SelectField label="Patron de l’encart" value={S.insetPatternId || ""} onChange={(value) => patchSettings("insetPatternId", value)} options={[["", "Patron sélectionné"], ...patterns.filter((pattern) => pattern.visible).map((pattern) => [pattern.id, pattern.label])]} /><div className="two-columns"><NumberField label={`X min encart (${primaryAxisUnit})`} value={insetAxisWindow.minimum} step={primaryAxisStep} onChange={(value) => commitInsetAxisBound("minimum", value)} /><NumberField label={`X max encart (${primaryAxisUnit})`} value={insetAxisWindow.maximum} step={primaryAxisStep} onChange={(value) => commitInsetAxisBound("maximum", value)} /></div><SelectField label="Placement" value={S.insetPlacementMode || "overlay"} onChange={(value) => patchSettings("insetPlacementMode", value)} options={[["overlay", "Superposition libre"], ["dock-right", "Zone réservée à droite"], ["dock-top", "Zone réservée en haut"]]} /><SliderField label="Largeur de l’encart" value={S.insetWidthPct} min={15} max={70} step={1} suffix="%" onChange={(value) => patchSettings("insetWidthPct", value)} /><SliderField label="Hauteur de l’encart" value={S.insetHeightPct} min={15} max={70} step={1} suffix="%" onChange={(value) => patchSettings("insetHeightPct", value)} /><Toggle label="Rectangle de la zone agrandie" checked={S.insetShowSourceRect !== false} onChange={(value) => patchSettings("insetShowSourceRect", value)} />{S.insetShowSourceRect !== false && <Toggle label="Traits de liaison" checked={S.insetShowConnectors !== false} onChange={(value) => patchSettings("insetShowConnectors", value)} />}<div className="callout">{tr("En superposition, déplacer l’encart par sa barre supérieure et le redimensionner avec la poignée. Un contour rouge signale une collision probable avec les annotations. Les docks agrandissent la figure sans masquer les données.")}</div><div className="inline-actions"><Button variant="secondary" icon="reset" onClick={() => history.set((current) => updateWorkspaceProject(current, activeMode, (workspace) => ({ ...workspace, settings: { ...workspace.settings, insetXFrac: 0.63, insetYFrac: 0.06, insetWidthPct: 34, insetHeightPct: 34 } })))}>Réinitialiser l’encart</Button></div></>}
                 
                   </>}
                   {isIr && <SelectField
@@ -5009,10 +5009,7 @@ export default function App() {
                   />}
                 </Section>
                 {isIr && <Section title="Infrarouge" targetId="ir-options">
-                  <div className="callout">
-                    Conversion appliquée à la volée sur les spectres importés : %T = 100 × 10⁻ᴬ et A = 2 − log₁₀(%T).
-                    En transmittance, la détection de pics cherche les minima et la normalisation est déconseillée.
-                  </div>
+                  <div className="callout">{tr("Conversion appliquée à la volée sur les spectres importés : %T = 100 × 10⁻ᴬ et A = 2 − log₁₀(%T). En transmittance, la détection de pics cherche les minima et la normalisation est déconseillée.")}</div>
                   {activeIrMetadata && (
                     <Field label="Fiche d’acquisition OPUS">
                       <div className="info-box">
@@ -5023,7 +5020,7 @@ export default function App() {
                 </Section>}
                 <Section title="Disposition">
                   <SelectField label="Mode de représentation" value={S.layoutMode} onChange={(value) => patchSettings("layoutMode", value)} options={LAYOUT_OPTIONS} />
-                  {S.layoutMode === "difference" && <SelectField label="Patron de référence" value={S.differenceReferenceId} onChange={(value) => patchSettings("differenceReferenceId", value)} options={[["", "Premier patron visible"], ...patterns.filter((pattern) => pattern.visible).map((pattern) => [pattern.id, pattern.label])]} />}
+                  {S.layoutMode === "difference" && <SelectField label="Patron de référence" value={S.differenceReferenceId} onChange={(value) => patchSettings("differenceReferenceId", value)} options={[["", tr("Premier patron visible")], ...patterns.filter((pattern) => pattern.visible).map((pattern) => [pattern.id, pattern.label])]} />}
                   {S.layoutMode === "waterfall" && <SliderField label="Décalage horizontal par patron" value={S.waterfallXShiftPct} min={-8} max={8} step={0.1} suffix="%" onChange={(value) => patchSettings("waterfallXShiftPct", value)} />}
                   {S.layoutMode !== "overlay" && <SliderField label="Décalage vertical" value={S.vstep} min={0.1} max={4} step={0.05} onChange={(value) => patchSettings("vstep", value)} />}
                   <SliderField label="Échelle verticale" value={S.pxPerUnit} min={30} max={220} step={5} suffix="px" onChange={(value) => patchSettings("pxPerUnit", value)} />
@@ -5071,7 +5068,7 @@ export default function App() {
                   {S.figureLayoutMode !== "single" && <><SliderField label="Espace entre panneaux" value={S.panelGap} min={4} max={60} step={2} suffix="px" onChange={(value) => patchSettings("panelGap", value)} /><Toggle label="Lettrage automatique (a), (b)…" checked={S.panelLettering} onChange={(value) => patchSettings("panelLettering", value)} /><Toggle label="Légende partagée" checked={S.sharedPatternLegend} onChange={(value) => patchSettings("sharedPatternLegend", value)} /></>}
                   {["sideBySide", "beforeAfter", "differenceRatio"].includes(S.figureLayoutMode) && <SelectField label="Patron A" value={S.comparisonPatternAId || ""} onChange={(value) => patchSettings("comparisonPatternAId", value)} options={[["", "Sélection / premier visible"], ...patterns.filter((pattern) => pattern.visible).map((pattern) => [pattern.id, pattern.label])]} />}
                   {["sideBySide", "differenceRatio"].includes(S.figureLayoutMode) && <SelectField label="Patron B" value={S.comparisonPatternBId || ""} onChange={(value) => patchSettings("comparisonPatternBId", value)} options={[["", "Deuxième patron visible"], ...patterns.filter((pattern) => pattern.visible).map((pattern) => [pattern.id, pattern.label])]} />}
-                  <div className="callout">Les modes multi-panneaux utilisent un rendu volontairement simplifié : annotations de phases, notes et panneau de références sont réservés à la figure unique afin d’éviter une composition illisible.</div>
+                  <div className="callout">{tr("Les modes multi-panneaux utilisent un rendu volontairement simplifié : annotations de phases, notes et panneau de références sont réservés à la figure unique afin d’éviter une composition illisible.")}</div>
                 </Section>
 
                 <Section title="Axe X brisé" defaultOpen={false}>
@@ -5090,7 +5087,7 @@ export default function App() {
                 <Section title="Styles réutilisables" defaultOpen={false}>
                   <TextField label="Nom du style" value={templateName} onChange={setTemplateName} placeholder="Ex. Water Research · DRX" />
                   <div className="inline-actions"><Button variant="secondary" icon="save" onClick={saveStyleTemplate}>Enregistrer le style courant</Button></div>
-                  {styleTemplates.length ? <div className="library-list">{styleTemplates.map((entry) => <div key={entry.id} className="library-row"><span><strong>{entry.name}</strong><small>{new Date(entry.savedAt).toLocaleDateString("fr-FR")}</small></span><Button variant="secondary" onClick={() => applyStyleTemplate(entry)}>Appliquer</Button><IconButton icon="trash" danger title="Supprimer" onClick={() => setStyleTemplates((current) => current.filter((item) => item.id !== entry.id))} /></div>)}</div> : <div className="callout">Aucun style local enregistré.</div>}
+                  {styleTemplates.length ? <div className="library-list">{styleTemplates.map((entry) => <div key={entry.id} className="library-row"><span><strong>{entry.name}</strong><small>{new Date(entry.savedAt).toLocaleDateString("fr-FR")}</small></span><Button variant="secondary" onClick={() => applyStyleTemplate(entry)}>Appliquer</Button><IconButton icon="trash" danger title="Supprimer" onClick={() => setStyleTemplates((current) => current.filter((item) => item.id !== entry.id))} /></div>)}</div> : <div className="callout">{tr("Aucun style local enregistré.")}</div>}
                 </Section>
               </>
             )}
@@ -5102,7 +5099,7 @@ export default function App() {
                   <SliderField label="Écrêtage percentile" value={S.clipPct} min={90} max={100} step={0.1} suffix="%" onChange={(value) => patchSettings("clipPct", value)} />
                   <SelectField label="Normalisation" value={S.normalizeMode} onChange={(value) => patchSettings("normalizeMode", value)} options={NORMALIZATION_OPTIONS} />
                   {S.normalizeMode === "referencePeak" && <div className="two-columns"><NumberField label="Position du pic" value={S.normalizeReferenceX} step={S.mode === "drx" ? 0.05 : 1} onChange={(value) => patchSettings("normalizeReferenceX", value)} /><NumberField label="Demi-fenêtre" value={S.normalizeReferenceWindow} min={0.01} step={S.mode === "drx" ? 0.05 : 1} onChange={(value) => patchSettings("normalizeReferenceWindow", value)} /></div>}
-                  {S.normalizeMode === "none" && <div className="callout">Les amplitudes relatives sont conservées ; une échelle globale commune est utilisée uniquement pour l’affichage.</div>}
+                  {S.normalizeMode === "none" && <div className="callout">{tr("Les amplitudes relatives sont conservées ; une échelle globale commune est utilisée uniquement pour l’affichage.")}</div>}
                 </Section>
 
                 <Section title="Correction de ligne de base">
@@ -5113,14 +5110,14 @@ export default function App() {
                   {S.baselineMode === "als" && <SliderField label="Rigidité log₁₀(λ)" value={S.baselineLambdaLog} min={1} max={9} step={0.25} onChange={(value) => patchSettings("baselineLambdaLog", value)} />}
                   {["polynomial", "als"].includes(S.baselineMode) && <><SliderField label="Asymétrie p" value={S.baselineAsymmetry} min={0.001} max={0.2} step={0.001} onChange={(value) => patchSettings("baselineAsymmetry", value)} /><SliderField label="Itérations" value={S.baselineIterations} min={1} max={20} step={1} onChange={(value) => patchSettings("baselineIterations", Math.round(value))} /></>}
                   {S.baselineMode !== "none" && <Toggle label="Ramener les valeurs négatives à zéro" checked={S.baselineClamp} onChange={(value) => patchSettings("baselineClamp", value)} />}
-                  {S.baselineMode === "als" && <div className="callout">ALS est plus coûteux que les autres méthodes. Une rigidité élevée produit une ligne de base plus lisse.</div>}
+                  {S.baselineMode === "als" && <div className="callout">{tr("ALS est plus coûteux que les autres méthodes. Une rigidité élevée produit une ligne de base plus lisse.")}</div>}
                 </Section>
 
                 <Section title="Repérage des pics expérimentaux" defaultOpen={false}>
-                  <div className="callout">Détecte les maxima du patron sélectionné pour les exporter, les suivre dans une série ou lancer un ajustement. Ce module ne réalise pas une identification de phase.</div>
+                  <div className="callout">{tr("Détecte les maxima du patron sélectionné pour les exporter, les suivre dans une série ou lancer un ajustement. Ce module ne réalise pas une identification de phase.")}</div>
                   <Toggle label="Afficher les marqueurs sur la figure" checked={S.showDetectedPeaks} onChange={(value) => patchSettings("showDetectedPeaks", value)} />
                   <Toggle label="Afficher les valeurs des pics" checked={S.showPeakLabels !== false} onChange={(value) => patchSettings("showPeakLabels", value)} />
-                  <div className="callout">Outil « Pics » de la barre du canevas : un clic sur une courbe ajoute un pic au maximum local le plus proche ; un clic sur un marqueur ou sa valeur le retire. Les pics ajoutés sont pleins, les pics détectés sont creux.</div>
+                  <div className="callout">{tr("Outil « Pics » de la barre du canevas : un clic sur une courbe ajoute un pic au maximum local le plus proche ; un clic sur un marqueur ou sa valeur le retire. Les pics ajoutés sont pleins, les pics détectés sont creux.")}</div>
                   {activePattern && ((activePattern.userPeaks?.length || 0) + (activePattern.excludedPeaks?.length || 0) > 0) && <div className="inline-actions"><Button variant="secondary" icon="reset" onClick={() => resetPeakEdits(activePattern.id)}>Réinitialiser ajouts/retraits ({(activePattern.userPeaks?.length || 0)} + / {(activePattern.excludedPeaks?.length || 0)} −)</Button></div>}
                   <SliderField label="Hauteur minimale" value={S.peakMinHeight} min={0} max={100} step={1} suffix="%" onChange={(value) => patchSettings("peakMinHeight", value)} />
                   <SliderField label="Proéminence minimale" value={S.peakMinProminence} min={0} max={100} step={0.5} suffix="%" onChange={(value) => patchSettings("peakMinProminence", value)} />
@@ -5129,13 +5126,13 @@ export default function App() {
                   <SliderField label="Nombre maximal de labels" value={S.peakMaxLabels} min={0} max={100} step={1} onChange={(value) => patchSettings("peakMaxLabels", Math.round(value))} />
                   {activeProcessedPattern ? <div className="peak-results">
                     <div className="peak-results__header"><strong>{truncateLabel(activeProcessedPattern.label, 28)}</strong><span>{activeProcessedPattern.detectedPeaks?.length || 0} maximum(s)</span></div>
-                    <div className="peak-results__table"><div className="peak-results__row is-head"><span>Position</span><span>Hauteur</span><span>Prom.</span><span>Actions</span></div>{(activeProcessedPattern.detectedPeaks || []).slice(0, 30).map((peak, index) => <div className="peak-results__row" key={`${peak.x}-${index}`}><span>{Number(peak.x).toFixed(activeMode === "drx" ? 4 : 1)}{peak.manual ? " ✎" : ""}</span><span>{Number(peak.heightPct).toFixed(1)} %</span><span>{Number(peak.prominencePct).toFixed(1)} %</span><span><button type="button" title="Ajouter au suivi de série" onClick={() => addDetectedPeakToTracking(peak, index)}>Suivre</button>{activeMode === "drx" && <button type="button" title="Ajuster ce pic" onClick={() => fitDetectedPeak(peak)}>Ajuster</button>}<button type="button" title={peak.manual ? "Supprimer ce pic ajouté manuellement" : "Exclure ce pic de la détection"} onClick={() => removePeak(activeProcessedPattern.id, peak)}>Retirer</button></span></div>)}</div>
-                  </div> : <div className="callout">Sélectionner un patron visible pour afficher sa table de maxima.</div>}
+                    <div className="peak-results__table"><div className="peak-results__row is-head"><span>{tr("Position")}</span><span>{tr("Hauteur")}</span><span>{tr("Prom.")}</span><span>Actions</span></div>{(activeProcessedPattern.detectedPeaks || []).slice(0, 30).map((peak, index) => <div className="peak-results__row" key={`${peak.x}-${index}`}><span>{Number(peak.x).toFixed(activeMode === "drx" ? 4 : 1)}{peak.manual ? " ✎" : ""}</span><span>{Number(peak.heightPct).toFixed(1)} %</span><span>{Number(peak.prominencePct).toFixed(1)} %</span><span><button type="button" title="Ajouter au suivi de série" onClick={() => addDetectedPeakToTracking(peak, index)}>Suivre</button>{activeMode === "drx" && <button type="button" title="Ajuster ce pic" onClick={() => fitDetectedPeak(peak)}>Ajuster</button>}<button type="button" title={peak.manual ? "Supprimer ce pic ajouté manuellement" : "Exclure ce pic de la détection"} onClick={() => removePeak(activeProcessedPattern.id, peak)}>Retirer</button></span></div>)}</div>
+                  </div> : <div className="callout">{tr("Sélectionner un patron visible pour afficher sa table de maxima.")}</div>}
                   <div className="inline-actions"><Button variant="secondary" icon="csv" onClick={exportDetectedPeaksCsv}>Exporter la table complète</Button></div>
                 </Section>
 
                 <Section title="Ajustement multi-pics (déconvolution)" defaultOpen={false}>
-                  <div className="callout">Ajuste simultanément plusieurs profils sur une fenêtre du patron sélectionné : fond linéaire plus pseudo-Voigt à η partagé. Utile pour déconvoluer un massif (ν1 phosphate / carbonate, doublets DRX…). Les aires relatives sont rapportées à la somme des composantes.</div>
+                  <div className="callout">{tr("Ajuste simultanément plusieurs profils sur une fenêtre du patron sélectionné : fond linéaire plus pseudo-Voigt à η partagé. Utile pour déconvoluer un massif (ν1 phosphate / carbonate, doublets DRX…). Les aires relatives sont rapportées à la somme des composantes.")}</div>
                   <TextField label="Centres initiaux" placeholder={activeMode === "drx" ? "31.77; 32.2; 32.9" : "950; 962; 1005"} value={multiFitDraft.centers} onChange={(value) => setMultiFitDraft((current) => ({ ...current, centers: value }))} />
                   <div className="two-columns">
                     <NumberField label="Fenêtre X min" value={multiFitDraft.xmin} step={activeMode === "drx" ? 0.1 : 1} onChange={(value) => setMultiFitDraft((current) => ({ ...current, xmin: value }))} />
@@ -5146,21 +5143,21 @@ export default function App() {
                   {multiFitResult && <div className="peak-results">
                     <div className="peak-results__header"><strong>R² = {multiFitResult.r2.toFixed(4)}</strong><span>η = {multiFitResult.eta} · {multiFitResult.xmin.toFixed(activeMode === "drx" ? 2 : 0)}–{multiFitResult.xmax.toFixed(activeMode === "drx" ? 2 : 0)}</span></div>
                     <div className="peak-results__table">
-                      <div className="peak-results__row is-head"><span>Centre</span><span>FWHM</span><span>Aire</span><span>% aire</span></div>
+                      <div className="peak-results__row is-head"><span>{tr("Centre")}</span><span>{tr("FWHM")}</span><span>{tr("Aire")}</span><span>{tr("% aire")}</span></div>
                       {multiFitResult.components.map((component, index) => <div className="peak-results__row" key={`mf-${index}`}><span>{component.center.toFixed(activeMode === "drx" ? 3 : 1)}</span><span>{component.fwhm.toFixed(activeMode === "drx" ? 3 : 1)}</span><span>{component.area.toExponential(2)}</span><span>{component.areaPct.toFixed(1)} %</span></div>)}
                     </div>
                   </div>}
                 </Section>
                 {supportsZones && <Section title="Intégration des zones" defaultOpen={false}>
-                  <div className="callout">Aire du signal dans chaque zone nommée, pour chaque patron visible, avec rapport de bandes optionnel (typiquement carbonate / phosphate). Les zones se définissent dans l'onglet de gauche.</div>
-                  {zones.length < 1 ? <div className="callout">Aucune zone définie.</div> : <>
+                  <div className="callout">{tr("Aire du signal dans chaque zone nommée, pour chaque patron visible, avec rapport de bandes optionnel (typiquement carbonate / phosphate). Les zones se définissent dans l'onglet de gauche.")}</div>
+                  {zones.length < 1 ? <div className="callout">{tr("Aucune zone définie.")}</div> : <>
                     <SelectField label="Signal intégré" value={zoneSignal} onChange={setZoneSignal} options={[["corrected", "Corrigé du fond"], ["normalized", "Normalisé"], ["raw", "Brut"]]} />
                     <div className="two-columns">
                       <SelectField label="Ratio · numérateur" value={zoneRatio.a} onChange={(value) => setZoneRatio((current) => ({ ...current, a: value }))} options={[["", "—"], ...zones.map((zone) => [zone.id, zone.name])]} />
                       <SelectField label="Ratio · dénominateur" value={zoneRatio.b} onChange={(value) => setZoneRatio((current) => ({ ...current, b: value }))} options={[["", "—"], ...zones.map((zone) => [zone.id, zone.name])]} />
                     </div>
                     {zoneAreaRows.length > 0 && <div className="peak-results"><div className="peak-results__table">
-                      <div className="peak-results__row is-head"><span>Patron</span>{zones.slice(0, 2).map((zone) => <span key={zone.id}>{truncateLabel(zone.name, 10)}</span>)}<span>{zoneRatio.a && zoneRatio.b ? "Ratio" : ""}</span></div>
+                      <div className="peak-results__row is-head"><span>{tr("Patron")}</span>{zones.slice(0, 2).map((zone) => <span key={zone.id}>{truncateLabel(zone.name, 10)}</span>)}<span>{zoneRatio.a && zoneRatio.b ? "Ratio" : ""}</span></div>
                       {zoneAreaRows.map((row) => {
                         const numerator = row.areas[zoneRatio.a];
                         const denominator = row.areas[zoneRatio.b];
@@ -5172,8 +5169,8 @@ export default function App() {
                   </>}
                 </Section>}
                 <Section title="Aligner une série d’acquisitions" defaultOpen={false}>
-                  <div className="callout">Cette opération compense de petits décalages entre acquisitions comparables. Elle ne remplace pas la correction instrumentale du zéro DRX, située plus bas.</div>
-                  <SelectField label="Acquisition de référence" value={S.alignmentReferenceId} onChange={(value) => { patchSettings("alignmentReferenceId", value); setAlignmentPreview(null); }} options={[["", activePattern ? `Sélection : ${activePattern.label}` : "Premier patron visible"], ...patterns.filter((pattern) => pattern.visible).map((pattern) => [pattern.id, pattern.label])]} />
+                  <div className="callout">{tr("Cette opération compense de petits décalages entre acquisitions comparables. Elle ne remplace pas la correction instrumentale du zéro DRX, située plus bas.")}</div>
+                  <SelectField label="Acquisition de référence" value={S.alignmentReferenceId} onChange={(value) => { patchSettings("alignmentReferenceId", value); setAlignmentPreview(null); }} options={[["", activePattern ? `${tr("Sélection")} : ${activePattern.label}` : tr("Premier patron visible")], ...patterns.filter((pattern) => pattern.visible).map((pattern) => [pattern.id, pattern.label])]} />
                   <div className="two-columns"><NumberField label="X min de corrélation" value={S.alignmentXMin !== null && S.alignmentXMin !== "" && Number.isFinite(Number(S.alignmentXMin)) ? S.alignmentXMin : S.xmin} step={S.mode === "drx" ? 0.1 : 5} onChange={(value) => { patchSettings("alignmentXMin", value); setAlignmentPreview(null); }} /><NumberField label="X max de corrélation" value={S.alignmentXMax !== null && S.alignmentXMax !== "" && Number.isFinite(Number(S.alignmentXMax)) ? S.alignmentXMax : S.xmax} step={S.mode === "drx" ? 0.1 : 5} onChange={(value) => { patchSettings("alignmentXMax", value); setAlignmentPreview(null); }} /></div>
                   <NumberField label="Décalage maximal ±" value={S.alignmentMaxShift} min={0} step={S.mode === "drx" ? 0.05 : 1} onChange={(value) => { patchSettings("alignmentMaxShift", value); setAlignmentPreview(null); }} />
                   <NumberField label="Pas de recherche" value={S.alignmentStep} min={0.0001} step={S.mode === "drx" ? 0.005 : 0.1} onChange={(value) => { patchSettings("alignmentStep", value); setAlignmentPreview(null); }} />
@@ -5185,7 +5182,7 @@ export default function App() {
                   <Section title="Instrument et rayonnement" defaultOpen={false}>
                     <SelectField label="Source" value={S.radiationPreset || "CuKa1"} onChange={applyRadiationPreset} options={Object.entries(RADIATION_PRESETS).map(([key, value]) => [key, value.label])} />
                     <NumberField label="Longueur d’onde λ" value={S.wavelength} min={0.1} max={5} step={0.00001} suffix="Å" onChange={(value) => patchSettings("wavelength", value)} />
-                    <div className="callout">La longueur d’onde est utilisée pour d, Q, Scherrer, la déformation et le calcul des phases CIF.</div>
+                    <div className="callout">{tr("La longueur d’onde est utilisée pour d, Q, Scherrer, la déformation et le calcul des phases CIF.")}</div>
                     <div className="inline-actions"><Button variant="secondary" icon="reset" onClick={recalculateCifPhases}>Recalculer les phases CIF</Button></div>
                   </Section>
 
@@ -5195,7 +5192,7 @@ export default function App() {
                     <SelectField label="Phase pour le zéro" value={S.zeroShiftReferencePhaseId || ""} onChange={(value) => patchSettings("zeroShiftReferencePhaseId", value)} options={[["", "Première phase visible"], ...phases.filter((phase) => phase.visible).map((phase) => [phase.id, phase.name])]} />
                     <div className="two-columns"><NumberField label="Tolérance" value={S.zeroShiftTolerance} min={0.02} max={2} step={0.02} suffix="°" onChange={(value) => patchSettings("zeroShiftTolerance", value)} /><NumberField label="I min phase" value={S.zeroShiftMinIntensity} min={0} max={100} step={1} suffix="%" onChange={(value) => patchSettings("zeroShiftMinIntensity", value)} /></div>
                     <div className="inline-actions"><Button variant="primary" onClick={applyZeroShift}>Corriger le zéro</Button><Button variant="secondary" icon="reset" onClick={removeZeroShift}>Retirer</Button></div>
-                    <div className="callout">La correction utilise la médiane robuste des écarts entre pics expérimentaux et pics de la phase choisie. Elle requiert au moins deux correspondances.</div>
+                    <div className="callout">{tr("La correction utilise la médiane robuste des écarts entre pics expérimentaux et pics de la phase choisie. Elle requiert au moins deux correspondances.")}</div>
                   </Section>
 
                   <Section title="Ajustement de pic et microstructure" defaultOpen={false}>
@@ -5204,7 +5201,7 @@ export default function App() {
                     <div className="two-columns"><NumberField label="FWHM instrumentale" value={S.instrumentFwhm} min={0} step={0.005} suffix="°" onChange={(value) => patchSettings("instrumentFwhm", value)} /><NumberField label="Constante de Scherrer K" value={S.scherrerK} min={0.5} max={1.5} step={0.01} onChange={(value) => patchSettings("scherrerK", value)} /></div>
                     <div className="inline-actions"><Button variant="primary" onClick={runPeakFit}>Ajuster le pic sélectionné</Button></div>
                     {peakFitResult && <div className="analysis-result"><strong>{activeProcessedPattern?.label}</strong><span>Centre : {peakFitResult.center.toFixed(4)}°</span><span>FWHM : {peakFitResult.fwhm.toFixed(4)}° · corrigée {peakFitResult.betaCorrectedDegrees.toFixed(4)}°</span><span>Aire : {peakFitResult.area.toExponential(4)} · R² : {peakFitResult.r2.toFixed(5)}</span><span>d : {peakFitResult.dSpacing.toFixed(4)} Å · Q : {peakFitResult.q.toFixed(4)} Å⁻¹</span><span>Taille apparente : {peakFitResult.crystalliteNm ? `${peakFitResult.crystalliteNm.toFixed(1)} nm` : "n.d."}</span><span>Microdéformation apparente : {peakFitResult.strain ? `${(peakFitResult.strain * 1e6).toFixed(0)} µε` : "n.d."}</span></div>}
-                    <div className="callout">Scherrer et la microdéformation sur un seul pic sont des estimations apparentes. Une analyse Williamson–Hall multi-pics reste préférable.</div>
+                    <div className="callout">{tr("Scherrer et la microdéformation sur un seul pic sont des estimations apparentes. Une analyse Williamson–Hall multi-pics reste préférable.")}</div>
                   </Section>
 
                   <Section title="Suivi de pics à travers une série" defaultOpen={false}>
@@ -5230,14 +5227,14 @@ export default function App() {
                       })}
                     </div>
                   </Field>
-                  {ramanDatabaseMatches.length ? <div className="library-list">{ramanDatabaseMatches.map((entry) => <div key={`${entry.name}-${entry.formula || entry.metadata?.RRUFFID || entry.metadata?.NAMES || entry.metadata?.CIF_FORMULA || "entry"}`} className="library-row"><span><strong>{entry.name}</strong><small>{entry.formula || entry.metadata?.RRUFFID || entry.sourceKind || "base locale"}</small></span><Button variant="secondary" onClick={() => addLibraryPhase(entry, activeMode)}>Ajouter</Button></div>)}</div> : <div className="callout">Aucune correspondance trouvée. Essayez un nom, une formule, ou des symboles d’éléments.</div>}
+                  {ramanDatabaseMatches.length ? <div className="library-list">{ramanDatabaseMatches.map((entry) => <div key={`${entry.name}-${entry.formula || entry.metadata?.RRUFFID || entry.metadata?.NAMES || entry.metadata?.CIF_FORMULA || "entry"}`} className="library-row"><span><strong>{entry.name}</strong><small>{entry.formula || entry.metadata?.RRUFFID || entry.sourceKind || "base locale"}</small></span><Button variant="secondary" onClick={() => addLibraryPhase(entry, activeMode)}>Ajouter</Button></div>)}</div> : <div className="callout">{tr("Aucune correspondance trouvée. Essayez un nom, une formule, ou des symboles d’éléments.")}</div>}
                 </Section>}
                 <Section title="Annotations de phases">
                   <Toggle label="Afficher les annotations" checked={S.showAnnotations} onChange={(value) => patchSettings("showAnnotations", value)} />
                   {S.showAnnotations && <><SliderField label="Seuil des bâtonnets" value={S.tickMinI} min={0} max={50} step={0.5} suffix="%" onChange={(value) => patchSettings("tickMinI", value)} /><SliderField label="Seuil des labels" value={S.labelMinI} min={0} max={100} step={1} suffix="%" onChange={(value) => patchSettings("labelMinI", value)} /><SliderField label="Séparation des labels" value={S.labelMinSep} min={0.1} max={10} step={0.1} onChange={(value) => patchSettings("labelMinSep", value)} /><SliderField label="Hauteur" value={S.tickScale} min={0.1} max={1.5} step={0.02} onChange={(value) => patchSettings("tickScale", value)} /><SliderField label="Écart au patron" value={S.annotGap} min={0.3} max={3} step={0.02} onChange={(value) => patchSettings("annotGap", value)} /><SliderField label="Taille des labels" value={S.annotFontSize} min={5} max={18} step={0.5} onChange={(value) => patchSettings("annotFontSize", value)} /><Toggle label="Clé des abréviations" checked={S.showAbbrevKey} onChange={(value) => patchSettings("showAbbrevKey", value)} /></>}
                 </Section>
                 <Section title="Références sur la figure" defaultOpen={phases.some((phase) => phase.inOverlay)} targetId="overlay-legend-options">
-                  <div className="callout">Trace les bâtonnets des phases cochées ci-dessous directement dans la zone du graphe, superposés aux courbes (style EVA/HighScore), avec une légende intégrée déplaçable à la souris.</div>
+                  <div className="callout">{tr("Trace les bâtonnets des phases cochées ci-dessous directement dans la zone du graphe, superposés aux courbes (style EVA/HighScore), avec une légende intégrée déplaçable à la souris.")}</div>
                   {phases.length ? phases.map((phase) => (
                     <div key={`overlay-toggle-${phase.id}`}>
                       <Toggle label={phase.name} checked={Boolean(phase.inOverlay)} onChange={(value) => updatePhase(phase.id, "inOverlay", value)} />
@@ -5249,8 +5246,8 @@ export default function App() {
                         {(phase.overlayValueExceptions?.length || 0) > 0 && <div className="inline-actions"><Button variant="secondary" icon="reset" onClick={() => updatePhase(phase.id, "overlayValueExceptions", [])}>Réinitialiser les {phase.overlayValueExceptions.length} exception(s)</Button></div>}
                       </>}
                     </div>
-                  )) : <div className="callout">Importer d’abord des phases de référence.</div>}
-                  {phases.some((phase) => phase.inOverlay) && <div className="callout">Cliquer sur un bâtonnet (ou sur sa valeur) dans la figure pour afficher ou masquer sa valeur individuellement, quel que soit le réglage global de la phase.</div>}
+                  )) : <div className="callout">{tr("Importer d’abord des phases de référence.")}</div>}
+                  {phases.some((phase) => phase.inOverlay) && <div className="callout">{tr("Cliquer sur un bâtonnet (ou sur sa valeur) dans la figure pour afficher ou masquer sa valeur individuellement, quel que soit le réglage global de la phase.")}</div>}
                   {phases.some((phase) => phase.inOverlay) && <>
                     <Toggle label="Lignes pleine hauteur" checked={Boolean(S.phaseOverlayFullHeight)} onChange={(value) => patchSettings("phaseOverlayFullHeight", value)} />
 
@@ -5260,7 +5257,7 @@ export default function App() {
                     <SliderField label="Taille des valeurs" value={S.phaseOverlayValueSize ?? 8.5} min={5} max={16} step={0.5} suffix="pt" onChange={(value) => patchSettings("phaseOverlayValueSize", value)} />
                     <SelectField label="Affichage des références" value={S.phaseOverlayDisplay || "both"} onChange={(value) => patchSettings("phaseOverlayDisplay", value)} options={[["both", "Bâtonnets et valeurs"], ["sticks", "Bâtonnets seuls"], ["values", "Valeurs seules"]]} />
                     <SelectField label="Position des valeurs" value={S.phaseOverlayValueAnchor === "peak" ? "peak" : "stick"} onChange={(value) => patchSettings("phaseOverlayValueAnchor", value)} options={[["stick", "À l'extrémité du bâtonnet"], ["peak", "Au-dessus du pic mesuré"]]} />
-                    {S.phaseOverlayValueAnchor === "peak" && <NumberField label={`Fenêtre de recherche du sommet (${activeMode === "drx" ? "°" : "cm⁻¹"})`} value={S.phaseOverlayValueWindow ?? 0} min={0} step={activeMode === "drx" ? 0.05 : 1} onChange={(value) => patchSettings("phaseOverlayValueWindow", value)} hint={`0 = automatique (${activeMode === "drx" ? "0,2°" : "8 cm⁻¹"}).`} />}
+                    {S.phaseOverlayValueAnchor === "peak" && <NumberField label={`${tr("Fenêtre de recherche du sommet")} (${activeMode === "drx" ? "°" : "cm⁻¹"})`} value={S.phaseOverlayValueWindow ?? 0} min={0} step={activeMode === "drx" ? 0.05 : 1} onChange={(value) => patchSettings("phaseOverlayValueWindow", value)} hint={`0 = automatique (${activeMode === "drx" ? "0,2°" : "8 cm⁻¹"}).`} />}
                     <Toggle label="Poignées de hauteur sur la figure" checked={S.showOverlayHandles !== false} onChange={(value) => patchSettings("showOverlayHandles", value)} description="Une poignée au sommet de chaque bâtonnet : la glisser ne règle que ce bâtonnet, double-clic pour revenir à la hauteur commune de la phase. Les poignées ne sont pas exportées." />
                     <Toggle label="Légende dans la figure" checked={S.showOverlayLegend !== false} onChange={(value) => patchSettings("showOverlayLegend", value)} />
                     {S.showOverlayLegend !== false && <>
@@ -5282,13 +5279,13 @@ export default function App() {
                       <SliderField label="Largeur de la légende" value={S.phaseLegendWidth || 210} min={140} max={500} step={5} suffix="px" onChange={(value) => patchSettings("phaseLegendWidth", value)} />
                       <SliderField label="Taille du texte" value={S.phaseLegendFontSize || 8} min={6} max={16} step={0.5} suffix="pt" onChange={(value) => patchSettings("phaseLegendFontSize", value)} />
                       <div className="inline-actions"><Button variant="secondary" icon="reset" onClick={() => history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({ ...currentWorkspace, settings: { ...currentWorkspace.settings, phaseLegendX: null, phaseLegendY: null, phaseLegendWidth: 210, phaseLegendFontSize: 8 } })))}>Réinitialiser la légende</Button></div>
-                      <div className="callout">Glisser l’en-tête de l’encart dans la figure pour le déplacer ; utiliser le carré inférieur droit pour le redimensionner.</div>
+                      <div className="callout">{tr("Glisser l’en-tête de l’encart dans la figure pour le déplacer ; utiliser le carré inférieur droit pour le redimensionner.")}</div>
                     </>}
                   </>}
                 </Section>
                 {activeMode === "drx" && <Section title="Bibliothèque de phases DRX" defaultOpen={false}>
                   <div className="inline-actions"><Button variant="secondary" icon="save" onClick={saveSelectedPhasesToLibrary}>Enregistrer sélection / visibles</Button><Button variant="secondary" icon="reset" onClick={recalculateCifPhases}>Recalculer CIF</Button></div>
-                  {phaseLibrary.length ? <div className="library-list">{phaseLibrary.map((entry) => <div key={entry.libraryKey || entry.name} className="library-row"><span><strong>{entry.name}</strong><small>{entry.metadata?.CIF_FORMULA || entry.metadata?.RRUFFID || entry.sourceKind}</small></span><Button variant="secondary" onClick={() => addLibraryPhase(entry)}>Ajouter</Button><IconButton icon="trash" danger title="Retirer de la bibliothèque" onClick={() => setPhaseLibrary((current) => current.filter((item) => item !== entry))} /></div>)}</div> : <div className="callout">La bibliothèque est locale au navigateur. Importer une fiche ou un CIF, sélectionner la phase puis l’enregistrer ici.</div>}
+                  {phaseLibrary.length ? <div className="library-list">{phaseLibrary.map((entry) => <div key={entry.libraryKey || entry.name} className="library-row"><span><strong>{entry.name}</strong><small>{entry.metadata?.CIF_FORMULA || entry.metadata?.RRUFFID || entry.sourceKind}</small></span><Button variant="secondary" onClick={() => addLibraryPhase(entry)}>Ajouter</Button><IconButton icon="trash" danger title="Retirer de la bibliothèque" onClick={() => setPhaseLibrary((current) => current.filter((item) => item !== entry))} /></div>)}</div> : <div className="callout">{tr("La bibliothèque est locale au navigateur. Importer une fiche ou un CIF, sélectionner la phase puis l’enregistrer ici.")}</div>}
                 </Section>}
               </>
             )}
@@ -5319,7 +5316,7 @@ export default function App() {
       <input ref={sessionInputRef} type="file" accept=".json" hidden onChange={(event) => { loadSessionFile([...event.target.files]); event.target.value = ""; }} />
       <input ref={appendPhaseInputRef} type="file" accept=".dif,.txt,.csv,.dat" hidden onChange={(event) => { appendPhaseFile([...event.target.files]); event.target.value = ""; }} />
 
-      {message && <div className="toast"><span className="toast__icon"><Icon name="check" size={13} /></span><span>{message}</span><button type="button" onClick={() => setMessage("")}><Icon name="close" size={14} /></button></div>}
+      {message && <div className="toast"><span className="toast__icon"><Icon name="check" size={13} /></span><span>{translateMessage(message, language)}</span><button type="button" onClick={() => setMessage("")}><Icon name="close" size={14} /></button></div>}
       {isExporting && <div className="export-overlay"><div className="export-orbit"><Icon name="download" size={20} /></div><strong>Génération de la figure</strong><span>Préparation du fichier haute résolution…</span></div>}
       {addNoteMode && <div className="mode-banner"><Icon name="note" /><span>Cliquer dans la zone principale de la figure pour placer la note.</span><button type="button" onClick={() => setAddNoteMode(false)}>Annuler</button></div>}
     </div>
