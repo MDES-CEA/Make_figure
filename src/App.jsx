@@ -2988,7 +2988,7 @@ export default function App() {
   const saveStyleTemplate = useCallback(() => {
     const name = templateName.trim();
     if (!name) { setMessage("Saisir un nom de style."); return; }
-    const keys = ["figWidth", "axisFontSize", "axisFontBold", "tickFontSize", "tickFontBold", "titleFontSize", "titleFontBold", "panelTitleFontSize", "panelTitleFontBold", "panelAxisFontSize", "panelAxisFontBold", "lineWidth", "showFill", "fillAlpha", "cmap", "cmapMin", "cmapMax", "cmapReverse", "useCustomColors", "pageBackground", "rightMargin", "patternLabelSize", "patternLabelBold", "peakLabelSize", "peakLabelBold", "pdfStickW", "annotFontSize", "annotFontBold", "abbrevKeyFontSize", "abbrevKeyFontBold", "zoneLabelFontSize", "zoneLabelFontBold", "referenceRowFontSize", "referenceRowFontBold", "referenceSubtitleFontSize", "referenceSubtitleFontBold", "insetLabelFontSize", "insetLabelFontBold", "insetRangeFontSize", "insetRangeFontBold", "phaseOverlayValueSize", "phaseOverlayValueBold", "overlayLegendFontSize", "overlayLegendFontBold", "curveLegendFontSize", "curveLegendFontBold", "phaseLegendFontSize", "phaseLegendFontBold", "figureLayoutMode", "gridColumns", "panelGap", "panelLettering", "sharedPatternLegend"];
+    const keys = ["figWidth", "axisFontSize", "axisFontBold", "tickFontSize", "tickFontBold", "titleFontSize", "titleFontBold", "panelTitleFontSize", "panelTitleFontBold", "panelAxisFontSize", "panelAxisFontBold", "lineWidth", "showFill", "fillAlpha", "cmap", "cmapMin", "cmapMax", "cmapReverse", "useCustomColors", "pageBackground", "rightMargin", "showPatternLabels", "patternLabelSize", "patternLabelBold", "peakLabelSize", "peakLabelBold", "pdfStickW", "annotFontSize", "annotFontBold", "abbrevKeyFontSize", "abbrevKeyFontBold", "zoneLabelFontSize", "zoneLabelFontBold", "referenceRowFontSize", "referenceRowFontBold", "referenceSubtitleFontSize", "referenceSubtitleFontBold", "insetLabelFontSize", "insetLabelFontBold", "insetRangeFontSize", "insetRangeFontBold", "phaseOverlayValueSize", "phaseOverlayValueBold", "overlayLegendFontSize", "overlayLegendFontBold", "curveLegendFontSize", "curveLegendFontBold", "phaseLegendFontSize", "phaseLegendFontBold", "figureLayoutMode", "gridColumns", "panelGap", "panelLettering", "sharedPatternLegend"];
     const settings = Object.fromEntries(keys.map((key) => [key, S[key]]));
     setStyleTemplates((current) => [...current.filter((entry) => entry.name !== name), { id: newId("style"), name, settings, savedAt: Date.now() }]);
     setTemplateName("");
@@ -3953,6 +3953,7 @@ export default function App() {
         </Field>
         <Toggle label="Visible" checked={activePattern.visible} onChange={(value) => updatePattern(activePattern.id, "visible", value)} />
         <Section title="Étiquette de courbe" defaultOpen={false} targetId="pattern-label-options">
+          <Toggle label="Afficher cette étiquette" checked={activePattern.showLabel !== false} onChange={(value) => updatePattern(activePattern.id, "showLabel", value)} />
           <div className="two-columns"><NumberField label="Décalage horizontal" value={activePattern.labelDx || 0} step={2} suffix="px" onChange={(value) => updatePattern(activePattern.id, "labelDx", value)} /><NumberField label="Décalage vertical" value={activePattern.labelDy || 0} step={2} suffix="px" onChange={(value) => updatePattern(activePattern.id, "labelDy", value)} /></div>
           <NumberField label="Taille individuelle" value={activePattern.labelFontSize || S.patternLabelSize} min={6} max={42} step={0.5} suffix="pt" onChange={(value) => updatePattern(activePattern.id, "labelFontSize", value)} />
           <Toggle label="Gras individuel" checked={activePattern.labelBold ?? S.patternLabelBold} onChange={(value) => updatePattern(activePattern.id, "labelBold", value)} />
@@ -4553,7 +4554,7 @@ export default function App() {
                               >{peak.x.toFixed(S.mode === "drx" ? 2 : 0)}</text>;
                             })}
                           </g>
-                          {(() => {
+                          {S.showPatternLabels !== false && pattern.showLabel !== false && (() => {
                             const moving = dragPreview?.type === "patternLabel" && dragPreview.id === pattern.id ? dragPreview : null;
                             const resizing = dragPreview?.type === "patternLabelResize" && dragPreview.id === pattern.id ? dragPreview : null;
                             const dx = moving ? moving.dx : Number(pattern.labelDx) || 0;
@@ -5221,6 +5222,7 @@ export default function App() {
                 </Section>}
 
                 <Section title="Courbes">
+                  <Toggle label="Afficher les noms des patrons" checked={S.showPatternLabels !== false} onChange={(value) => patchSettings("showPatternLabels", value)} description="Masque les étiquettes placées à droite des courbes, sans modifier les noms dans la liste des données." />
                   <SliderField label="Épaisseur" value={S.lineWidth} min={0.3} max={4} step={0.05} onChange={(value) => patchSettings("lineWidth", value)} />
                   <Toggle label="Remplissage sous les courbes" checked={S.showFill} onChange={(value) => patchSettings("showFill", value)} />
                   {S.showFill && <SliderField label="Opacité" value={S.fillAlpha} min={0} max={0.5} step={0.01} onChange={(value) => patchSettings("fillAlpha", value)} />}

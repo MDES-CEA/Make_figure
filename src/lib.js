@@ -215,6 +215,7 @@ export const INITIAL_SETTINGS = {
   cmapMax: 0.85,
   cmapReverse: false,
   useCustomColors: false,
+  showPatternLabels: true,
   patternLabelSize: 12,
   patternLabelBold: true,
   showAnnotations: true,
