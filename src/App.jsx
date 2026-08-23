@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import useHistoryState from "./useHistoryState";
 import { translate, translateMessage, defaultAxisLabels, STOCK_AXIS_LABELS } from "./i18n.js";
 import ramanDatabaseSeed from "./ramanDatabaseSeed.json";
+import { exportScaleLimits, serializeSvgForExport, svgDataUrl } from "./exportUtils.js";
 import {
   CMAPS,
   PHASE_COLORS,
@@ -188,6 +189,7 @@ function safeNoteModel(note, xmin = 0, xmax = 1) {
     text: String(note?.text ?? "Annotation"),
     color: /^#[0-9a-f]{6}$/i.test(String(note?.color || "")) ? String(note.color) : "#2d333b",
     fontSize: clamp(finiteNumber(note?.fontSize, 10), 5, 60),
+    bold: Boolean(note?.bold),
     rotation: clamp(finiteNumber(note?.rotation, 0), -180, 180),
     vline: Boolean(note?.vline),
     // Extension du trait, en fraction de la hauteur tracée (0 = bas du cadre,
@@ -306,6 +308,7 @@ function Icon({ name, size = 16 }) {
     plus: <><path d="M12 5v14M5 12h14"/></>,
     trash: <><path d="M4 7h16M9 7V4h6v3M7 7l1 14h8l1-14"/></>,
     eye: <><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="2.5"/></>,
+    preview: <><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 16l5-5 4 4 3-3 6 6"/><circle cx="16.5" cy="8.5" r="1.5"/></>,
     eyeOff: <><path d="m3 3 18 18"/><path d="M10.5 6.1A11.8 11.8 0 0 1 12 6c6.5 0 10 6 10 6a15.2 15.2 0 0 1-2.2 2.8"/><path d="M6.6 6.6C3.6 8.4 2 12 2 12s3.5 6 10 6c1.8 0 3.3-.4 4.6-1"/></>,
     chevronDown: <path d="m7 10 5 5 5-5"/>,
     chevronRight: <path d="m10 7 5 5-5 5"/>,
@@ -1088,7 +1091,7 @@ function interpolateSeriesLocal(xs, ys, target) {
   return ys[left] + (ys[low] - ys[left]) * fraction;
 }
 
-function FigureLayoutLayer({ mode, processed, rawProcessed, activePatternId, settings, colors, bounds, xmin, xmax }) {
+function FigureLayoutLayer({ mode, processed, rawProcessed, activePatternId, settings, colors, bounds, xmin, xmax, onTextSelect }) {
   if (!processed.length || mode === "single") return null;
   const { x, y, width, height } = bounds;
   const gap = Math.max(8, Number(settings.panelGap) || 24);
@@ -1147,12 +1150,12 @@ function FigureLayoutLayer({ mode, processed, rawProcessed, activePatternId, set
           xs.forEach((value, index) => { if (value >= xmin && value <= xmax && Number.isFinite(values[index])) path += `${path ? "L" : "M"}${xTo(value).toFixed(2)},${yTo(values[index]).toFixed(2)}`; });
           return <path key={series.id} d={path} fill="none" stroke={series.syntheticColor || colors.get(series.id) || "#222"} strokeWidth={settings.lineWidth || 1} vectorEffect="non-scaling-stroke" />;
         })}
-        <text x={px + 8} y={py + 16} fontSize={Math.max(8, Number(settings.tickFontSize) || 10)} fontWeight="700" fill="#20252b">{settings.panelLettering !== false ? `(${String.fromCharCode(panelLetterStart + panelIndex)}) ` : ""}{truncateLabel(panel.title, 42)}</text>
-        <text x={(inner.left + inner.right) / 2} y={py + panelHeight - 7} textAnchor="middle" fontSize={Math.max(7, Number(settings.tickFontSize) - 1 || 9)} fill="#343a40">{settings.mode === "drx" ? "2θ (°)" : settings.mode === "ir" ? "Nombre d’onde (cm⁻¹)" : "Raman shift (cm⁻¹)"}</text>
+        <text x={px + 8} y={py + 16} fontSize={settings.panelTitleFontSize || 10} fontWeight={settings.panelTitleFontBold ? "700" : "400"} fill="#20252b" style={{ cursor: "pointer" }} onClick={(event) => onTextSelect?.(event, { kind: "settings", label: "Titres des panneaux", sizeKey: "panelTitleFontSize", boldKey: "panelTitleFontBold" })}>{settings.panelLettering !== false ? `(${String.fromCharCode(panelLetterStart + panelIndex)}) ` : ""}{truncateLabel(panel.title, 42)}</text>
+        <text x={(inner.left + inner.right) / 2} y={py + panelHeight - 7} textAnchor="middle" fontSize={settings.panelAxisFontSize || 9} fontWeight={settings.panelAxisFontBold ? "700" : "400"} fill="#343a40" style={{ cursor: "pointer" }} onClick={(event) => onTextSelect?.(event, { kind: "settings", label: "Axes des panneaux", sizeKey: "panelAxisFontSize", boldKey: "panelAxisFontBold" })}>{settings.mode === "drx" ? "2θ (°)" : settings.mode === "ir" ? "Nombre d’onde (cm⁻¹)" : "Raman shift (cm⁻¹)"}</text>
       </g>;
     })}
     {settings.sharedPatternLegend && <g>
-      {processed.slice(0, 8).map((pattern, index) => <g key={`shared-${pattern.id}`} transform={`translate(${x + width - 150},${y + 12 + index * 14})`}><line x1="0" x2="18" y1="-3" y2="-3" stroke={colors.get(pattern.id) || "#222"} strokeWidth="2"/><text x="24" y="0" fontSize="8" fill="#20252b">{truncateLabel(pattern.label, 22)}</text></g>)}
+      {processed.slice(0, 8).map((pattern, index) => <g key={`shared-${pattern.id}`} transform={`translate(${x + width - 150},${y + 12 + index * Math.max(14, Number(settings.curveLegendFontSize) + 5 || 15)})`}><line x1="0" x2="18" y1="-3" y2="-3" stroke={colors.get(pattern.id) || "#222"} strokeWidth="2"/><text x="24" y="0" fontSize={settings.curveLegendFontSize || 10} fontWeight={settings.curveLegendFontBold ? "700" : "400"} fill="#20252b" style={{ cursor: "pointer" }} onClick={(event) => onTextSelect?.(event, { kind: "settings", label: "Légende des courbes", sizeKey: "curveLegendFontSize", boldKey: "curveLegendFontBold" })}>{truncateLabel(pattern.label, 22)}</text></g>)}
     </g>}
   </g>;
 }
@@ -1203,6 +1206,7 @@ export default function App() {
   const [cursor, setCursor] = useState(null);
   const [dragPreview, setDragPreview] = useState(null);
   const [contextTarget, setContextTarget] = useState(null);
+  const [textTarget, setTextTarget] = useState(null);
   const [snapToPeak, setSnapToPeak] = useState(() => readLocalSetting("make-figure-snap-to-peak", "true") === "true");
   const [magnetAlign, setMagnetAlign] = useState(() => readLocalSetting("make-figure-magnet-align", "true") === "true");
   const [showNavigator, setShowNavigator] = useState(() => readLocalSetting("make-figure-show-navigator", "true") === "true");
@@ -1216,6 +1220,7 @@ export default function App() {
   const [dropActive, setDropActive] = useState(false);
   const [autosaveState, setAutosaveState] = useState("loading");
   const [isExporting, setIsExporting] = useState(false);
+  const [exportPreview, setExportPreview] = useState({ open: false, format: "png", serialized: "" });
   const [ramanAverageSelection, setRamanAverageSelection] = useState([]);
   const [ramanAverageLabel, setRamanAverageLabel] = useState("");
   const [manualPhase, setManualPhase] = useState({ name: "", abbrev: "", peaks: "", color: PHASE_COLORS[0] });
@@ -1409,6 +1414,36 @@ export default function App() {
       zones: currentWorkspace.zones.map((zone) => zone.id === id ? { ...zone, [key]: value } : zone),
     })), { coalesceKey: `zone:${id}:${key}` });
   }, [activeMode, history]);
+
+  const activateTextTarget = useCallback((event, target) => {
+    event?.stopPropagation?.();
+    setTextTarget(target);
+  }, []);
+
+  const textTargetStyle = useMemo(() => {
+    if (!textTarget) return null;
+    let item = null;
+    if (textTarget.kind === "pattern") item = patterns.find((entry) => entry.id === textTarget.id);
+    else if (textTarget.kind === "phase") item = phases.find((entry) => entry.id === textTarget.id);
+    else if (textTarget.kind === "note") item = notes.find((entry) => entry.id === textTarget.id);
+    else if (textTarget.kind === "zone") item = zones.find((entry) => entry.id === textTarget.id);
+    const source = textTarget.kind === "settings" ? S : item;
+    if (!source) return null;
+    const size = finiteNumber(source[textTarget.sizeKey], finiteNumber(S[textTarget.fallbackSizeKey], 10));
+    const boldSource = source[textTarget.boldKey];
+    const bold = boldSource === undefined ? Boolean(S[textTarget.fallbackBoldKey]) : Boolean(boldSource);
+    return { size, bold };
+  }, [S, notes, patterns, phases, textTarget, zones]);
+
+  const updateTextTargetStyle = useCallback((field, value) => {
+    if (!textTarget) return;
+    const key = field === "size" ? textTarget.sizeKey : textTarget.boldKey;
+    if (textTarget.kind === "settings") patchSettings(key, value);
+    else if (textTarget.kind === "pattern") updatePattern(textTarget.id, key, value);
+    else if (textTarget.kind === "phase") updatePhase(textTarget.id, key, value);
+    else if (textTarget.kind === "note") updateNote(textTarget.id, key, value);
+    else if (textTarget.kind === "zone") updateZone(textTarget.id, key, value);
+  }, [patchSettings, textTarget, updateNote, updatePattern, updatePhase, updateZone]);
 
   const moveItemToWorkspace = useCallback((type, id, targetMode) => {
     const destination = resolveMode(targetMode);
@@ -2026,6 +2061,7 @@ export default function App() {
     if (resolvedMode === activeMode) return;
     history.set((current) => ({ ...current, activeMode: resolvedMode }), { replace: true });
     setSelection([]); selectionAnchorRef.current = null;
+    setTextTarget(null);
     setCursor(null);
     if (!MODES_WITH_ZONES.includes(resolvedMode) && leftTab === "zones") setLeftTab("patterns");
     setMessage(`Espace ${modeLabel(resolvedMode)} actif. Les données des autres espaces restent conservées.`);
@@ -2896,7 +2932,7 @@ export default function App() {
   const saveStyleTemplate = useCallback(() => {
     const name = templateName.trim();
     if (!name) { setMessage("Saisir un nom de style."); return; }
-    const keys = ["figWidth", "axisFontSize", "tickFontSize", "titleFontSize", "lineWidth", "showFill", "fillAlpha", "cmap", "cmapMin", "cmapMax", "cmapReverse", "useCustomColors", "pageBackground", "rightMargin", "patternLabelSize", "patternLabelBold", "pdfStickW", "annotFontSize", "figureLayoutMode", "gridColumns", "panelGap", "panelLettering", "sharedPatternLegend"];
+    const keys = ["figWidth", "axisFontSize", "axisFontBold", "tickFontSize", "tickFontBold", "titleFontSize", "titleFontBold", "panelTitleFontSize", "panelTitleFontBold", "panelAxisFontSize", "panelAxisFontBold", "lineWidth", "showFill", "fillAlpha", "cmap", "cmapMin", "cmapMax", "cmapReverse", "useCustomColors", "pageBackground", "rightMargin", "patternLabelSize", "patternLabelBold", "peakLabelSize", "peakLabelBold", "pdfStickW", "annotFontSize", "annotFontBold", "abbrevKeyFontSize", "abbrevKeyFontBold", "zoneLabelFontSize", "zoneLabelFontBold", "referenceRowFontSize", "referenceRowFontBold", "referenceSubtitleFontSize", "referenceSubtitleFontBold", "insetLabelFontSize", "insetLabelFontBold", "insetRangeFontSize", "insetRangeFontBold", "phaseOverlayValueSize", "phaseOverlayValueBold", "overlayLegendFontSize", "overlayLegendFontBold", "curveLegendFontSize", "curveLegendFontBold", "phaseLegendFontSize", "phaseLegendFontBold", "figureLayoutMode", "gridColumns", "panelGap", "panelLettering", "sharedPatternLegend"];
     const settings = Object.fromEntries(keys.map((key) => [key, S[key]]));
     setStyleTemplates((current) => [...current.filter((entry) => entry.name !== name), { id: newId("style"), name, settings, savedAt: Date.now() }]);
     setTemplateName("");
@@ -2943,12 +2979,12 @@ export default function App() {
 
   const serializeSvg = ({ transparent = S.transparentExport } = {}) => {
     if (!svgRef.current) return null;
-    const clone = svgRef.current.cloneNode(true);
-    clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
-    clone.querySelectorAll("[data-ui-only]").forEach((element) => element.remove());
-    const background = clone.querySelector("[data-figure-background]");
-    if (background) background.setAttribute("fill", transparent ? "none" : S.pageBackground);
-    return new XMLSerializer().serializeToString(clone);
+    return serializeSvgForExport(svgRef.current, {
+      width: W,
+      height: H,
+      transparent,
+      background: S.pageBackground,
+    });
   };
 
   const downloadSvg = () => {
@@ -2960,15 +2996,12 @@ export default function App() {
   const rasterizeSvg = async (requestedScale, transparent = S.transparentExport) => {
     const serialized = serializeSvg({ transparent });
     if (!serialized) throw new Error("Figure SVG indisponible.");
-    const maximumDimension = 10000;
-    const maximumPixels = 28000000;
-    const pixelLimitedScale = Math.sqrt(maximumPixels / Math.max(1, W * H));
-    const scale = Math.max(0.25, Math.min(requestedScale, maximumDimension / W, maximumDimension / H, pixelLimitedScale));
+    const scale = exportScaleLimits(W, H, requestedScale);
     const image = new Image();
     await new Promise((resolve, reject) => {
       image.onload = resolve;
       image.onerror = () => reject(new Error("Échec du rendu SVG."));
-      image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(serialized)}`;
+      image.src = svgDataUrl(serialized);
     });
     const canvas = document.createElement("canvas");
     canvas.width = Math.max(1, Math.round(W * scale));
@@ -3060,6 +3093,25 @@ export default function App() {
     } finally {
       setIsExporting(false);
     }
+  };
+
+  const openExportPreview = (format = "png") => {
+    const serialized = serializeSvg();
+    if (!serialized) {
+      setMessage("Figure SVG indisponible.");
+      return;
+    }
+    setExportPreview({ open: true, format, serialized });
+  };
+
+  const closeExportPreview = () => setExportPreview((current) => ({ ...current, open: false }));
+
+  const downloadPreviewedFigure = async () => {
+    const format = exportPreview.format;
+    if (format === "svg") downloadSvg();
+    else if (format === "pdf") await downloadPdf();
+    else if (format === "tiff") await downloadTiff();
+    else await downloadPng();
   };
 
   const fitToWorkspace = useCallback(() => {
@@ -3678,6 +3730,7 @@ export default function App() {
       text: "Annotation",
       color: "#2d333b",
       fontSize: 10,
+      bold: false,
       rotation: 0,
       vline: false,
       vlineTopFrac: 1,
@@ -3723,7 +3776,10 @@ export default function App() {
     const keydown = (event) => {
       const target = event.target;
       const typing = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
+      if (event.key === "Escape" && exportPreview.open) {
+        event.preventDefault();
+        closeExportPreview();
+      } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
         event.preventDefault();
         if (event.shiftKey) history.redo(); else history.undo();
       } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "y") {
@@ -3757,6 +3813,7 @@ export default function App() {
         setAddNoteMode(false);
         setTool("cursor");
         setDropActive(false);
+        setTextTarget(null);
         clearSelection();
         setProjectMenuOpen(false);
       } else if (!typing && event.code === "Space") {
@@ -3773,7 +3830,7 @@ export default function App() {
       window.removeEventListener("keydown", keydown);
       window.removeEventListener("keyup", keyup);
     };
-  }, [clearSelection, history, removeSelection, saveSessionFile, selectAllCurrentTab, tool]);
+  }, [clearSelection, exportPreview.open, history, removeSelection, saveSessionFile, selectAllCurrentTab, tool]);
 
   const renderPatternProperties = () => selectionCount > 1 ? (
     <>
@@ -3842,7 +3899,8 @@ export default function App() {
         <Section title="Étiquette de courbe" defaultOpen={false} targetId="pattern-label-options">
           <div className="two-columns"><NumberField label="Décalage horizontal" value={activePattern.labelDx || 0} step={2} suffix="px" onChange={(value) => updatePattern(activePattern.id, "labelDx", value)} /><NumberField label="Décalage vertical" value={activePattern.labelDy || 0} step={2} suffix="px" onChange={(value) => updatePattern(activePattern.id, "labelDy", value)} /></div>
           <NumberField label="Taille individuelle" value={activePattern.labelFontSize || S.patternLabelSize} min={6} max={42} step={0.5} suffix="pt" onChange={(value) => updatePattern(activePattern.id, "labelFontSize", value)} />
-          <div className="inline-actions"><Button variant="secondary" icon="reset" onClick={() => history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({ ...currentWorkspace, patterns: currentWorkspace.patterns.map((pattern) => pattern.id === activePattern.id ? { ...pattern, labelDx: 0, labelDy: 0, labelFontSize: null } : pattern) })))}>Réinitialiser l’étiquette</Button></div>
+          <Toggle label="Gras individuel" checked={activePattern.labelBold ?? S.patternLabelBold} onChange={(value) => updatePattern(activePattern.id, "labelBold", value)} />
+          <div className="inline-actions"><Button variant="secondary" icon="reset" onClick={() => history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({ ...currentWorkspace, patterns: currentWorkspace.patterns.map((pattern) => pattern.id === activePattern.id ? { ...pattern, labelDx: 0, labelDy: 0, labelFontSize: null, labelBold: undefined } : pattern) })))}>Réinitialiser l’étiquette</Button></div>
         </Section>
         <Toggle label="Verrouiller le patron" checked={Boolean(activePattern.locked)} onChange={(value) => updatePattern(activePattern.id, "locked", value)} description="Empêche le renommage, le déplacement, les transformations et la suppression accidentelle." />
         <TextAreaField label="Notes du patron" value={activePattern.userNotes || ""} onChange={(value) => updatePattern(activePattern.id, "userNotes", value)} rows={4} placeholder="Observations expérimentales, préparation, anomalie…" />
@@ -3899,6 +3957,7 @@ export default function App() {
         </Field>
         <Toggle label="Visible" checked={activePhase.visible} onChange={(value) => updatePhase(activePhase.id, "visible", value)} />
         <Toggle label="Annotations supérieures" checked={activePhase.inAnnot} onChange={(value) => updatePhase(activePhase.id, "inAnnot", value)} />
+        <div className="two-columns"><NumberField label="Taille des annotations" value={activePhase.labelFontSize || S.annotFontSize} min={5} max={30} step={0.5} suffix="pt" onChange={(value) => updatePhase(activePhase.id, "labelFontSize", value)} /><Toggle label="Annotations en gras" checked={activePhase.labelBold ?? S.annotFontBold} onChange={(value) => updatePhase(activePhase.id, "labelBold", value)} /></div>
         <Toggle label="Panneau de références" checked={activePhase.inPanel} onChange={(value) => updatePhase(activePhase.id, "inPanel", value)} />
         <Toggle label="Bâtonnets en pointillés" checked={Boolean(activePhase.dashed)} onChange={(value) => updatePhase(activePhase.id, "dashed", value)} description="S'applique aux annotations, au panneau de références et à la superposition sur la figure." />
         <Toggle label="Superposer sur la figure" checked={Boolean(activePhase.inOverlay)} onChange={(value) => updatePhase(activePhase.id, "inOverlay", value)} />
@@ -3938,6 +3997,8 @@ export default function App() {
       <SliderField label="Opacité" value={activeZone.opacity ?? 0.12} min={0.02} max={0.5} step={0.01} onChange={(value) => updateZone(activeZone.id, "opacity", value)} />
       <Toggle label="Visible" checked={activeZone.visible} onChange={(value) => updateZone(activeZone.id, "visible", value)} />
       <Toggle label="Afficher le nom" checked={activeZone.showLabel !== false} onChange={(value) => updateZone(activeZone.id, "showLabel", value)} />
+      <NumberField label="Taille du nom" value={activeZone.labelFontSize || S.zoneLabelFontSize} min={5} max={30} step={0.5} suffix="pt" onChange={(value) => updateZone(activeZone.id, "labelFontSize", value)} />
+      <Toggle label="Nom en gras" checked={activeZone.labelFontBold ?? S.zoneLabelFontBold} onChange={(value) => updateZone(activeZone.id, "labelFontBold", value)} />
     </Section>
   ) : activeNote ? (
     <Section title="Note sélectionnée" targetId="note-inspector">
@@ -3951,6 +4012,7 @@ export default function App() {
         <NumberField label="Rotation" value={clamp(finiteNumber(activeNote.rotation, 0), -180, 180)} min={-180} max={180} step={5} suffix="°" onChange={(value) => updateNote(activeNote.id, "rotation", value)} />
       </div>
       <Field label="Couleur"><div className="color-field"><input type="color" value={safeNoteModel(activeNote, S.xmin, S.xmax).color} onChange={(event) => updateNote(activeNote.id, "color", event.target.value)} /><code>{activeNote.color}</code></div></Field>
+      <Toggle label="Texte en gras" checked={Boolean(activeNote.bold)} onChange={(value) => updateNote(activeNote.id, "bold", value)} />
       <Toggle label="Visible" checked={activeNote.visible !== false} onChange={(value) => updateNote(activeNote.id, "visible", value)} /><Toggle label="Ligne verticale" checked={activeNote.vline} onChange={(value) => updateNote(activeNote.id, "vline", value)} />
       <Toggle label="Ligne d'accroche" checked={Boolean(activeNote.anchorLine)} onChange={(value) => {
         // À l'activation, l'extrémité démarre juste sous la note, dans la
@@ -3984,7 +4046,15 @@ export default function App() {
         <SelectField label="Densité" value={uiDensity} onChange={setUiDensity} options={[["compact", "Compacte"], ["standard", "Standard"], ["comfortable", "Confortable"]]} />
         <Toggle label="Panneau de données" checked={!leftCollapsed} onChange={(value) => setLeftCollapsed(!value)} />
         <Toggle label="Panneau de propriétés" checked={!rightCollapsed} onChange={(value) => setRightCollapsed(!value)} />
+        <Toggle label="Réduire les animations" checked={reduceMotion} onChange={setReduceMotion} />
         <div className="inline-actions"><Button variant="secondary" icon="layout" onClick={resetLayout}>Réinitialiser la disposition</Button></div>
+      </Section>
+      <Section title="Interaction avec la figure" defaultOpen={false}>
+        <Toggle label="Accrochage aux pics" checked={snapToPeak} onChange={setSnapToPeak} />
+        <Toggle label="Navigateur de plage" checked={showNavigator} onChange={setShowNavigator} />
+        <Toggle label="Comparaison brut / traité" checked={comparisonView} onChange={setComparisonView} />
+        <Toggle label="Édition plein écran" checked={editorFullscreen} onChange={setEditorFullscreen} />
+        <div className="callout">Cliquer un texte ouvre ses contrôles directs. Glisser les étiquettes, notes, légendes et encarts pour les repositionner. Les raccourcis V, H, P, Z et N changent d’outil.</div>
       </Section>
       <EmptyPanel kind="selection" title="Inspecteur contextuel" body="Sélectionner un ou plusieurs éléments. Ctrl/Cmd ajoute à la sélection ; Shift sélectionne une plage." />
     </>
@@ -4050,9 +4120,7 @@ export default function App() {
                 onClick={() => setLanguage((value) => (value === "fr" ? "en" : "fr"))}
               >{language === "fr" ? "FR" : "EN"}</button>
               <IconButton icon={reduceMotion ? "motionOff" : "motion"} active={reduceMotion} title={reduceMotion ? "Animations réduites" : "Réduire les animations"} onClick={() => setReduceMotion((value) => !value)} />
-              <IconButton icon="duplicate" title="Copier la figure PNG dans le presse-papier" disabled={isExporting} onClick={copyPngToClipboard} />
-              <Button variant="secondary" disabled={isExporting} onClick={downloadSvg}>SVG</Button>
-              <Button variant="primary" icon="download" disabled={isExporting} onClick={downloadPng}>{isExporting ? "Export…" : "Exporter PNG"}</Button>
+              <Button variant="primary" icon="preview" disabled={isExporting} onClick={() => openExportPreview("png")}>{isExporting ? "Export…" : "Prévisualiser l’export"}</Button>
             </div>
           </div>
         </div>
@@ -4324,6 +4392,14 @@ export default function App() {
                   </div>
                 )}
                 <div className="figure-page" style={{ width: W * displayZoom, height: H * displayZoom }}>
+                  {textTarget && textTargetStyle && <div className="figure-text-toolbar" data-ui-only="true" onPointerDown={(event) => event.stopPropagation()}>
+                    <span title={textTarget.label}>{truncateLabel(textTarget.label, 22)}</span>
+                    <button type="button" title="Réduire le texte" onClick={() => updateTextTargetStyle("size", clamp(textTargetStyle.size - 0.5, 5, 60))}>−</button>
+                    <input type="number" min="5" max="60" step="0.5" value={textTargetStyle.size} aria-label={`Taille · ${textTarget.label}`} onChange={(event) => updateTextTargetStyle("size", clamp(Number(event.target.value), 5, 60))} />
+                    <button type="button" title="Agrandir le texte" onClick={() => updateTextTargetStyle("size", clamp(textTargetStyle.size + 0.5, 5, 60))}>+</button>
+                    <button type="button" className={textTargetStyle.bold ? "is-active" : ""} aria-pressed={textTargetStyle.bold} title="Gras" onClick={() => updateTextTargetStyle("bold", !textTargetStyle.bold)}><strong>B</strong></button>
+                    <button type="button" title="Fermer les contrôles de texte" onClick={() => setTextTarget(null)}>×</button>
+                  </div>}
                   <svg
                     ref={svgRef}
                     viewBox={`0 0 ${W} ${H}`}
@@ -4340,7 +4416,7 @@ export default function App() {
                   >
                     <rect data-figure-background x="0" y="0" width={W} height={H} fill={S.pageBackground} />
 
-                    {S.title && <text x={M.left + plotWidth / 2} y={M.top - 17} textAnchor="middle" fontSize={S.titleFontSize} fontWeight="700" fill="#15191f" fontFamily={figureFont} style={{ cursor: "pointer" }} onDoubleClick={(event) => openContextOptions(event, { tab: "appearance", target: "figure-title" })}>{S.title}</text>}
+                    {S.title && <text x={M.left + plotWidth / 2} y={M.top - 17} textAnchor="middle" fontSize={S.titleFontSize} fontWeight={S.titleFontBold ? "700" : "400"} fill="#15191f" fontFamily={figureFont} style={{ cursor: "pointer" }} onClick={(event) => activateTextTarget(event, { kind: "settings", label: "Titre", sizeKey: "titleFontSize", boldKey: "titleFontBold" })} onDoubleClick={(event) => openContextOptions(event, { tab: "appearance", target: "figure-title" })}>{S.title}</text>}
 
                     {S.figureLayoutMode === "single" && supportsZones && zones.filter((zone) => zone.visible && Number(zone.xmax) > viewXMin && Number(zone.xmin) < viewXMax).map((zone) => {
                       const previewMin = dragPreview?.type === "zoneBoundary" && dragPreview.id === zone.id && dragPreview.edge === "min" ? dragPreview.x : Number(zone.xmin);
@@ -4354,7 +4430,7 @@ export default function App() {
                       return (
                         <g key={`zone-${zone.id}`} opacity={selected ? 1 : 0.94} onClick={(event) => selectItem(event, "zone", zone.id)} onDoubleClick={(event) => openContextOptions(event, { tab: "inspector", type: "zone", id: zone.id, target: "zone-name" })} style={{ cursor: "pointer" }}>
                           <rect x={x} y={M.top} width={width} height={mainHeight} fill={zone.color} opacity={zone.opacity ?? 0.12} />
-                          {zone.showLabel !== false && width > 12 && <text x={x + width / 2} y={M.top + 14} textAnchor="middle" fontSize="9" fontWeight="700" fill={zone.color} fontFamily={figureFont}>{zone.name}</text>}
+                          {zone.showLabel !== false && width > 12 && <text x={x + width / 2} y={M.top + 14} textAnchor="middle" fontSize={finiteNumber(zone.labelFontSize, S.zoneLabelFontSize)} fontWeight={(zone.labelFontBold ?? S.zoneLabelFontBold) ? "700" : "400"} fill={zone.color} fontFamily={figureFont} onClick={(event) => activateTextTarget(event, { kind: "zone", id: zone.id, label: `Zone · ${zone.name}`, sizeKey: "labelFontSize", boldKey: "labelFontBold", fallbackSizeKey: "zoneLabelFontSize", fallbackBoldKey: "zoneLabelFontBold" })}>{zone.name}</text>}
                           {selected && <g data-ui-only="true">
                             <line x1={x} x2={x} y1={M.top} y2={M.top + mainHeight} stroke={zone.color} strokeWidth="2.2" opacity="0.8" style={{ cursor: "ew-resize" }} onPointerDown={(event) => beginCanvasDrag(event, "zoneBoundary", { id: zone.id, edge: "min" })} />
                             <line x1={x + width} x2={x + width} y1={M.top} y2={M.top + mainHeight} stroke={zone.color} strokeWidth="2.2" opacity="0.8" style={{ cursor: "ew-resize" }} onPointerDown={(event) => beginCanvasDrag(event, "zoneBoundary", { id: zone.id, edge: "max" })} />
@@ -4410,10 +4486,10 @@ export default function App() {
                               const y = yToPx(peak.displayY + offset) - 7 - (peakIndex % 2) * 7;
                               return <text
                                 key={`peak-label-${pattern.id}-${peakIndex}`}
-                                x={x} y={y} textAnchor="start" fontSize={S.peakLabelSize} fill={color}
+                                x={x} y={y} textAnchor="start" fontSize={S.peakLabelSize} fontWeight={S.peakLabelBold ? "700" : "400"} fill={color}
                                 fontFamily={figureFont} transform={`rotate(-90 ${x} ${y})`}
                                 style={tool === "peaks" ? { cursor: "pointer", userSelect: "none" } : undefined}
-                                onClick={tool === "peaks" ? (event) => { event.stopPropagation(); removePeak(pattern.id, peak); } : undefined}
+                                onClick={(event) => { if (tool === "peaks") { event.stopPropagation(); removePeak(pattern.id, peak); } else activateTextTarget(event, { kind: "settings", label: "Labels de pics", sizeKey: "peakLabelSize", boldKey: "peakLabelBold" }); }}
                               >{peak.x.toFixed(S.mode === "drx" ? 2 : 0)}</text>;
                             })}
                           </g>
@@ -4432,9 +4508,9 @@ export default function App() {
                               <text data-ui-only="true" x={labelX - 12} y={labelYpx} dominantBaseline="middle" fontSize={Math.max(8, fontSize * 0.75)} fill={color} opacity="0.65" style={{ cursor: pattern.locked ? "not-allowed" : "ns-resize", userSelect: "none" }} onPointerDown={(event) => { if (!pattern.locked) beginCanvasDrag(event, "curveOrder", { id: pattern.id }); }}>↕</text>
                               <text
                                 x={labelX} y={labelYpx} dominantBaseline="middle" fontSize={fontSize}
-                                fontWeight={S.patternLabelBold ? "700" : "400"} fill={color} fontFamily={figureFont}
+                                fontWeight={(pattern.labelBold ?? S.patternLabelBold) ? "700" : "400"} fill={color} fontFamily={figureFont}
                                 style={{ cursor: pattern.locked ? "not-allowed" : "move", userSelect: "none" }}
-                                onClick={(event) => selectItem(event, "pattern", pattern.id)}
+                                onClick={(event) => { selectItem(event, "pattern", pattern.id); activateTextTarget(event, { kind: "pattern", id: pattern.id, label: `Patron · ${pattern.label}`, sizeKey: "labelFontSize", boldKey: "labelBold", fallbackSizeKey: "patternLabelSize", fallbackBoldKey: "patternLabelBold" }); }}
                                 onDoubleClick={(event) => openContextOptions(event, { tab: "inspector", type: "pattern", id: pattern.id, target: "pattern-name" })}
                                 onPointerDown={(event) => { if (event.detail >= 2) { openContextOptions(event, { tab: "inspector", type: "pattern", id: pattern.id, target: "pattern-name" }); return; } if (!pattern.locked) beginCanvasDrag(event, "patternLabel", { id: pattern.id, dx, dy, fontSize }); }}
                               >{text}</text>
@@ -4458,6 +4534,7 @@ export default function App() {
                         bounds={{ x: M.left, y: M.top, width: plotWidth, height: mainHeight }}
                         xmin={viewXMin}
                         xmax={viewXMax}
+                        onTextSelect={activateTextTarget}
                       />
                     )}
 
@@ -4562,7 +4639,7 @@ export default function App() {
                                   {(offsetX !== 0 || offsetY !== 0) && <line data-ui-only="true" x1={px} y1={anchorY} x2={valueX} y2={valueYFinal} stroke={phase.color} strokeWidth="0.6" strokeDasharray="2 2" opacity="0.5" pointerEvents="none" />}
                                   <text
                                     x={valueX} y={valueYFinal} textAnchor={valueAnchor} fontSize={valueSize}
-                                    fill={phase.color} fontFamily={figureFont}
+                                    fontWeight={S.phaseOverlayValueBold ? "700" : "400"} fill={phase.color} fontFamily={figureFont}
                                     transform={`rotate(-90 ${valueX} ${valueYFinal})`}
                                     style={{ cursor: "move", userSelect: "none" }}
                                     onPointerDown={(event) => beginCanvasDrag(event, "overlayValueMove", {
@@ -4571,6 +4648,7 @@ export default function App() {
                                       // l'ancrage courant est le pic mesuré, et inversement.
                                       altY: anchorMode === "peak" ? topY : curveTopPxNear(x, searchWindow, invertSticks),
                                     })}
+                                    onClick={(event) => activateTextTarget(event, { kind: "settings", label: "Valeurs des références", sizeKey: "phaseOverlayValueSize", boldKey: "phaseOverlayValueBold" })}
                                     onDoubleClick={(event) => { event.stopPropagation(); togglePhaseOverlayValue(phase.id, x); }}
                                   ><title>{tr("Glisser pour déplacer la valeur, relâcher près du bâtonnet ou du pic pour l’y raccrocher ; double-clic pour la masquer")}</title>{valueText}</text>
                                 </>}
@@ -4623,7 +4701,7 @@ export default function App() {
                           const y = boxY + 10 + index * lineHeight + fontSize * 0.5;
                           return <g key={`overlay-legend-${phase.id}`}>
                             <line x1={boxX + 8} x2={boxX + 34} y1={y - fontSize * 0.32} y2={y - fontSize * 0.32} stroke={phase.color} strokeWidth={Math.max(1.4, (Number(S.phaseOverlayWidth) || 1) * 1.6)} strokeDasharray={phase.dashed ? "3 2" : undefined} />
-                            <text x={boxX + 40} y={y} fontSize={fontSize} fill="#15191f" fontFamily={figureFont} style={{ userSelect: "none" }}>{phase.name}</text>
+                            <text x={boxX + 40} y={y} fontSize={fontSize} fontWeight={S.overlayLegendFontBold ? "700" : "400"} fill="#15191f" fontFamily={figureFont} style={{ userSelect: "none", cursor: "pointer" }} onClick={(event) => activateTextTarget(event, { kind: "settings", label: "Légende des références", sizeKey: "overlayLegendFontSize", boldKey: "overlayLegendFontBold" })}>{phase.name}</text>
                           </g>;
                         })}
                       </g>;
@@ -4651,7 +4729,7 @@ export default function App() {
                           const color = colorMap.get(pattern.id) || "#111111";
                           return <g key={`curve-legend-${pattern.id}`}>
                             <line x1={boxX + 8} x2={boxX + 32} y1={y - fontSize * 0.32} y2={y - fontSize * 0.32} stroke={color} strokeWidth={Math.max(1.4, S.lineWidth * 1.6)} />
-                            <text x={boxX + 38} y={y} fontSize={fontSize} fill="#15191f" fontFamily={figureFont} style={{ userSelect: "none" }}>{truncateLabel(pattern.label, Math.max(10, Math.round((boxWidth - 46) / (fontSize * 0.55))))}</text>
+                            <text x={boxX + 38} y={y} fontSize={fontSize} fontWeight={S.curveLegendFontBold ? "700" : "400"} fill="#15191f" fontFamily={figureFont} style={{ userSelect: "none", cursor: "pointer" }} onClick={(event) => activateTextTarget(event, { kind: "settings", label: "Légende des courbes", sizeKey: "curveLegendFontSize", boldKey: "curveLegendFontBold" })}>{truncateLabel(pattern.label, Math.max(10, Math.round((boxWidth - 46) / (fontSize * 0.55))))}</text>
                           </g>;
                         })}
                       </g>;
@@ -4738,8 +4816,8 @@ export default function App() {
                         <rect data-ui-only="true" x={left} y={top} width={width} height="19" fill="#eef1f4" opacity="0.86" style={{ cursor: canMove ? "move" : "default" }} onPointerDown={(event) => { if (event.detail >= 2) { openContextOptions(event, { tab: "appearance", target: "inset-options" }); return; } if (canMove) beginCanvasDrag(event, "insetMove", { xFrac, yFrac, widthPct, heightPct }); }} />
                         <line x1={inner.left} x2={inner.left} y1={inner.top} y2={inner.bottom} stroke="#20252b" strokeWidth="0.7"/><line x1={inner.left} x2={inner.right} y1={inner.bottom} y2={inner.bottom} stroke="#20252b" strokeWidth="0.7"/>
                         <path d={path} fill="none" stroke={color} strokeWidth={S.lineWidth} vectorEffect="non-scaling-stroke"/>
-                        <text x={left + 7} y={top + 13} fontSize="8" fontWeight="700" fill="#20252b" pointerEvents="none">{truncateLabel(insetPattern.label, 28)}</text>
-                        <text x={(inner.left + inner.right) / 2} y={top + height - 7} textAnchor="middle" fontSize="7" fill="#343a40">{insetAxisMin.toFixed(drxAxisMode === "2theta" ? 1 : 2)}–{insetAxisMax.toFixed(drxAxisMode === "2theta" ? 1 : 2)} {primaryAxisUnit}</text>
+                        <text x={left + 7} y={top + 13} fontSize={S.insetLabelFontSize} fontWeight={S.insetLabelFontBold ? "700" : "400"} fill="#20252b" style={{ cursor: "pointer" }} onClick={(event) => activateTextTarget(event, { kind: "settings", label: "Titre de l’encart", sizeKey: "insetLabelFontSize", boldKey: "insetLabelFontBold" })}>{truncateLabel(insetPattern.label, 28)}</text>
+                        <text x={(inner.left + inner.right) / 2} y={top + height - 7} textAnchor="middle" fontSize={S.insetRangeFontSize} fontWeight={S.insetRangeFontBold ? "700" : "400"} fill="#343a40" style={{ cursor: "pointer" }} onClick={(event) => activateTextTarget(event, { kind: "settings", label: "Plage de l’encart", sizeKey: "insetRangeFontSize", boldKey: "insetRangeFontBold" })}>{insetAxisMin.toFixed(drxAxisMode === "2theta" ? 1 : 2)}–{insetAxisMax.toFixed(drxAxisMode === "2theta" ? 1 : 2)} {primaryAxisUnit}</text>
                         {collision && <text data-ui-only="true" x={left + width - 7} y={top + 13} textAnchor="end" fontSize="8" fontWeight="700" fill="#e05a47">{tr("collision")}</text>}
                         <rect data-ui-only="true" x={left + width - 10} y={top + height - 10} width="10" height="10" rx="2" fill={color} stroke="#fff" strokeWidth="1" style={{ cursor: "nwse-resize" }} onPointerDown={(event) => beginCanvasDrag(event, "insetResize", { xFrac, yFrac, widthPct, heightPct })} />
                       </g>;
@@ -4777,19 +4855,19 @@ export default function App() {
                         key={`annotation-label-${index}`}
                         x={x}
                         y={y}
-                        fontSize={S.annotFontSize}
-                        fontWeight="700"
+                        fontSize={finiteNumber(phases.find((phase) => phase.id === tick.phaseId)?.labelFontSize, S.annotFontSize)}
+                        fontWeight={(phases.find((phase) => phase.id === tick.phaseId)?.labelBold ?? S.annotFontBold) ? "700" : "400"}
                         fill={tick.color}
                         fontFamily={figureFont}
                         transform={`rotate(-90 ${x} ${y})`}
                         style={{ cursor: "move", userSelect: "none" }}
-                        onClick={(event) => selectItem(event, "phase", tick.phaseId)}
+                        onClick={(event) => { selectItem(event, "phase", tick.phaseId); activateTextTarget(event, { kind: "phase", id: tick.phaseId, label: `Annotation · ${tick.abbreviation}`, sizeKey: "labelFontSize", boldKey: "labelBold", fallbackSizeKey: "annotFontSize", fallbackBoldKey: "annotFontBold" }); }}
                         onDoubleClick={(event) => openContextOptions(event, { tab: "inspector", type: "phase", id: tick.phaseId, target: "phase-name" })}
                         onPointerDown={(event) => { if (event.detail >= 2) { openContextOptions(event, { tab: "inspector", type: "phase", id: tick.phaseId, target: "phase-name" }); return; } beginCanvasDrag(event, "phaseLabel", { id: tick.phaseId, xOffset: tick.labelOffsetX, yOffset: tick.labelOffsetY }); }}
                       >{tick.abbreviation}</text>;
                     })}
                     {S.figureLayoutMode === "single" && hasAnnotations && S.showAbbrevKey && phases.filter((phase) => phase.visible && phase.inAnnot).map((phase, index) => (
-                      <text key={`key-${phase.id}`} x={M.left + plotWidth + 10} y={yToPx(annotationBase + S.tickScale * 0.84) + index * 14} fontSize="9" fontStyle="italic" fill={phase.color} fontFamily={figureFont} style={{ cursor: "pointer" }} onDoubleClick={(event) => openContextOptions(event, { tab: "inspector", type: "phase", id: phase.id, target: "phase-name" })}>{phase.abbrev} = {phase.name}</text>
+                      <text key={`key-${phase.id}`} x={M.left + plotWidth + 10} y={yToPx(annotationBase + S.tickScale * 0.84) + index * Math.max(14, S.abbrevKeyFontSize + 5)} fontSize={S.abbrevKeyFontSize} fontWeight={S.abbrevKeyFontBold ? "700" : "400"} fontStyle="italic" fill={phase.color} fontFamily={figureFont} style={{ cursor: "pointer" }} onClick={(event) => activateTextTarget(event, { kind: "settings", label: "Clé des abréviations", sizeKey: "abbrevKeyFontSize", boldKey: "abbrevKeyFontBold" })} onDoubleClick={(event) => openContextOptions(event, { tab: "inspector", type: "phase", id: phase.id, target: "phase-name" })}>{phase.abbrev} = {phase.name}</text>
                     ))}
 
                     {S.figureLayoutMode === "single" && notes.filter((note) => note?.visible !== false).map((note) => {
@@ -4850,10 +4928,10 @@ export default function App() {
                             </>;
                           })()}
                           <text
-                            x={x} y={y} textAnchor="middle" fontSize={fontSize} fill={safe.color} fontFamily={figureFont}
+                            x={x} y={y} textAnchor="middle" fontSize={fontSize} fontWeight={safe.bold ? "700" : "400"} fill={safe.color} fontFamily={figureFont}
                             transform={safe.rotation ? `rotate(${safe.rotation} ${x} ${y})` : undefined}
                             style={{ cursor: "pointer", userSelect: "none" }}
-                            onClick={(event) => { event.stopPropagation(); selectItem(event, "note", safe.id); }}
+                            onClick={(event) => { event.stopPropagation(); selectItem(event, "note", safe.id); activateTextTarget(event, { kind: "note", id: safe.id, label: "Note", sizeKey: "fontSize", boldKey: "bold" }); }}
                             onDoubleClick={(event) => openContextOptions(event, { tab: "inspector", type: "note", id: safe.id, target: "note-text" })}
                           >{noteLines.map((line, lineIndex) => <tspan key={lineIndex} x={x} dy={lineIndex === 0 ? 0 : fontSize * 1.25}>{line}</tspan>)}</text>
                           {selected && <g data-ui-only="true">
@@ -4876,10 +4954,10 @@ export default function App() {
                         return <g key={`ytick-${tick}`}>
                           {S.showGridHorizontal && <line x1={M.left} x2={M.left + plotWidth} y1={py} y2={py} stroke="#cfd4da" strokeWidth="0.65" opacity={S.gridOpacity} />}
                           <line x1={M.left - 5} x2={M.left} y1={py} y2={py} stroke="#15191f" strokeWidth="1" />
-                          <text x={M.left - 8} y={py + 3.2} textAnchor="end" fontSize={S.tickFontSize} fill="#15191f" fontFamily={figureFont}>{label}</text>
+                          <text x={M.left - 8} y={py + 3.2} textAnchor="end" fontSize={S.tickFontSize} fontWeight={S.tickFontBold ? "700" : "400"} fill="#15191f" fontFamily={figureFont} style={{ cursor: "pointer" }} onClick={(event) => activateTextTarget(event, { kind: "settings", label: "Graduations", sizeKey: "tickFontSize", boldKey: "tickFontBold" })}>{label}</text>
                         </g>;
                       })}
-                      <text x="21" y={M.top + mainHeight / 2} fontSize={S.axisFontSize} fill="#15191f" textAnchor="middle" fontFamily={figureFont} transform={`rotate(-90 21 ${M.top + mainHeight / 2})`} style={{ cursor: "pointer" }} onDoubleClick={(event) => openContextOptions(event, { tab: "appearance", target: "axis-y-label" })}>{S.ylabel}</text></>}
+                      <text x="21" y={M.top + mainHeight / 2} fontSize={S.axisFontSize} fontWeight={S.axisFontBold ? "700" : "400"} fill="#15191f" textAnchor="middle" fontFamily={figureFont} transform={`rotate(-90 21 ${M.top + mainHeight / 2})`} style={{ cursor: "pointer" }} onClick={(event) => activateTextTarget(event, { kind: "settings", label: "Titres des axes", sizeKey: "axisFontSize", boldKey: "axisFontBold" })} onDoubleClick={(event) => openContextOptions(event, { tab: "appearance", target: "axis-y-label" })}>{S.ylabel}</text></>}
 
                     {panelHeight > 0 && (
                       <g>
@@ -4893,8 +4971,8 @@ export default function App() {
                                 <line key={index} x1={xToPx(x)} x2={xToPx(x)} y1={rowTop + rowHeight - 4} y2={rowTop + rowHeight - 4 - (intensity / 100) * rowHeight * 0.78} stroke={phase.color} strokeWidth={S.pdfStickW} strokeDasharray={phase.dashed ? "3 2" : undefined} opacity="0.9" />
                               ) : null)}
                               {S.showRowLabels && <>
-                                <text x={M.left + 8} y={rowTop + rowHeight * 0.3} fontSize="10.5" fontWeight="700" fill={phase.color} fontFamily={figureFont}>{phase.name}</text>
-                                {showSubtitle && <text x={M.left + 8} y={rowTop + rowHeight * 0.3 + 12} fontSize="7.5" fontStyle="italic" fill={phase.color} fontFamily={figureFont}>{subtitle}</text>}
+                                <text x={M.left + 8} y={rowTop + rowHeight * 0.3} fontSize={S.referenceRowFontSize} fontWeight={S.referenceRowFontBold ? "700" : "400"} fill={phase.color} fontFamily={figureFont} onClick={(event) => activateTextTarget(event, { kind: "settings", label: "Noms du panneau de références", sizeKey: "referenceRowFontSize", boldKey: "referenceRowFontBold" })}>{phase.name}</text>
+                                {showSubtitle && <text x={M.left + 8} y={rowTop + rowHeight * 0.3 + Math.max(12, S.referenceSubtitleFontSize + 4)} fontSize={S.referenceSubtitleFontSize} fontWeight={S.referenceSubtitleFontBold ? "700" : "400"} fontStyle="italic" fill={phase.color} fontFamily={figureFont} onClick={(event) => activateTextTarget(event, { kind: "settings", label: "Sous-titres des références", sizeKey: "referenceSubtitleFontSize", boldKey: "referenceSubtitleFontBold" })}>{subtitle}</text>}
                               </>}
                               {rowIndex > 0 && <line x1={M.left} x2={M.left + plotWidth} y1={rowTop} y2={rowTop} stroke="#d4d7db" strokeWidth="0.5" />}
                             </g>
@@ -4914,12 +4992,12 @@ export default function App() {
                           return <g onDoubleClick={(event) => openContextOptions(event, { tab: "references", target: "reference-panel-options" })}>
                             <rect x={boxX} y={boxY} width={boxWidth} height={boxHeight} fill="#ffffff" opacity="0.94" stroke="#8f969e" strokeWidth="0.8" rx="3" />
                             <rect data-ui-only="true" x={boxX} y={boxY} width={boxWidth} height="20" fill="#eef1f4" opacity="0.85" style={{ cursor: "move" }} onPointerDown={(event) => { if (event.detail >= 2) { openContextOptions(event, { tab: "references", target: "reference-panel-options" }); return; } beginCanvasDrag(event, "phaseLegendMove", { x: boxX, y: boxY, width: boxWidth }); }} />
-                            <text x={boxX + boxWidth / 2} y={boxY + 14} textAnchor="middle" fontSize={fontSize + 1} fontWeight="700" fill="#343a40" pointerEvents="none">{tr("Références de phase")}</text>
+                            <text x={boxX + boxWidth / 2} y={boxY + 14} textAnchor="middle" fontSize={fontSize + 1} fontWeight={S.phaseLegendFontBold ? "700" : "400"} fill="#343a40" style={{ cursor: "pointer" }} onClick={(event) => activateTextTarget(event, { kind: "settings", label: "Légende du panneau de références", sizeKey: "phaseLegendFontSize", boldKey: "phaseLegendFontBold" })}>{tr("Références de phase")}</text>
                             {panelPhases.map((phase, index) => {
                               const subtitle = truncateLabel(phaseSubtitle(phase), S.phaseSubtitleMaxLength);
                               const suffix = S.showRowSubtitles && phase.showSubtitle !== false && subtitle ? ` — ${subtitle}` : "";
                               const y = boxY + 26 + index * lineHeight;
-                              return <g key={phase.id}><line x1={boxX + 9} x2={boxX + 27} y1={y - 3} y2={y - 3} stroke={phase.color} strokeWidth="2"/><text x={boxX + 34} y={y} fontSize={fontSize} fill="#20252b">{truncateLabel(`${phase.name}${suffix}`, Math.max(12, Math.round((boxWidth - 42) / (fontSize * 0.55))))}</text></g>;
+                              return <g key={phase.id}><line x1={boxX + 9} x2={boxX + 27} y1={y - 3} y2={y - 3} stroke={phase.color} strokeWidth="2"/><text x={boxX + 34} y={y} fontSize={fontSize} fontWeight={S.phaseLegendFontBold ? "700" : "400"} fill="#20252b" style={{ cursor: "pointer" }} onClick={(event) => activateTextTarget(event, { kind: "settings", label: "Légende du panneau de références", sizeKey: "phaseLegendFontSize", boldKey: "phaseLegendFontBold" })}>{truncateLabel(`${phase.name}${suffix}`, Math.max(12, Math.round((boxWidth - 42) / (fontSize * 0.55))))}</text></g>;
                             })}
                             <rect data-ui-only="true" x={boxX + boxWidth - 8} y={boxY + boxHeight - 8} width="8" height="8" rx="1" fill="#697482" stroke="#fff" strokeWidth="1" style={{ cursor: "nwse-resize" }} onPointerDown={(event) => beginCanvasDrag(event, "phaseLegendResize", { x: boxX, y: boxY, width: boxWidth })} />
                           </g>;
@@ -4933,17 +5011,17 @@ export default function App() {
                       const previewMax = viewXMax;
                       return <g onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); resetDataZoom(); }} style={{ cursor: "pointer" }}>
                         <line x1={M.left} x2={M.left + plotWidth} y1={axisY} y2={axisY} stroke="#15191f" strokeWidth="1"/>
-                        {xTickObjects.map((tick) => <g key={tick.x}><line x1={xToPx(tick.x)} x2={xToPx(tick.x)} y1={axisY} y2={axisY + 5} stroke="#15191f" strokeWidth="1"/><text x={xToPx(tick.x)} y={axisY + 20} textAnchor="middle" fontSize={S.tickFontSize} fill="#15191f" fontFamily={figureFont}>{tick.label}</text></g>)}
-                        <text x={M.left + plotWidth / 2} y={axisY + 42} textAnchor="middle" fontSize={S.axisFontSize} fill="#15191f" fontFamily={figureFont}>{activeMode === "drx" && drxAxisMode === "d" ? "d-spacing (Å)" : activeMode === "drx" && drxAxisMode === "q" ? "Q (Å⁻¹)" : S.xlabel}</text>
+                        {xTickObjects.map((tick) => <g key={tick.x}><line x1={xToPx(tick.x)} x2={xToPx(tick.x)} y1={axisY} y2={axisY + 5} stroke="#15191f" strokeWidth="1"/><text x={xToPx(tick.x)} y={axisY + 20} textAnchor="middle" fontSize={S.tickFontSize} fontWeight={S.tickFontBold ? "700" : "400"} fill="#15191f" fontFamily={figureFont} style={{ cursor: "pointer" }} onClick={(event) => activateTextTarget(event, { kind: "settings", label: "Graduations", sizeKey: "tickFontSize", boldKey: "tickFontBold" })}>{tick.label}</text></g>)}
+                        <text x={M.left + plotWidth / 2} y={axisY + 42} textAnchor="middle" fontSize={S.axisFontSize} fontWeight={S.axisFontBold ? "700" : "400"} fill="#15191f" fontFamily={figureFont} style={{ cursor: "pointer" }} onClick={(event) => activateTextTarget(event, { kind: "settings", label: "Titres des axes", sizeKey: "axisFontSize", boldKey: "axisFontBold" })}>{activeMode === "drx" && drxAxisMode === "d" ? "d-spacing (Å)" : activeMode === "drx" && drxAxisMode === "q" ? "Q (Å⁻¹)" : S.xlabel}</text>
                         {activeMode === "drx" && S.showSecondaryXAxis && <g>
                           <line x1={M.left} x2={M.left + plotWidth} y1={M.top} y2={M.top} stroke="#15191f" strokeWidth="0.8" />
-                          {xTickObjects.map((tick) => { const value = convertDrxX(tick.x, S.secondaryXAxisMode || "d", Number(S.wavelength) || 1.5406); return <g key={`secondary-${tick.x}`}><line x1={xToPx(tick.x)} x2={xToPx(tick.x)} y1={M.top} y2={M.top - 4} stroke="#15191f" strokeWidth="0.8"/><text x={xToPx(tick.x)} y={M.top - 7} textAnchor="middle" fontSize={Math.max(6, S.tickFontSize - 2)} fill="#15191f">{Number.isFinite(value) ? value.toFixed(2) : ""}</text></g>; })}
-                          <text x={M.left + plotWidth / 2} y={Math.max(9, M.top - 22)} textAnchor="middle" fontSize={Math.max(7, S.axisFontSize - 2)} fill="#15191f">{S.secondaryXAxisMode === "q" ? "Q (Å⁻¹)" : S.secondaryXAxisMode === "2theta" ? "2θ (°)" : "d-spacing (Å)"}</text>
+                          {xTickObjects.map((tick) => { const value = convertDrxX(tick.x, S.secondaryXAxisMode || "d", Number(S.wavelength) || 1.5406); return <g key={`secondary-${tick.x}`}><line x1={xToPx(tick.x)} x2={xToPx(tick.x)} y1={M.top} y2={M.top - 4} stroke="#15191f" strokeWidth="0.8"/><text x={xToPx(tick.x)} y={M.top - 7} textAnchor="middle" fontSize={Math.max(6, S.tickFontSize - 2)} fontWeight={S.tickFontBold ? "700" : "400"} fill="#15191f" onClick={(event) => activateTextTarget(event, { kind: "settings", label: "Graduations", sizeKey: "tickFontSize", boldKey: "tickFontBold" })}>{Number.isFinite(value) ? value.toFixed(2) : ""}</text></g>; })}
+                          <text x={M.left + plotWidth / 2} y={Math.max(9, M.top - 22)} textAnchor="middle" fontSize={Math.max(7, S.axisFontSize - 2)} fontWeight={S.axisFontBold ? "700" : "400"} fill="#15191f" onClick={(event) => activateTextTarget(event, { kind: "settings", label: "Titres des axes", sizeKey: "axisFontSize", boldKey: "axisFontBold" })}>{S.secondaryXAxisMode === "q" ? "Q (Å⁻¹)" : S.secondaryXAxisMode === "2theta" ? "2θ (°)" : "d-spacing (Å)"}</text>
                         </g>}
                         {activeMode === "drx" && S.showSecondaryYAxis && <g>
                           <line x1={M.left + plotWidth} x2={M.left + plotWidth} y1={M.top} y2={M.top + mainHeight} stroke="#15191f" strokeWidth="0.8" />
-                          {[0, 25, 50, 75, 100].map((value) => { const yy = M.top + mainHeight - (value / 100) * mainHeight; return <g key={`secondary-y-${value}`}><line x1={M.left + plotWidth} x2={M.left + plotWidth + 4} y1={yy} y2={yy} stroke="#15191f" strokeWidth="0.8"/><text x={M.left + plotWidth + 7} y={yy + 3} fontSize={Math.max(6, S.tickFontSize - 2)} fill="#15191f">{value}</text></g>; })}
-                          <text x={M.left + plotWidth + 38} y={M.top + mainHeight / 2} textAnchor="middle" fontSize={Math.max(7, S.axisFontSize - 2)} fill="#15191f" transform={`rotate(90 ${M.left + plotWidth + 38} ${M.top + mainHeight / 2})`}>Relative intensity (%)</text>
+                          {[0, 25, 50, 75, 100].map((value) => { const yy = M.top + mainHeight - (value / 100) * mainHeight; return <g key={`secondary-y-${value}`}><line x1={M.left + plotWidth} x2={M.left + plotWidth + 4} y1={yy} y2={yy} stroke="#15191f" strokeWidth="0.8"/><text x={M.left + plotWidth + 7} y={yy + 3} fontSize={Math.max(6, S.tickFontSize - 2)} fontWeight={S.tickFontBold ? "700" : "400"} fill="#15191f" onClick={(event) => activateTextTarget(event, { kind: "settings", label: "Graduations", sizeKey: "tickFontSize", boldKey: "tickFontBold" })}>{value}</text></g>; })}
+                          <text x={M.left + plotWidth + 38} y={M.top + mainHeight / 2} textAnchor="middle" fontSize={Math.max(7, S.axisFontSize - 2)} fontWeight={S.axisFontBold ? "700" : "400"} fill="#15191f" transform={`rotate(90 ${M.left + plotWidth + 38} ${M.top + mainHeight / 2})`} onClick={(event) => activateTextTarget(event, { kind: "settings", label: "Titres des axes", sizeKey: "axisFontSize", boldKey: "axisFontBold" })}>Relative intensity (%)</text>
                         </g>}
                         {breakActive && <g>
                           <path d={`M${xToPx(Number(S.brokenAxisStart)) + 2} ${axisY - 4}l5 8M${xToPx(Number(S.brokenAxisStart)) + 8} ${axisY - 4}l5 8`} stroke="#15191f" strokeWidth="1" fill="none" />
@@ -4980,26 +5058,12 @@ export default function App() {
           {!rightCollapsed && <Resizer side="right" onReset={() => setRightWidth(350)} onResize={{ currentWidth: () => rightWidth, apply: (value) => setRightWidth(clamp(value, 280, 560)) }} />}
           <div className="panel-titlebar"><div><strong>{tr("Atelier")}</strong><span>{selectionCount ? `${selectionCount} ${tr("sélectionné(s)")}` : tr("Aucune sélection")}</span></div><IconButton icon="panelRight" title="Replier le panneau de propriétés" onClick={() => setRightCollapsed(true)} /></div>
           <nav className="panel-tabs panel-tabs--right">
-            {[ ["inspector", "Inspecteur", "cursor"], ["processing", "Traitement", "waveform"], ["references", "Références", "phase"], ["appearance", "Apparence", "sparkles"], ["export", "Export", "download"] ].map(([value, label, icon]) => <button type="button" key={value} className={rightTab === value ? "is-active" : ""} onClick={() => setRightTab(value)}><Icon name={icon} size={12} />{tr(label)}{value === "inspector" && selectionCount > 0 && <span>{selectionCount}</span>}</button>)}
+            {[ ["inspector", "Inspecteur", "cursor"], ["processing", "Traitement", "waveform"], ["references", "Références", "phase"], ["appearance", "Apparence", "sparkles"], ["export", "Export", "download"] ].map(([value, label, icon], index) => <button type="button" key={value} className={rightTab === value ? "is-active" : ""} aria-current={rightTab === value ? "step" : undefined} title={`${index + 1}. ${tr(label)}`} onClick={() => setRightTab(value)}><small>{index + 1}</small><Icon name={icon} size={12} />{tr(label)}{value === "inspector" && selectionCount > 0 && <span>{selectionCount}</span>}</button>)}
           </nav>
+          <div className="workflow-hint">{{ inspector: "Sélectionner un élément et régler ses propriétés.", processing: "Corriger, normaliser et analyser les signaux.", references: "Ajouter phases, zones et annotations.", appearance: "Régler axes, textes, courbes et composition.", export: "Contrôler le rendu final avant téléchargement." }[rightTab]}</div>
           <div className="side-panel__content properties-scroll">
             {rightTab === "appearance" && (
               <>
-                <Section title="Interface" defaultOpen={false}>
-                  <SelectField label="Densité des contrôles" value={uiDensity} onChange={setUiDensity} options={[["compact", "Compacte"], ["standard", "Standard"], ["comfortable", "Confortable"]]} />
-                  <Toggle label="Afficher le panneau de données" checked={!leftCollapsed} onChange={(value) => setLeftCollapsed(!value)} />
-                  <Toggle label="Afficher le panneau de propriétés" checked={!rightCollapsed} onChange={(value) => setRightCollapsed(!value)} />
-                  <Toggle label="Réduire les animations" checked={reduceMotion} onChange={setReduceMotion} description="Désactive les transitions décoratives et respecte le confort visuel." />
-                  <div className="motion-preview"><span /><span /><span /><small>{reduceMotion ? "Mouvement réduit" : "Animations actives"}</small></div>
-                  <div className="inline-actions"><Button variant="secondary" icon="layout" onClick={resetLayout}>Réinitialiser la disposition</Button></div>
-                </Section>
-                <Section title="Interaction avec la figure">
-                  <Toggle label="Accrochage aux pics" checked={snapToPeak} onChange={setSnapToPeak} description="Les curseurs et la lecture du pointeur s’alignent sur un pic proche." />
-                  <Toggle label="Navigateur de plage" checked={showNavigator} onChange={setShowNavigator} />
-                  <Toggle label="Comparaison brut / traité" checked={comparisonView} onChange={setComparisonView} />
-                  <Toggle label="Édition plein écran" checked={editorFullscreen} onChange={setEditorFullscreen} />
-                  <div className="callout">{tr("Interactions directes sur la figure : glisser les étiquettes, notes, légendes et l'encart ; double-clic sur un texte pour ouvrir ses réglages ; glisser les extrémités de l'axe X pour recadrer ; double-clic sur l'axe X pour réinitialiser le zoom ; ↕ pour réordonner les courbes. Raccourcis : V sélection, H main, P pics, Z zoom rectangle, N note, Ctrl+Z/Y historique, Suppr. suppression.")}</div>
-                </Section>
                 <Section title="Texte et axes" targetId="axes-options">
                   <TextField targetId="figure-title" label="Titre" value={S.title} onChange={(value) => patchSettings("title", value)} placeholder="Titre facultatif" />
                   <TextField targetId="axis-x-label" label="Axe X" value={S.xlabel} onChange={(value) => patchSettings("xlabel", value)} />
@@ -5062,11 +5126,27 @@ export default function App() {
                 </Section>
                 <Section title="Typographie" defaultOpen={false}>
                   <SelectField label="Police de la figure" value={S.fontFamily || "Arial, Helvetica, sans-serif"} onChange={(value) => patchSettings("fontFamily", value)} options={[["Arial, Helvetica, sans-serif", "Arial / Helvetica"], ["Helvetica, Arial, sans-serif", "Helvetica"], ["Times New Roman, Times, serif", "Times New Roman"], ["Georgia, serif", "Georgia"], ["Calibri, Candara, sans-serif", "Calibri"]]} />
-                  <SliderField label="Titre" value={S.titleFontSize} min={10} max={36} step={0.5} suffix="pt" onChange={(value) => patchSettings("titleFontSize", value)} />
-                  <SliderField label="Axes" value={S.axisFontSize} min={8} max={28} step={0.5} suffix="pt" onChange={(value) => patchSettings("axisFontSize", value)} />
-                  <SliderField label="Graduations" value={S.tickFontSize} min={6} max={24} step={0.5} suffix="pt" onChange={(value) => patchSettings("tickFontSize", value)} />
-                  <SliderField label="Labels de patrons" value={S.patternLabelSize} min={7} max={26} step={0.5} suffix="pt" onChange={(value) => patchSettings("patternLabelSize", value)} />
-                  <Toggle label="Labels en gras" checked={S.patternLabelBold} onChange={(value) => patchSettings("patternLabelBold", value)} />
+                  <div className="type-role-grid">
+                    <SliderField label="Titre" value={S.titleFontSize} min={8} max={48} step={0.5} suffix="pt" onChange={(value) => patchSettings("titleFontSize", value)} /><Toggle label="Titre en gras" checked={S.titleFontBold} onChange={(value) => patchSettings("titleFontBold", value)} />
+                    <SliderField label="Titres des axes" value={S.axisFontSize} min={6} max={36} step={0.5} suffix="pt" onChange={(value) => patchSettings("axisFontSize", value)} /><Toggle label="Axes en gras" checked={S.axisFontBold} onChange={(value) => patchSettings("axisFontBold", value)} />
+                    <SliderField label="Graduations" value={S.tickFontSize} min={5} max={30} step={0.5} suffix="pt" onChange={(value) => patchSettings("tickFontSize", value)} /><Toggle label="Graduations en gras" checked={S.tickFontBold} onChange={(value) => patchSettings("tickFontBold", value)} />
+                    <SliderField label="Labels de patrons" value={S.patternLabelSize} min={6} max={42} step={0.5} suffix="pt" onChange={(value) => patchSettings("patternLabelSize", value)} /><Toggle label="Labels de patrons en gras" checked={S.patternLabelBold} onChange={(value) => patchSettings("patternLabelBold", value)} />
+                    <SliderField label="Labels de pics" value={S.peakLabelSize} min={5} max={24} step={0.5} suffix="pt" onChange={(value) => patchSettings("peakLabelSize", value)} /><Toggle label="Labels de pics en gras" checked={S.peakLabelBold} onChange={(value) => patchSettings("peakLabelBold", value)} />
+                    <SliderField label="Titres des panneaux" value={S.panelTitleFontSize} min={5} max={30} step={0.5} suffix="pt" onChange={(value) => patchSettings("panelTitleFontSize", value)} /><Toggle label="Titres de panneaux en gras" checked={S.panelTitleFontBold} onChange={(value) => patchSettings("panelTitleFontBold", value)} />
+                    <SliderField label="Axes des panneaux" value={S.panelAxisFontSize} min={5} max={24} step={0.5} suffix="pt" onChange={(value) => patchSettings("panelAxisFontSize", value)} /><Toggle label="Axes de panneaux en gras" checked={S.panelAxisFontBold} onChange={(value) => patchSettings("panelAxisFontBold", value)} />
+                  </div>
+                  <div className="callout">Cliquer sur un texte de la figure affiche aussi les contrôles de taille et de gras directement sur la feuille.</div>
+                </Section>
+                <Section title="Typographie des annotations et encarts" defaultOpen={false}>
+                  <div className="type-role-grid">
+                    <SliderField label="Annotations de phases" value={S.annotFontSize} min={5} max={24} step={0.5} suffix="pt" onChange={(value) => patchSettings("annotFontSize", value)} /><Toggle label="Annotations en gras" checked={S.annotFontBold} onChange={(value) => patchSettings("annotFontBold", value)} />
+                    <SliderField label="Clé des abréviations" value={S.abbrevKeyFontSize} min={5} max={24} step={0.5} suffix="pt" onChange={(value) => patchSettings("abbrevKeyFontSize", value)} /><Toggle label="Clé en gras" checked={S.abbrevKeyFontBold} onChange={(value) => patchSettings("abbrevKeyFontBold", value)} />
+                    <SliderField label="Noms des zones" value={S.zoneLabelFontSize} min={5} max={24} step={0.5} suffix="pt" onChange={(value) => patchSettings("zoneLabelFontSize", value)} /><Toggle label="Zones en gras" checked={S.zoneLabelFontBold} onChange={(value) => patchSettings("zoneLabelFontBold", value)} />
+                    <SliderField label="Titre de l’encart" value={S.insetLabelFontSize} min={5} max={24} step={0.5} suffix="pt" onChange={(value) => patchSettings("insetLabelFontSize", value)} /><Toggle label="Titre d’encart en gras" checked={S.insetLabelFontBold} onChange={(value) => patchSettings("insetLabelFontBold", value)} />
+                    <SliderField label="Plage de l’encart" value={S.insetRangeFontSize} min={5} max={20} step={0.5} suffix="pt" onChange={(value) => patchSettings("insetRangeFontSize", value)} /><Toggle label="Plage d’encart en gras" checked={S.insetRangeFontBold} onChange={(value) => patchSettings("insetRangeFontBold", value)} />
+                    <SliderField label="Noms du panneau de références" value={S.referenceRowFontSize} min={5} max={24} step={0.5} suffix="pt" onChange={(value) => patchSettings("referenceRowFontSize", value)} /><Toggle label="Noms des références en gras" checked={S.referenceRowFontBold} onChange={(value) => patchSettings("referenceRowFontBold", value)} />
+                    <SliderField label="Sous-titres des références" value={S.referenceSubtitleFontSize} min={5} max={20} step={0.5} suffix="pt" onChange={(value) => patchSettings("referenceSubtitleFontSize", value)} /><Toggle label="Sous-titres en gras" checked={S.referenceSubtitleFontBold} onChange={(value) => patchSettings("referenceSubtitleFontBold", value)} />
+                  </div>
                 </Section>
 
                 <Section title="Courbes">
@@ -5076,6 +5156,7 @@ export default function App() {
                   <Toggle label="Légende encadrée des courbes" checked={Boolean(S.showCurveLegend)} onChange={(value) => patchSettings("showCurveLegend", value)} description="Encart déplaçable à la souris ; complète ou remplace les étiquettes en marge droite." />
                   {S.showCurveLegend && <>
                     <SliderField label="Taille de la légende" value={S.curveLegendFontSize ?? 10} min={6} max={20} step={0.5} suffix="pt" onChange={(value) => patchSettings("curveLegendFontSize", value)} />
+                    <Toggle label="Légende en gras" checked={S.curveLegendFontBold} onChange={(value) => patchSettings("curveLegendFontBold", value)} />
                     <div className="inline-actions"><Button variant="secondary" icon="reset" onClick={() => patchSettingsValues({ curveLegendX: null, curveLegendY: null })}>Réinitialiser la position</Button></div>
                   </>}
                   {S.layoutMode === "waterfall" && <><SliderField label="Réduction d’échelle par courbe" value={S.waterfallScaleDecay} min={0} max={20} step={0.5} suffix="%" onChange={(value) => patchSettings("waterfallScaleDecay", value)} /><SliderField label="Perte d’opacité par courbe" value={S.waterfallOpacityDecay} min={0} max={20} step={0.5} suffix="%" onChange={(value) => patchSettings("waterfallOpacityDecay", value)} /><SliderField label="Perspective" value={S.waterfallPerspective} min={-0.5} max={1.5} step={0.05} onChange={(value) => patchSettings("waterfallPerspective", value)} /></>}
@@ -5289,6 +5370,7 @@ export default function App() {
                     <SliderField label="Épaisseur" value={S.phaseOverlayWidth ?? 1} min={0.3} max={4} step={0.05} onChange={(value) => patchSettings("phaseOverlayWidth", value)} />
                     <SliderField label="Opacité" value={S.phaseOverlayOpacity ?? 0.7} min={0.05} max={1} step={0.05} onChange={(value) => patchSettings("phaseOverlayOpacity", value)} />
                     <SliderField label="Taille des valeurs" value={S.phaseOverlayValueSize ?? 8.5} min={5} max={16} step={0.5} suffix="pt" onChange={(value) => patchSettings("phaseOverlayValueSize", value)} />
+                    <Toggle label="Valeurs en gras" checked={Boolean(S.phaseOverlayValueBold)} onChange={(value) => patchSettings("phaseOverlayValueBold", value)} />
                     <SelectField label="Affichage des références" value={S.phaseOverlayDisplay || "both"} onChange={(value) => patchSettings("phaseOverlayDisplay", value)} options={[["both", "Bâtonnets et valeurs"], ["sticks", "Bâtonnets seuls"], ["values", "Valeurs seules"]]} />
                     <SelectField label="Position des valeurs" value={S.phaseOverlayValueAnchor === "peak" ? "peak" : "stick"} onChange={(value) => patchSettings("phaseOverlayValueAnchor", value)} options={[["stick", "À l'extrémité du bâtonnet"], ["peak", "Au-dessus du pic mesuré"]]} />
                     {S.phaseOverlayValueAnchor === "peak" && <NumberField label={`${tr("Fenêtre de recherche du sommet")} (${activeMode === "drx" ? "°" : "cm⁻¹"})`} value={S.phaseOverlayValueWindow ?? 0} min={0} step={activeMode === "drx" ? 0.05 : 1} onChange={(value) => patchSettings("phaseOverlayValueWindow", value)} hint={`0 = automatique (${activeMode === "drx" ? "0,2°" : "8 cm⁻¹"}).`} />}
@@ -5296,6 +5378,7 @@ export default function App() {
                     <Toggle label="Légende dans la figure" checked={S.showOverlayLegend !== false} onChange={(value) => patchSettings("showOverlayLegend", value)} />
                     {S.showOverlayLegend !== false && <>
                       <SliderField label="Taille du texte de légende" value={S.overlayLegendFontSize ?? 10} min={6} max={20} step={0.5} suffix="pt" onChange={(value) => patchSettings("overlayLegendFontSize", value)} />
+                      <Toggle label="Texte de légende en gras" checked={Boolean(S.overlayLegendFontBold)} onChange={(value) => patchSettings("overlayLegendFontBold", value)} />
                       <div className="inline-actions"><Button variant="secondary" icon="reset" onClick={() => patchSettingsValues({ overlayLegendX: null, overlayLegendY: null })}>Réinitialiser la position de la légende</Button></div>
                     </>}
                   </>}
@@ -5312,6 +5395,7 @@ export default function App() {
                     {S.showPdfLegend && <>
                       <SliderField label="Largeur de la légende" value={S.phaseLegendWidth || 210} min={140} max={500} step={5} suffix="px" onChange={(value) => patchSettings("phaseLegendWidth", value)} />
                       <SliderField label="Taille du texte" value={S.phaseLegendFontSize || 8} min={6} max={16} step={0.5} suffix="pt" onChange={(value) => patchSettings("phaseLegendFontSize", value)} />
+                      <Toggle label="Texte de légende en gras" checked={Boolean(S.phaseLegendFontBold)} onChange={(value) => patchSettings("phaseLegendFontBold", value)} />
                       <div className="inline-actions"><Button variant="secondary" icon="reset" onClick={() => history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({ ...currentWorkspace, settings: { ...currentWorkspace.settings, phaseLegendX: null, phaseLegendY: null, phaseLegendWidth: 210, phaseLegendFontSize: 8 } })))}>Réinitialiser la légende</Button></div>
                       <div className="callout">{tr("Glisser l’en-tête de l’encart dans la figure pour le déplacer ; utiliser le carré inférieur droit pour le redimensionner.")}</div>
                     </>}
@@ -5336,8 +5420,12 @@ export default function App() {
                   <TextField label="Nom du fichier" value={S.fileName} onChange={(value) => patchSettings("fileName", value.replace(/[\\/:*?"<>|]/g, "_"))} />
                   <div className="export-summary"><span>PNG : {Math.round(W * S.pngScale)} × {Math.round(H * S.pngScale)} px</span><span>PDF / TIFF : {S.exportDpi} dpi</span><span>SVG : vectoriel éditable</span></div>
                 </Section>
-                <Section title="Exporter">
-                  <div className="export-grid"><Button variant="primary" icon="download" disabled={isExporting} onClick={downloadPng}>PNG</Button><Button variant="secondary" icon="duplicate" disabled={isExporting} onClick={copyPngToClipboard}>Copier PNG</Button><Button variant="secondary" disabled={isExporting} onClick={downloadSvg}>SVG</Button><Button variant="secondary" disabled={isExporting} onClick={downloadPdf} title="PDF vectoriel (traits et textes éditables)">PDF</Button><Button variant="secondary" disabled={isExporting} onClick={downloadTiff}>TIFF</Button><Button variant="secondary" icon="csv" onClick={exportProcessedCsv}>CSV traité</Button><Button variant="secondary" icon="csv" onClick={exportDetectedPeaksCsv}>CSV pics</Button>{supportsZones && <Button variant="secondary" icon="csv" onClick={exportZonesCsv}>CSV zones</Button>}<Button variant="secondary" icon="save" onClick={saveSessionFile}>Session JSON</Button></div>
+                <Section title="Prévisualiser et exporter">
+                  <div className="inline-actions"><Button variant="primary" icon="preview" disabled={isExporting} onClick={() => openExportPreview("png")}>Ouvrir la prévisualisation</Button><Button variant="secondary" icon="duplicate" disabled={isExporting} onClick={copyPngToClipboard}>Copier PNG</Button></div>
+                  <div className="callout">La prévisualisation utilise le même SVG normalisé que les fichiers PNG, TIFF, SVG et PDF. Le zoom de l’éditeur n’affecte pas le résultat.</div>
+                </Section>
+                <Section title="Données et projet" defaultOpen={false}>
+                  <div className="export-grid"><Button variant="secondary" icon="csv" onClick={exportProcessedCsv}>CSV traité</Button><Button variant="secondary" icon="csv" onClick={exportDetectedPeaksCsv}>CSV pics</Button>{supportsZones && <Button variant="secondary" icon="csv" onClick={exportZonesCsv}>CSV zones</Button>}<Button variant="secondary" icon="save" onClick={saveSessionFile}>Session JSON</Button></div>
                 </Section>
               </>
             )}
@@ -5352,6 +5440,21 @@ export default function App() {
 
       {message && <div className="toast"><span className="toast__icon"><Icon name="check" size={13} /></span><span>{translateMessage(message, language)}</span><button type="button" onClick={() => setMessage("")}><Icon name="close" size={14} /></button></div>}
       {isExporting && <div className="export-overlay"><div className="export-orbit"><Icon name="download" size={20} /></div><strong>{tr("Génération de la figure")}</strong><span>{tr("Préparation du fichier haute résolution…")}</span></div>}
+      {exportPreview.open && <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeExportPreview(); }}>
+        <section className="export-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="export-preview-title">
+          <header className="export-preview-dialog__header"><div><strong id="export-preview-title">Prévisualisation de l’export</strong><span>Rendu normalisé · indépendant du zoom de l’éditeur</span></div><IconButton icon="close" title="Fermer" onClick={closeExportPreview} /></header>
+          <div className="export-preview-dialog__body">
+            <div className="export-preview-stage" style={{ background: S.transparentExport ? "repeating-conic-gradient(#e9edf2 0 25%, #ffffff 0 50%) 50% / 18px 18px" : S.pageBackground }}>
+              <img src={svgDataUrl(exportPreview.serialized)} alt="Prévisualisation exacte de la figure exportée" />
+            </div>
+            <aside className="export-preview-controls">
+              <label><span>Format</span><select value={exportPreview.format} onChange={(event) => setExportPreview((current) => ({ ...current, format: event.target.value }))}><option value="png">PNG</option><option value="tiff">TIFF</option><option value="svg">SVG</option><option value="pdf">PDF</option></select></label>
+              <div className="export-summary"><span>Figure : {Math.round(W)} × {Math.round(H)} unités</span>{exportPreview.format === "png" && <span>PNG : {Math.round(W * S.pngScale)} × {Math.round(H * S.pngScale)} px</span>}{["tiff", "pdf"].includes(exportPreview.format) && <span>Résolution demandée : {S.exportDpi} dpi</span>}<span>Fond : {S.transparentExport && exportPreview.format !== "pdf" ? "transparent" : S.pageBackground}</span><span>Épaisseur des courbes : {S.lineWidth}</span></div>
+              <div className="export-preview-actions"><Button variant="secondary" onClick={closeExportPreview}>Annuler</Button><Button variant="primary" icon="download" disabled={isExporting} onClick={downloadPreviewedFigure}>Exporter {exportPreview.format.toUpperCase()}</Button></div>
+            </aside>
+          </div>
+        </section>
+      </div>}
       {addNoteMode && <div className="mode-banner"><Icon name="note" /><span>Cliquer dans la zone principale de la figure pour placer la note.</span><button type="button" onClick={() => setAddNoteMode(false)}>Annuler</button></div>}
     </div>
   );
