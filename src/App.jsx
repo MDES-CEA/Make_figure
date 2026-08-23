@@ -1194,10 +1194,10 @@ export default function App() {
   const [composerTab, setComposerTab] = useState("references");
   const [interfaceVariant, setInterfaceVariant] = useState(() => {
     const queryVariant = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("ui") : null;
-    const savedVariant = readLocalSetting("make-figure-prototype-interface", "guided");
-    return ["guided", "canvas"].includes(queryVariant) ? queryVariant : (["guided", "canvas"].includes(savedVariant) ? savedVariant : "guided");
+    const savedVariant = readLocalSetting("make-figure-prototype-interface", "focus");
+    return ["focus", "canvas"].includes(queryVariant) ? queryVariant : (["focus", "canvas"].includes(savedVariant) ? savedVariant : "focus");
   });
-  const [guidedTask, setGuidedTask] = useState("data");
+  const [focusTool, setFocusTool] = useState(null);
   const [appearanceLevel, setAppearanceLevel] = useState(() => readLocalSetting("make-figure-appearance-level", "essential") === "advanced" ? "advanced" : "essential");
   const [leftWidth, setLeftWidth] = useState(() => Number(readLocalSetting("make-figure-left-width")) || 310);
   const [rightWidth, setRightWidth] = useState(() => Number(readLocalSetting("make-figure-right-width")) || 350);
@@ -1267,10 +1267,10 @@ export default function App() {
     }
   }, [interfaceVariant]);
   useEffect(() => {
-    if (interfaceVariant !== "guided") return;
-    if (guidedTask === "data") setLeftCollapsed(false);
-    else setRightCollapsed(false);
-  }, [guidedTask, interfaceVariant]);
+    if (interfaceVariant !== "focus") return;
+    setLeftCollapsed(false);
+    setRightCollapsed(focusTool === null);
+  }, [focusTool, interfaceVariant]);
 
   useEffect(() => {
     if (activeMode !== "raman" || rightTab !== "compose" || composerTab !== "references" || ramanDatabaseStatus !== "idle") return undefined;
@@ -1377,13 +1377,7 @@ export default function App() {
     } else {
       setRightTab(tab);
     }
-    if (interfaceVariant === "guided") {
-      if (tab === "references") setGuidedTask("annotate");
-      else if (tab === "appearance") setGuidedTask("style");
-      else if (tab === "processing") setGuidedTask("process");
-      else if (tab === "export") setGuidedTask("export");
-      else setGuidedTask("inspect");
-    }
+    if (interfaceVariant === "focus") setFocusTool(tab);
     setContextTarget(target || null);
   }, [interfaceVariant]);
 
@@ -1780,7 +1774,6 @@ export default function App() {
     });
     selectionAnchorRef.current = nextItem;
     setRightTab("inspector");
-    if (interfaceVariant === "guided") setGuidedTask("inspect");
   }, [idsForType, interfaceVariant, selectionKey]);
 
   const clearSelection = useCallback(() => {
@@ -1795,7 +1788,6 @@ export default function App() {
     selectionAnchorRef.current = ids.length ? { type, id: ids[ids.length - 1] } : null;
     if (ids.length) {
       setRightTab("inspector");
-      if (interfaceVariant === "guided") setGuidedTask("inspect");
     }
   }, [idsForType, interfaceVariant, leftTab]);
 
@@ -2448,10 +2440,15 @@ export default function App() {
     setLeftWidth(310);
     setRightWidth(350);
     setLeftCollapsed(false);
-    setRightCollapsed(false);
+    if (interfaceVariant === "focus") {
+      setFocusTool(null);
+      setRightCollapsed(true);
+    } else {
+      setRightCollapsed(false);
+    }
     setUiDensity("standard");
     setMessage("Disposition de l’interface réinitialisée.");
-  }, []);
+  }, [interfaceVariant]);
 
   const reorder = (type, draggedId, targetId) => {
     if (!draggedId || draggedId === targetId) return;
@@ -4149,28 +4146,6 @@ export default function App() {
     </>
   );
 
-  const prototypeTasks = [
-    ["data", "Données", "Importer et organiser", "waveform"],
-    ["process", "Traiter", "Corriger et mesurer", "waveform"],
-    ["annotate", "Annoter", "Phases, zones et notes", "phase"],
-    ["style", "Mettre en forme", "Axes, texte et courbes", "sparkles"],
-    ["export", "Exporter", "Prévisualiser et télécharger", "download"],
-  ];
-
-  const activatePrototypeTask = (task) => {
-    setGuidedTask(task);
-    if (task === "data") {
-      setLeftCollapsed(false);
-      return;
-    }
-    setRightCollapsed(false);
-    if (task === "process") setRightTab("processing");
-    if (task === "annotate") { setRightTab("compose"); setComposerTab("references"); }
-    if (task === "style") { setRightTab("compose"); setComposerTab("appearance"); }
-    if (task === "export") setRightTab("export");
-    if (task === "inspect") setRightTab("inspector");
-  };
-
   const activateCanvasPanel = (panel) => {
     setRightCollapsed(false);
     if (panel === "references" || panel === "appearance") {
@@ -4185,8 +4160,34 @@ export default function App() {
     ? rightTab === "compose" && composerTab === panel
     : rightTab === panel;
 
+  const focusTools = [
+    ["inspector", "Sélection", "cursor"],
+    ["processing", "Traitement", "waveform"],
+    ["references", "Annotations", "phase"],
+    ["appearance", "Apparence", "sparkles"],
+    ["export", "Export", "download"],
+  ];
+
+  const activateFocusTool = (panel) => {
+    if (focusTool === panel && !rightCollapsed) {
+      setFocusTool(null);
+      setRightCollapsed(true);
+      return;
+    }
+    setFocusTool(panel);
+    activateCanvasPanel(panel);
+  };
+
+  const focusToolTitle = {
+    inspector: "Propriétés de la sélection",
+    processing: "Traitement et analyse",
+    references: "Annotations et références",
+    appearance: "Apparence de la figure",
+    export: "Prévisualisation et export",
+  }[focusTool] || "Outils";
+
   return (
-    <div data-guided-task={guidedTask} className={`app-shell mode-${activeMode} density-${uiDensity} prototype-ui--${interfaceVariant} ${reduceMotion ? "reduce-motion" : ""} ${editorFullscreen ? "is-editor-fullscreen" : ""}`}>
+    <div className={`app-shell mode-${activeMode} density-${uiDensity} prototype-ui--${interfaceVariant} ${reduceMotion ? "reduce-motion" : ""} ${editorFullscreen ? "is-editor-fullscreen" : ""}`}>
       <header className="topbar masthead">
         <div className="masthead__edition">
           <span>Make Figure</span>
@@ -4217,8 +4218,8 @@ export default function App() {
           <div className="masthead__actions">
             <div className="prototype-ui-switch" role="group" aria-label={tr("Prototype d’interface")}>
               <span>{tr("Prototype")}</span>
-              <button type="button" className={interfaceVariant === "guided" ? "is-active" : ""} onClick={() => { setInterfaceVariant("guided"); activatePrototypeTask(guidedTask); }}>{tr("Guidé")}</button>
-              <button type="button" className={interfaceVariant === "canvas" ? "is-active" : ""} onClick={() => { setInterfaceVariant("canvas"); setLeftCollapsed(false); setRightCollapsed(false); }}>{tr("Canvas")}</button>
+              <button type="button" className={interfaceVariant === "focus" ? "is-active" : ""} onClick={() => { setInterfaceVariant("focus"); setFocusTool(null); setLeftCollapsed(false); setRightCollapsed(true); }}>{tr("Focus")}</button>
+              <button type="button" className={interfaceVariant === "canvas" ? "is-active" : ""} onClick={() => { setInterfaceVariant("canvas"); setLeftCollapsed(false); setRightCollapsed(false); }}>{tr("Comparaison")}</button>
             </div>
             <div className="topbar__group topbar__group--history">
               <IconButton icon="undo" title="Annuler · Ctrl+Z" disabled={!history.canUndo} onClick={history.undo} />
@@ -4264,13 +4265,7 @@ export default function App() {
         </div>
       </header>
 
-      {interfaceVariant === "guided" && <nav className="prototype-workflow-nav" aria-label={tr("Étapes de création de la figure")}>
-        <div className="prototype-workflow-nav__label"><span>{tr("Flux guidé")}</span><small>{tr("Une étape à la fois")}</small></div>
-        {prototypeTasks.map(([value, label, description, icon], index) => <button type="button" key={value} className={guidedTask === value ? "is-active" : ""} aria-current={guidedTask === value ? "step" : undefined} onClick={() => activatePrototypeTask(value)}><span className="prototype-workflow-nav__index">{index + 1}</span><Icon name={icon} size={15} /><span><strong>{tr(label)}</strong><small>{tr(description)}</small></span></button>)}
-        {selectionCount > 0 && <button type="button" className={`prototype-workflow-nav__selection ${guidedTask === "inspect" ? "is-active" : ""}`} onClick={() => activatePrototypeTask("inspect")}><Icon name="cursor" size={15} /><span><strong>{tr("Sélection")}</strong><small>{selectionCount} {tr("élément(s)")}</small></span></button>}
-      </nav>}
-
-      <main className="workbench" style={{ gridTemplateColumns: `${leftCollapsed ? 0 : leftWidth}px minmax(300px, 1fr) ${rightCollapsed ? 0 : rightWidth}px` }}>
+      <main className="workbench" style={{ gridTemplateColumns: interfaceVariant === "focus" ? `${leftCollapsed ? 0 : leftWidth}px minmax(300px, 1fr) 0` : `${leftCollapsed ? 0 : leftWidth}px minmax(300px, 1fr) ${rightCollapsed ? 0 : rightWidth}px` }}>
         <aside className={`side-panel side-panel--left ${leftCollapsed ? "is-collapsed" : ""}`} aria-hidden={leftCollapsed}>
           <div className="panel-titlebar"><div><strong>{tr("Données")} · {modeLabel(activeMode)}</strong><span>{patterns.length + phases.length + notes.length + zones.length} {tr("éléments")}</span></div><IconButton icon="panelLeft" title="Replier le panneau de données" onClick={() => setLeftCollapsed(true)} /></div>
           <nav className="panel-tabs">
@@ -4441,7 +4436,7 @@ export default function App() {
           <div className="canvas-toolbar">
             <div className="canvas-toolbar__group canvas-toolbar__group--panels">
               <IconButton icon="panelLeft" title={leftCollapsed ? "Afficher le panneau de données" : "Masquer le panneau de données"} active={!leftCollapsed} onClick={() => setLeftCollapsed((value) => !value)} />
-              <IconButton icon="panelRight" title={rightCollapsed ? "Afficher le panneau de propriétés" : "Masquer le panneau de propriétés"} active={!rightCollapsed} onClick={() => setRightCollapsed((value) => !value)} />
+              {interfaceVariant !== "focus" && <IconButton icon="panelRight" title={rightCollapsed ? "Afficher le panneau de propriétés" : "Masquer le panneau de propriétés"} active={!rightCollapsed} onClick={() => setRightCollapsed((value) => !value)} />}
               <IconButton icon="layout" title="Réinitialiser la disposition" onClick={resetLayout} />
             </div>
             <div className="canvas-toolbar__divider" />
@@ -4468,6 +4463,12 @@ export default function App() {
             </div>
             <div className="canvas-toolbar__divider" />
             <div className="canvas-toolbar__spacer" />
+            {interfaceVariant === "focus" && <nav className="focus-tool-dock" aria-label={tr("Outils de la figure")}>
+              {focusTools.map(([value, label, icon]) => {
+                const active = focusTool === value && !rightCollapsed;
+                return <button type="button" key={value} className={active ? "is-active" : ""} aria-pressed={active} title={tr(label)} onClick={() => activateFocusTool(value)}><Icon name={icon} size={14} /><span>{tr(label)}</span>{value === "inspector" && selectionCount > 0 && <small>{selectionCount}</small>}</button>;
+              })}
+            </nav>}
           </div>
 
           {showNavigator && visibleCount > 0 && (
@@ -5192,9 +5193,9 @@ export default function App() {
           </footer>
         </section>
 
-        <aside className={`side-panel side-panel--right ${rightCollapsed ? "is-collapsed" : ""}`} aria-hidden={rightCollapsed}>
-          {!rightCollapsed && <Resizer side="right" onReset={() => setRightWidth(350)} onResize={{ currentWidth: () => rightWidth, apply: (value) => setRightWidth(clamp(value, 280, 560)) }} />}
-          <div className="panel-titlebar"><div><strong>{tr(interfaceVariant === "guided" ? ({ process: "Traitement", annotate: "Annotations et références", style: "Style de la figure", export: "Export", inspect: "Élément sélectionné" }[guidedTask] || "Propriétés et outils") : "Propriétés et outils")}</strong><span className="prototype-scope-line">{interfaceVariant === "guided" && <em>{guidedTask === "inspect" ? tr("ÉLÉMENT") : tr("FIGURE")}</em>}{selectionCount ? `${selectionCount} ${tr("sélectionné(s)")}` : `${modeLabel(activeMode)} · ${patterns.length + phases.length + notes.length + zones.length} ${tr("éléments")}`}</span></div><IconButton icon="panelRight" title="Replier le panneau de propriétés" onClick={() => setRightCollapsed(true)} /></div>
+        <aside className={`side-panel side-panel--right ${interfaceVariant === "focus" ? "focus-tool-panel" : ""} ${rightCollapsed ? "is-collapsed" : ""}`} aria-hidden={rightCollapsed} style={interfaceVariant === "focus" ? { width: rightWidth } : undefined}>
+          {!rightCollapsed && interfaceVariant !== "focus" && <Resizer side="right" onReset={() => setRightWidth(350)} onResize={{ currentWidth: () => rightWidth, apply: (value) => setRightWidth(clamp(value, 280, 560)) }} />}
+          <div className="panel-titlebar"><div><strong>{tr(interfaceVariant === "focus" ? focusToolTitle : "Propriétés et outils")}</strong><span className="prototype-scope-line">{interfaceVariant === "focus" && <em>{focusTool === "inspector" ? tr("SÉLECTION") : tr("FIGURE")}</em>}{selectionCount ? `${selectionCount} ${tr("sélectionné(s)")}` : `${modeLabel(activeMode)} · ${patterns.length + phases.length + notes.length + zones.length} ${tr("éléments")}`}</span></div><IconButton icon="close" title={tr(interfaceVariant === "focus" ? "Fermer les outils" : "Replier le panneau de propriétés")} onClick={() => { setRightCollapsed(true); if (interfaceVariant === "focus") setFocusTool(null); }} /></div>
           <nav className="panel-tabs panel-tabs--right">
             {(interfaceVariant === "canvas"
               ? [["inspector", "Sélection", "cursor"], ["processing", "Traiter", "waveform"], ["references", "Annoter", "phase"], ["appearance", "Style", "sparkles"], ["export", "Exporter", "download"]]
