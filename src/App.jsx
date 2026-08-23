@@ -3182,6 +3182,17 @@ export default function App() {
     });
   }, [W, H]);
 
+  useEffect(() => {
+    let secondFrame = null;
+    const firstFrame = requestAnimationFrame(() => {
+      secondFrame = requestAnimationFrame(() => fitToWorkspace());
+    });
+    return () => {
+      cancelAnimationFrame(firstFrame);
+      if (secondFrame) cancelAnimationFrame(secondFrame);
+    };
+  }, [rightCollapsed]); // Recalage uniquement lors de l’ouverture/fermeture du panneau.
+
   const svgPoint = useCallback((event) => {
     if (!svgRef.current) return null;
     const rect = svgRef.current.getBoundingClientRect();
@@ -4232,7 +4243,7 @@ export default function App() {
         </div>
       </header>
 
-      <main className="workbench core-workspace" style={{ gridTemplateColumns: `${leftCollapsed ? 0 : leftWidth}px minmax(300px, 1fr) 0` }}>
+      <main className="workbench core-workspace" style={{ gridTemplateColumns: `${leftCollapsed ? 0 : leftWidth}px minmax(300px, 1fr) ${rightCollapsed ? 0 : rightWidth}px` }}>
         <aside className={`side-panel side-panel--left ${leftCollapsed ? "is-collapsed" : ""}`} aria-hidden={leftCollapsed}>
           <div className="panel-titlebar"><div><strong>{tr("Données")} · {modeLabel(activeMode)}</strong><span>{patterns.length + phases.length + notes.length + zones.length} {tr("éléments")}</span></div><IconButton icon="panelLeft" title="Replier le panneau de données" onClick={() => setLeftCollapsed(true)} /></div>
           <nav className="panel-tabs">
