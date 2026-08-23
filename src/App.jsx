@@ -1423,6 +1423,19 @@ export default function App() {
     })), { coalesceKey: `phase:${id}:${key}` });
   }, [activeMode, history]);
 
+  const setPhaseAnnotationsVisible = useCallback((visible) => {
+    history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => {
+      const hasVisibleAnnotatedPhase = currentWorkspace.phases.some((phase) => phase.visible && phase.inAnnot);
+      return {
+        ...currentWorkspace,
+        settings: { ...currentWorkspace.settings, showAnnotations: visible },
+        phases: visible && !hasVisibleAnnotatedPhase
+          ? currentWorkspace.phases.map((phase) => phase.visible ? { ...phase, inAnnot: true } : phase)
+          : currentWorkspace.phases,
+      };
+    }), { coalesceKey: `settings:${activeMode}:showAnnotations` });
+  }, [activeMode, history]);
+
   const updateNote = useCallback((id, key, value) => {
     history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
       ...currentWorkspace,
@@ -5383,8 +5396,15 @@ export default function App() {
                       : ramanDatabaseMatches.length ? <div className="library-list">{ramanDatabaseMatches.map((entry) => <div key={`${entry.name}-${entry.formula || entry.metadata?.RRUFFID || entry.metadata?.NAMES || entry.metadata?.CIF_FORMULA || "entry"}`} className="library-row"><span><strong>{entry.name}</strong><small>{entry.formula || entry.metadata?.RRUFFID || entry.sourceKind || "base locale"}</small></span><Button variant="secondary" onClick={() => addLibraryPhase(entry, activeMode)}>Ajouter</Button></div>)}</div> : <div className="callout">{tr("Aucune correspondance trouvée. Essayez un nom, une formule, ou des symboles d’éléments.")}</div>}
                 </Section>}
                 <Section title="Annotations de phases">
-                  <Toggle label="Afficher les annotations" checked={S.showAnnotations} onChange={(value) => patchSettings("showAnnotations", value)} />
-                  {S.showAnnotations && <><SliderField label="Seuil des bâtonnets" value={S.tickMinI} min={0} max={50} step={0.5} suffix="%" onChange={(value) => patchSettings("tickMinI", value)} /><SliderField label="Seuil des labels" value={S.labelMinI} min={0} max={100} step={1} suffix="%" onChange={(value) => patchSettings("labelMinI", value)} /><SliderField label="Séparation des labels" value={S.labelMinSep} min={0.1} max={10} step={0.1} onChange={(value) => patchSettings("labelMinSep", value)} /><SliderField label="Hauteur" value={S.tickScale} min={0.1} max={1.5} step={0.02} onChange={(value) => patchSettings("tickScale", value)} /><SliderField label="Écart au patron" value={S.annotGap} min={0.3} max={3} step={0.02} onChange={(value) => patchSettings("annotGap", value)} /><SliderField label="Taille des labels" value={S.annotFontSize} min={5} max={18} step={0.5} onChange={(value) => patchSettings("annotFontSize", value)} /><Toggle label="Clé des abréviations" checked={S.showAbbrevKey} onChange={(value) => patchSettings("showAbbrevKey", value)} /></>}
+                  <Toggle label="Afficher les annotations" checked={S.showAnnotations} onChange={setPhaseAnnotationsVisible} description="Si aucune phase visible n’est sélectionnée, leur activation est restaurée automatiquement." />
+                  {S.showAnnotations && <>
+                    {phases.length ? <Field label="Phases annotées" hint="Ce réglage est identique au bouton ANNOTATION de chaque carte de phase.">
+                      <div className="phase-annotation-toggles">
+                        {phases.map((phase) => <Toggle key={`annotation-toggle-${phase.id}`} label={phase.name} checked={Boolean(phase.inAnnot)} onChange={(value) => updatePhase(phase.id, "inAnnot", value)} description={phase.visible ? undefined : "Phase masquée : ses annotations restent invisibles."} />)}
+                      </div>
+                    </Field> : <div className="callout">{tr("Importer d’abord des phases de référence.")}</div>}
+                    <SliderField label="Seuil des bâtonnets" value={S.tickMinI} min={0} max={50} step={0.5} suffix="%" onChange={(value) => patchSettings("tickMinI", value)} /><SliderField label="Seuil des labels" value={S.labelMinI} min={0} max={100} step={1} suffix="%" onChange={(value) => patchSettings("labelMinI", value)} /><SliderField label="Séparation des labels" value={S.labelMinSep} min={0.1} max={10} step={0.1} onChange={(value) => patchSettings("labelMinSep", value)} /><SliderField label="Hauteur" value={S.tickScale} min={0.1} max={1.5} step={0.02} onChange={(value) => patchSettings("tickScale", value)} /><SliderField label="Écart au patron" value={S.annotGap} min={0.3} max={3} step={0.02} onChange={(value) => patchSettings("annotGap", value)} /><SliderField label="Taille des labels" value={S.annotFontSize} min={5} max={18} step={0.5} onChange={(value) => patchSettings("annotFontSize", value)} /><Toggle label="Clé des abréviations" checked={S.showAbbrevKey} onChange={(value) => patchSettings("showAbbrevKey", value)} />
+                  </>}
                 </Section>
                 <Section title="Références sur la figure" defaultOpen={phases.some((phase) => phase.inOverlay)} targetId="overlay-legend-options">
                   <div className="callout">{tr("Trace les bâtonnets des phases cochées ci-dessous directement dans la zone du graphe, superposés aux courbes (style EVA/HighScore), avec une légende intégrée déplaçable à la souris.")}</div>

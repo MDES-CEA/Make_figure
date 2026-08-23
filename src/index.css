@@ -1289,6 +1289,7 @@ input[type="range"]:hover::-webkit-slider-thumb { transform: scale(1.2); }
 .segmented-control button { min-height: 28px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font-size: 9px; font-weight: 700; cursor: pointer; }
 .segmented-control button:hover { color: var(--text); }
 .segmented-control button.is-active { background: var(--mode-accent-soft); color: var(--mode-accent-high, var(--text)); box-shadow: 0 1px 4px rgba(0,0,0,.2); }
+.phase-annotation-toggles { display: grid; gap: 4px; }
 .project-filter { flex: 0 0 36px; padding: 4px 8px; }
 .project-filter kbd {
   border: 1px solid var(--border);
