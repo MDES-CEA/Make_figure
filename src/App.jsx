@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useHistoryState from "./useHistoryState";
 import { translate, translateMessage, defaultAxisLabels, STOCK_AXIS_LABELS } from "./i18n.js";
-import ramanDatabaseSeed from "./ramanDatabaseSeed.json";
 import { exportScaleLimits, serializeSvgForExport, svgDataUrl } from "./exportUtils.js";
+import { isPhaseDashed } from "./phaseStyles.js";
 import {
   CMAPS,
   PHASE_COLORS,
@@ -743,7 +743,6 @@ function PhaseItem({ phase, selected, onSelect, onUpdate, onDelete, onAppend, on
           <button type="button" className={phase.inAnnot ? "chip is-on" : "chip"} onClick={(event) => { event.stopPropagation(); onUpdate("inAnnot", !phase.inAnnot); }}>{tr("annotation")}</button>
           <button type="button" className={phase.inPanel ? "chip is-on" : "chip"} onClick={(event) => { event.stopPropagation(); onUpdate("inPanel", !phase.inPanel); }}>{tr("panneau")}</button>
           <button type="button" className={phase.inOverlay ? "chip is-on" : "chip"} title="Superposer les bâtonnets directement sur la figure" onClick={(event) => { event.stopPropagation(); onUpdate("inOverlay", !phase.inOverlay); }}>figure</button>
-          <button type="button" className={phase.dashed ? "chip is-on" : "chip"} title="Tracer les bâtonnets en pointillés dans tous les types d’annotation" onClick={(event) => { event.stopPropagation(); onUpdate("dashed", !phase.dashed); }}>{tr("pointillés")}</button>
           <button type="button" className="chip chip--action" onClick={(event) => { event.stopPropagation(); onAppend(); }}>{tr("+ fiche")}</button>
         </div>
       </div>
@@ -1233,6 +1232,8 @@ export default function App() {
   const [alignmentPreview, setAlignmentPreview] = useState(null);
   const [ramanDatabaseQuery, setRamanDatabaseQuery] = useState("");
   const [ramanDatabaseSelectedElements, setRamanDatabaseSelectedElements] = useState([]);
+  const [ramanDatabaseSeed, setRamanDatabaseSeed] = useState([]);
+  const [ramanDatabaseStatus, setRamanDatabaseStatus] = useState("idle");
   const [phaseLibrary, setPhaseLibrary] = useState(() => {
     try { return JSON.parse(readLocalSetting("make-figure-drx-phase-library", "[]")) || []; } catch { return []; }
   });
@@ -1245,6 +1246,18 @@ export default function App() {
   const [language, setLanguage] = useState(() => (readLocalSetting("make-figure-language") === "en" ? "en" : "fr"));
   UI_LANGUAGE = language;
   useEffect(() => { writeLocalSetting("make-figure-language", language); }, [language]);
+
+  useEffect(() => {
+    if (activeMode !== "raman" || rightTab !== "references" || ramanDatabaseStatus !== "idle") return undefined;
+    setRamanDatabaseStatus("loading");
+    import("./ramanDatabaseSeed.json")
+      .then((module) => {
+        setRamanDatabaseSeed(Array.isArray(module.default) ? module.default : []);
+        setRamanDatabaseStatus("ready");
+      })
+      .catch(() => setRamanDatabaseStatus("error"));
+    return undefined;
+  }, [activeMode, ramanDatabaseStatus, rightTab]);
 
   // Les libellés d'axes jamais personnalisés suivent la langue de l'interface ;
   // ceux saisis par l'utilisateur ne sont jamais écrasés.
@@ -2961,7 +2974,7 @@ export default function App() {
             abbreviation: phase.abbrev,
             color: phase.color,
             phaseId: phase.id,
-            dashed: Boolean(phase.dashed),
+            dashed: isPhaseDashed(phase, "annotation"),
             labelOffsetX: Number(phase.labelOffsetX) || 0,
             labelOffsetY: Number(phase.labelOffsetY) || 0,
           });
@@ -3957,10 +3970,12 @@ export default function App() {
         </Field>
         <Toggle label="Visible" checked={activePhase.visible} onChange={(value) => updatePhase(activePhase.id, "visible", value)} />
         <Toggle label="Annotations supérieures" checked={activePhase.inAnnot} onChange={(value) => updatePhase(activePhase.id, "inAnnot", value)} />
+        <Toggle label="Annotations en pointillés" checked={isPhaseDashed(activePhase, "annotation")} onChange={(value) => updatePhase(activePhase.id, "annotationDashed", value)} description="Affecte uniquement les traits des annotations placées au-dessus de la figure." />
         <div className="two-columns"><NumberField label="Taille des annotations" value={activePhase.labelFontSize || S.annotFontSize} min={5} max={30} step={0.5} suffix="pt" onChange={(value) => updatePhase(activePhase.id, "labelFontSize", value)} /><Toggle label="Annotations en gras" checked={activePhase.labelBold ?? S.annotFontBold} onChange={(value) => updatePhase(activePhase.id, "labelBold", value)} /></div>
         <Toggle label="Panneau de références" checked={activePhase.inPanel} onChange={(value) => updatePhase(activePhase.id, "inPanel", value)} />
-        <Toggle label="Bâtonnets en pointillés" checked={Boolean(activePhase.dashed)} onChange={(value) => updatePhase(activePhase.id, "dashed", value)} description="S'applique aux annotations, au panneau de références et à la superposition sur la figure." />
+        <Toggle label="Panneau en pointillés" checked={isPhaseDashed(activePhase, "panel")} onChange={(value) => updatePhase(activePhase.id, "panelDashed", value)} description="Affecte uniquement les bâtonnets du panneau de références." />
         <Toggle label="Superposer sur la figure" checked={Boolean(activePhase.inOverlay)} onChange={(value) => updatePhase(activePhase.id, "inOverlay", value)} />
+        <Toggle label="Références sur la figure en pointillés" checked={isPhaseDashed(activePhase, "overlay")} onChange={(value) => updatePhase(activePhase.id, "overlayDashed", value)} description="Affecte les bâtonnets et leur échantillon de légende sur la figure." />
         <div className="two-columns"><NumberField label="Décalage label X" value={activePhase.labelOffsetX || 0} step={S.mode === "drx" ? 0.05 : 1} onChange={(value) => updatePhase(activePhase.id, "labelOffsetX", value)} /><NumberField label="Décalage label Y" value={activePhase.labelOffsetY || 0} step={0.05} onChange={(value) => updatePhase(activePhase.id, "labelOffsetY", value)} /></div>
         <div className="inline-actions"><Button variant="secondary" icon="reset" onClick={() => { updatePhase(activePhase.id, "labelOffsetX", 0); updatePhase(activePhase.id, "labelOffsetY", 0); }}>Réinitialiser la position des labels</Button></div>
         <div className="info-box">
@@ -4623,7 +4638,7 @@ export default function App() {
                                 {overlayDisplay !== "values" && <line
                                   x1={px} x2={px} y1={baseY} y2={topY}
                                   stroke={phase.color} strokeWidth={Number(S.phaseOverlayWidth) || 1}
-                                  strokeDasharray={phase.dashed ? "3 2" : undefined}
+                                  strokeDasharray={isPhaseDashed(phase, "overlay") ? "3 2" : undefined}
                                   opacity={Number(S.phaseOverlayOpacity) || 0.7}
                                 />}
                                 <line
@@ -4700,7 +4715,7 @@ export default function App() {
                         {overlayPhases.map((phase, index) => {
                           const y = boxY + 10 + index * lineHeight + fontSize * 0.5;
                           return <g key={`overlay-legend-${phase.id}`}>
-                            <line x1={boxX + 8} x2={boxX + 34} y1={y - fontSize * 0.32} y2={y - fontSize * 0.32} stroke={phase.color} strokeWidth={Math.max(1.4, (Number(S.phaseOverlayWidth) || 1) * 1.6)} strokeDasharray={phase.dashed ? "3 2" : undefined} />
+                            <line x1={boxX + 8} x2={boxX + 34} y1={y - fontSize * 0.32} y2={y - fontSize * 0.32} stroke={phase.color} strokeWidth={Math.max(1.4, (Number(S.phaseOverlayWidth) || 1) * 1.6)} strokeDasharray={isPhaseDashed(phase, "overlay") ? "3 2" : undefined} />
                             <text x={boxX + 40} y={y} fontSize={fontSize} fontWeight={S.overlayLegendFontBold ? "700" : "400"} fill="#15191f" fontFamily={figureFont} style={{ userSelect: "none", cursor: "pointer" }} onClick={(event) => activateTextTarget(event, { kind: "settings", label: "Légende des références", sizeKey: "overlayLegendFontSize", boldKey: "overlayLegendFontBold" })}>{phase.name}</text>
                           </g>;
                         })}
@@ -4968,7 +4983,7 @@ export default function App() {
                           return (
                             <g key={phase.id} onDoubleClick={(event) => openContextOptions(event, { tab: "inspector", type: "phase", id: phase.id, target: "phase-name" })} style={{ cursor: "pointer" }}>
                               {phase.peaks.map(([x, intensity], index) => x >= viewXMin && x <= viewXMax && (!breakActive || x <= Number(S.brokenAxisStart) || x >= Number(S.brokenAxisEnd)) ? (
-                                <line key={index} x1={xToPx(x)} x2={xToPx(x)} y1={rowTop + rowHeight - 4} y2={rowTop + rowHeight - 4 - (intensity / 100) * rowHeight * 0.78} stroke={phase.color} strokeWidth={S.pdfStickW} strokeDasharray={phase.dashed ? "3 2" : undefined} opacity="0.9" />
+                                <line key={index} x1={xToPx(x)} x2={xToPx(x)} y1={rowTop + rowHeight - 4} y2={rowTop + rowHeight - 4 - (intensity / 100) * rowHeight * 0.78} stroke={phase.color} strokeWidth={S.pdfStickW} strokeDasharray={isPhaseDashed(phase, "panel") ? "3 2" : undefined} opacity="0.9" />
                               ) : null)}
                               {S.showRowLabels && <>
                                 <text x={M.left + 8} y={rowTop + rowHeight * 0.3} fontSize={S.referenceRowFontSize} fontWeight={S.referenceRowFontBold ? "700" : "400"} fill={phase.color} fontFamily={figureFont} onClick={(event) => activateTextTarget(event, { kind: "settings", label: "Noms du panneau de références", sizeKey: "referenceRowFontSize", boldKey: "referenceRowFontBold" })}>{phase.name}</text>
@@ -5342,7 +5357,9 @@ export default function App() {
                       })}
                     </div>
                   </Field>
-                  {ramanDatabaseMatches.length ? <div className="library-list">{ramanDatabaseMatches.map((entry) => <div key={`${entry.name}-${entry.formula || entry.metadata?.RRUFFID || entry.metadata?.NAMES || entry.metadata?.CIF_FORMULA || "entry"}`} className="library-row"><span><strong>{entry.name}</strong><small>{entry.formula || entry.metadata?.RRUFFID || entry.sourceKind || "base locale"}</small></span><Button variant="secondary" onClick={() => addLibraryPhase(entry, activeMode)}>Ajouter</Button></div>)}</div> : <div className="callout">{tr("Aucune correspondance trouvée. Essayez un nom, une formule, ou des symboles d’éléments.")}</div>}
+                  {ramanDatabaseStatus === "loading" ? <div className="callout">Chargement de la base Raman…</div>
+                    : ramanDatabaseStatus === "error" ? <div className="callout">La base Raman locale n’a pas pu être chargée. Rechargez la page pour réessayer.</div>
+                      : ramanDatabaseMatches.length ? <div className="library-list">{ramanDatabaseMatches.map((entry) => <div key={`${entry.name}-${entry.formula || entry.metadata?.RRUFFID || entry.metadata?.NAMES || entry.metadata?.CIF_FORMULA || "entry"}`} className="library-row"><span><strong>{entry.name}</strong><small>{entry.formula || entry.metadata?.RRUFFID || entry.sourceKind || "base locale"}</small></span><Button variant="secondary" onClick={() => addLibraryPhase(entry, activeMode)}>Ajouter</Button></div>)}</div> : <div className="callout">{tr("Aucune correspondance trouvée. Essayez un nom, une formule, ou des symboles d’éléments.")}</div>}
                 </Section>}
                 <Section title="Annotations de phases">
                   <Toggle label="Afficher les annotations" checked={S.showAnnotations} onChange={(value) => patchSettings("showAnnotations", value)} />
