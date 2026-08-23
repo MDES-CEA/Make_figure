@@ -1194,9 +1194,9 @@ export default function App() {
   const [composerTab, setComposerTab] = useState("references");
   const [appearanceLevel, setAppearanceLevel] = useState(() => readLocalSetting("make-figure-appearance-level", "essential") === "advanced" ? "advanced" : "essential");
   const [leftWidth, setLeftWidth] = useState(() => Number(readLocalSetting("make-figure-left-width")) || 310);
-  const [rightWidth, setRightWidth] = useState(() => Number(readLocalSetting("make-figure-right-width")) || 350);
+  const [rightWidth, setRightWidth] = useState(390);
   const [leftCollapsed, setLeftCollapsed] = useState(() => readLocalSetting("make-figure-left-collapsed", "false") === "true");
-  const [rightCollapsed, setRightCollapsed] = useState(() => readLocalSetting("make-figure-right-collapsed", "false") === "true");
+  const [rightCollapsed, setRightCollapsed] = useState(true);
   const [uiDensity, setUiDensity] = useState(() => readLocalSetting("make-figure-density", "standard"));
   const [projectIndex, setProjectIndex] = useState([]);
   const [projectMenuOpen, setProjectMenuOpen] = useState(false);
@@ -2416,9 +2416,9 @@ export default function App() {
 
   const resetLayout = useCallback(() => {
     setLeftWidth(310);
-    setRightWidth(350);
+    setRightWidth(390);
     setLeftCollapsed(false);
-    setRightCollapsed(false);
+    setRightCollapsed(true);
     setUiDensity("standard");
     setMessage("Disposition de l’interface réinitialisée.");
   }, []);
@@ -3181,6 +3181,17 @@ export default function App() {
       element.scrollTo({ left: 0, top: 0, behavior: "smooth" });
     });
   }, [W, H]);
+
+  useEffect(() => {
+    let secondFrame = null;
+    const firstFrame = requestAnimationFrame(() => {
+      secondFrame = requestAnimationFrame(() => fitToWorkspace());
+    });
+    return () => {
+      cancelAnimationFrame(firstFrame);
+      if (secondFrame) cancelAnimationFrame(secondFrame);
+    };
+  }, [rightCollapsed]); // Recalage uniquement lors de l’ouverture/fermeture du panneau.
 
   const svgPoint = useCallback((event) => {
     if (!svgRef.current) return null;
@@ -4112,7 +4123,7 @@ export default function App() {
       <Section title="Disposition de l’interface">
         <SelectField label="Densité" value={uiDensity} onChange={setUiDensity} options={[["compact", "Compacte"], ["standard", "Standard"], ["comfortable", "Confortable"]]} />
         <Toggle label="Panneau de données" checked={!leftCollapsed} onChange={(value) => setLeftCollapsed(!value)} />
-        <Toggle label="Panneau de propriétés" checked={!rightCollapsed} onChange={(value) => setRightCollapsed(!value)} />
+        <Toggle label="Panneau d’outils" checked={!rightCollapsed} onChange={(value) => setRightCollapsed(!value)} />
         <Toggle label="Réduire les animations" checked={reduceMotion} onChange={setReduceMotion} />
         <div className="inline-actions"><Button variant="secondary" icon="layout" onClick={resetLayout}>Réinitialiser la disposition</Button></div>
       </Section>
@@ -4126,6 +4137,36 @@ export default function App() {
       <EmptyPanel kind="selection" title="Inspecteur contextuel" body="Sélectionner un ou plusieurs éléments. Ctrl/Cmd ajoute à la sélection ; Shift sélectionne une plage." />
     </>
   );
+
+  const workspaceTools = [
+    ["inspector", "Sélection", "cursor"],
+    ["processing", "Traitement", "waveform"],
+    ["references", "Références", "phase"],
+    ["appearance", "Apparence", "sparkles"],
+    ["export", "Export", "download"],
+  ];
+
+  const workspaceToolActive = (panel) => panel === "references" || panel === "appearance"
+    ? rightTab === "compose" && composerTab === panel
+    : rightTab === panel;
+
+  const openWorkspaceTool = (panel) => {
+    if (workspaceToolActive(panel) && !rightCollapsed) {
+      setRightCollapsed(true);
+      return;
+    }
+    if (panel === "references" || panel === "appearance") {
+      setRightTab("compose");
+      setComposerTab(panel);
+    } else {
+      setRightTab(panel);
+    }
+    setRightCollapsed(false);
+  };
+
+  const workspaceToolTitle = rightTab === "compose"
+    ? (composerTab === "appearance" ? "Apparence de la figure" : "Références et annotations")
+    : ({ inspector: "Propriétés de la sélection", processing: "Traitement des données", export: "Export de la figure" }[rightTab] || "Outils de la figure");
 
   return (
     <div className={`app-shell mode-${activeMode} density-${uiDensity} ${reduceMotion ? "reduce-motion" : ""} ${editorFullscreen ? "is-editor-fullscreen" : ""}`}>
@@ -4144,6 +4185,7 @@ export default function App() {
             <Logo />
             <div className="brand__copy">
               <strong>Make Figure</strong>
+              <span title={project.name || "Projet sans titre"}>{project.name || "Projet sans titre"}</span>
             </div>
           </div>
 
@@ -4201,13 +4243,13 @@ export default function App() {
         </div>
       </header>
 
-      <main className="workbench" style={{ gridTemplateColumns: `${leftCollapsed ? 0 : leftWidth}px minmax(300px, 1fr) ${rightCollapsed ? 0 : rightWidth}px` }}>
+      <main className="workbench core-workspace" style={{ gridTemplateColumns: `${leftCollapsed ? 0 : leftWidth}px minmax(300px, 1fr) ${rightCollapsed ? 0 : rightWidth}px` }}>
         <aside className={`side-panel side-panel--left ${leftCollapsed ? "is-collapsed" : ""}`} aria-hidden={leftCollapsed}>
           <div className="panel-titlebar"><div><strong>{tr("Données")} · {modeLabel(activeMode)}</strong><span>{patterns.length + phases.length + notes.length + zones.length} {tr("éléments")}</span></div><IconButton icon="panelLeft" title="Replier le panneau de données" onClick={() => setLeftCollapsed(true)} /></div>
           <nav className="panel-tabs">
             {[
-              ["patterns", "Patrons", patterns.length],
-              ["phases", "Phases", phases.length],
+              ["patterns", "Courbes", patterns.length],
+              ["phases", "Références", phases.length],
               ...(supportsZones ? [["zones", "Zones", zones.length]] : []),
               ["notes", "Notes", notes.length],
             ].map(([value, label, count]) => (
@@ -4229,8 +4271,11 @@ export default function App() {
           <div className="side-panel__content">
             {leftTab === "patterns" && (
               <>
-                <button type="button" className="drop-button" onClick={() => patternInputRef.current?.click()}><span className="drop-button__asset"><Icon name="waveform" /></span><span><strong>{tr("Importer des patrons")}</strong><small>.xy · .txt · .csv · .dat · .xml OPUS</small></span><Icon name="upload" size={14} /></button>
-                {patterns.length > 0 && <div className="pattern-organizer">
+                <button type="button" className="drop-button" onClick={() => patternInputRef.current?.click()}><span className="drop-button__asset"><Icon name="waveform" /></span><span><strong>{tr("Importer des données")}</strong><small>.xy · .txt · .csv · .dat · .xml OPUS</small></span><Icon name="upload" size={14} /></button>
+                {patterns.length > 0 && <details className="data-tools-disclosure">
+                  <summary><span><Icon name="sort" size={13} />{tr("Organiser et combiner")}</span><small>{tr("Tri, groupes et moyennes")}</small><Icon name="chevronDown" size={13} /></summary>
+                  <div className="data-tools-disclosure__body">
+                  <div className="pattern-organizer">
                   <div className="pattern-organizer__row">
                     <label><span><Icon name="sort" size={12} /> {tr("Trier")}</span><select value={patternSort.key} onChange={(event) => setPatternSort((current) => ({ ...current, key: event.target.value }))}><option value="manual">{tr("Ordre manuel")}</option><option value="filename">{tr("Nom du fichier")}</option><option value="date">{tr("Date du fichier")}</option><option value="numeric">{tr("Valeur numérique")}</option><option value="group">{tr("Groupe")}</option></select></label>
                     <button type="button" className="organizer-direction" onClick={() => setPatternSort((current) => ({ ...current, direction: current.direction === "asc" ? "desc" : "asc" }))}>{patternSort.direction === "asc" ? "↑" : "↓"}</button>
@@ -4239,8 +4284,8 @@ export default function App() {
                   <div className="pattern-organizer__row">
                     <label><span><Icon name="group" size={12} /> {tr("Grouper l’affichage")}</span><select value={groupViewBy} onChange={(event) => setGroupViewBy(event.target.value)}><option value="none">{tr("Aucun")}</option><option value="group">{tr("Tous les groupes")}</option><option value="sample">{tr("Échantillon")}</option><option value="time">{tr("Temps")}</option><option value="temperature">{tr("Température")}</option><option value="treatment">{tr("Traitement")}</option></select></label>
                   </div>
-                </div>}
-                {supportsAveraging && patterns.length > 0 && (
+                  </div>
+                {supportsAveraging && (
                   <div className="average-builder">
                     <div className="average-builder__header">
                       <div><strong>{tr("Moyenne d’acquisitions")}</strong><span>{ramanAverageSelection.length} {tr("acquisition(s) sélectionnée(s)")}</span></div>
@@ -4259,6 +4304,8 @@ export default function App() {
                     <p>{tr("Les acquisitions sont interpolées sur leur plage commune. Les données sources ne sont pas modifiées.")}</p>
                   </div>
                 )}
+                  </div>
+                </details>}
                 <div className="data-list">
                   {filteredPatterns.length ? patternGroups.map((group) => (
                     <section className="pattern-group" key={group.key}>
@@ -4281,13 +4328,16 @@ export default function App() {
                         />
                       ); })}
                     </section>
-                  )) : <EmptyPanel kind="pattern" title="Aucun patron" body="Importer des données expérimentales ou déposer les fichiers dans l’espace central." />}
+                  )) : <EmptyPanel kind="pattern" title="Aucune donnée" body="Importer des acquisitions ou déposer les fichiers dans l’espace central." />}
                 </div>
               </>
             )}
             {leftTab === "phases" && (
               <>
                 <button type="button" className="drop-button" onClick={() => phaseInputRef.current?.click()}><span className="drop-button__asset"><Icon name="phase" /></span><span><strong>{tr("Importer des phases")}</strong><small>{activeMode === "drx" ? ".dif ou liste de pics DRX" : activeMode === "ir" ? "Liste de bandes IR (cm⁻¹)" : "RRUFF ou liste de pics Raman"}</small></span><Icon name="upload" size={14} /></button>
+                <details className="data-tools-disclosure">
+                  <summary><span><Icon name="plus" size={13} />{tr("Ajouter manuellement")}</span><small>{tr("Nom et positions des pics")}</small><Icon name="chevronDown" size={13} /></summary>
+                  <div className="data-tools-disclosure__body">
                 <div className="manual-builder">
                   <div className="manual-builder__header"><strong>{tr("Ajouter une phase manuellement")}</strong><span>{tr("Positions seules ou position:intensité")}</span></div>
                   <div className="manual-builder__grid">
@@ -4300,6 +4350,8 @@ export default function App() {
                     <Button variant="primary" onClick={createManualPhase}>Ajouter la phase</Button>
                   </div>
                 </div>
+                  </div>
+                </details>
                 <div className="data-list">
                   {filteredPhases.length ? filteredPhases.map((phase) => (
                     <PhaseItem
@@ -4372,7 +4424,6 @@ export default function App() {
           <div className="canvas-toolbar">
             <div className="canvas-toolbar__group canvas-toolbar__group--panels">
               <IconButton icon="panelLeft" title={leftCollapsed ? "Afficher le panneau de données" : "Masquer le panneau de données"} active={!leftCollapsed} onClick={() => setLeftCollapsed((value) => !value)} />
-              <IconButton icon="panelRight" title={rightCollapsed ? "Afficher le panneau de propriétés" : "Masquer le panneau de propriétés"} active={!rightCollapsed} onClick={() => setRightCollapsed((value) => !value)} />
               <IconButton icon="layout" title="Réinitialiser la disposition" onClick={resetLayout} />
             </div>
             <div className="canvas-toolbar__divider" />
@@ -4399,6 +4450,12 @@ export default function App() {
             </div>
             <div className="canvas-toolbar__divider" />
             <div className="canvas-toolbar__spacer" />
+            <nav className="workspace-tool-dock" aria-label={tr("Outils de la figure")}>
+              {workspaceTools.map(([panel, label, icon]) => {
+                const active = workspaceToolActive(panel) && !rightCollapsed;
+                return <button type="button" key={panel} className={active ? "is-active" : ""} aria-pressed={active} title={tr(label)} onClick={() => openWorkspaceTool(panel)}><Icon name={icon} size={14} /><span>{tr(label)}</span>{panel === "inspector" && selectionCount > 0 && <small>{selectionCount}</small>}</button>;
+              })}
+            </nav>
           </div>
 
           {showNavigator && visibleCount > 0 && (
@@ -5142,18 +5199,9 @@ export default function App() {
           </footer>
         </section>
 
-        <aside className={`side-panel side-panel--right ${rightCollapsed ? "is-collapsed" : ""}`} aria-hidden={rightCollapsed}>
-          {!rightCollapsed && <Resizer side="right" onReset={() => setRightWidth(350)} onResize={{ currentWidth: () => rightWidth, apply: (value) => setRightWidth(clamp(value, 280, 560)) }} />}
-          <div className="panel-titlebar"><div><strong>{tr("Propriétés et outils")}</strong><span>{selectionCount ? `${selectionCount} ${tr("sélectionné(s)")}` : `${modeLabel(activeMode)} · ${patterns.length + phases.length + notes.length + zones.length} ${tr("éléments")}`}</span></div><IconButton icon="panelRight" title="Replier le panneau de propriétés" onClick={() => setRightCollapsed(true)} /></div>
-          <nav className="panel-tabs panel-tabs--right">
-            {[ ["inspector", "Inspecter", "cursor"], ["processing", "Analyser", "waveform"], ["compose", "Composer", "sparkles"], ["export", "Exporter", "download"] ].map(([value, label, icon], index) => <button type="button" key={value} className={rightTab === value ? "is-active" : ""} aria-current={rightTab === value ? "step" : undefined} title={`${index + 1}. ${tr(label)}`} onClick={() => setRightTab(value)}><small>{index + 1}</small><Icon name={icon} size={12} />{tr(label)}{value === "inspector" && selectionCount > 0 && <span>{selectionCount}</span>}</button>)}
-          </nav>
-          <div className="workflow-hint">{tr({ inspector: "Modifier uniquement l’élément sélectionné.", processing: "Prétraiter, détecter et mesurer les signaux.", compose: "Ajouter les références puis construire le rendu scientifique.", export: "Vérifier le résultat final avant téléchargement." }[rightTab])}</div>
+        <aside className={`side-panel side-panel--right workspace-tool-drawer ${rightCollapsed ? "is-collapsed" : ""}`} aria-hidden={rightCollapsed} style={{ width: rightWidth }}>
+          <div className="panel-titlebar"><div><strong>{tr(workspaceToolTitle)}</strong><span>{selectionCount ? `${selectionCount} ${tr("sélectionné(s)")}` : `${modeLabel(activeMode)} · ${patterns.length + phases.length + notes.length + zones.length} ${tr("éléments")}`}</span></div><IconButton icon="close" title={tr("Fermer les outils")} onClick={() => setRightCollapsed(true)} /></div>
           <div className="side-panel__content properties-scroll">
-            {rightTab === "compose" && <div className="compose-navigation" role="tablist" aria-label={tr("Outils de composition")}>
-              <button type="button" role="tab" aria-selected={composerTab === "references"} className={composerTab === "references" ? "is-active" : ""} onClick={() => setComposerTab("references")}><Icon name="phase" size={13} /><span>{tr("Références")}</span><small>{tr("Phases et annotations")}</small></button>
-              <button type="button" role="tab" aria-selected={composerTab === "appearance"} className={composerTab === "appearance" ? "is-active" : ""} onClick={() => setComposerTab("appearance")}><Icon name="sparkles" size={13} /><span>{tr("Style")}</span><small>{tr("Axes, texte et mise en page")}</small></button>
-            </div>}
             {rightTab === "compose" && composerTab === "appearance" && (
               <>
                 <div className="complexity-control">
