@@ -11,6 +11,7 @@ describe("workspace style migration", () => {
     expect(workspace.settings.referenceRowFontSize).toBe(10.5);
     expect(workspace.settings.insetLabelFontSize).toBe(8);
     expect(workspace.settings.panelTitleFontBold).toBe(true);
+    expect(workspace.settings.showPatternLabels).toBe(true);
   });
 
   it("migrates old notes with a non-bold default", () => {
