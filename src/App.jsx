@@ -2892,7 +2892,7 @@ export default function App() {
       return;
     }
     const result = fitDrxPeak(activeProcessedPattern, S, { center: S.peakFitCenter, window: S.peakFitWindow, model: S.peakFitModel });
-    setPeakFitResult(result);
+    setPeakFitResult(result ? { patternId: activeProcessedPattern.id, ...result } : null);
     setMessage(result ? `Pic ajusté à ${result.center.toFixed(4)}° · R² ${result.r2.toFixed(4)}.` : "Ajustement impossible : fenêtre insuffisante ou pic absent.");
   }, [S, activeProcessedPattern]);
 
@@ -2901,9 +2901,14 @@ export default function App() {
     const center = Number(peak.x);
     const result = fitDrxPeak(activeProcessedPattern, S, { center, window: S.peakFitWindow, model: S.peakFitModel });
     patchSettings("peakFitCenter", center);
-    setPeakFitResult(result);
+    setPeakFitResult(result ? { patternId: activeProcessedPattern.id, ...result } : null);
     setMessage(result ? `Pic ajusté à ${result.center.toFixed(4)}° · R² ${result.r2.toFixed(4)}.` : "Ajustement impossible autour de ce maximum.");
   }, [S, activeProcessedPattern, patchSettings]);
+
+  const removePeakFit = useCallback(() => {
+    setPeakFitResult(null);
+    setMessage("Ajustement de pic retiré.");
+  }, []);
 
   const addDetectedPeakToTracking = useCallback((peak, index) => {
     if (!peak) return;
@@ -4893,8 +4898,10 @@ export default function App() {
                       </g>;
                     })()}
 
-                    {S.figureLayoutMode === "single" && peakFitResult && activeProcessedPattern && (() => {
-                      const offset = activeProcessedPattern.stackOffset || 0;
+                    {S.figureLayoutMode === "single" && peakFitResult && (() => {
+                      const target = processed.find((pattern) => pattern.id === peakFitResult.patternId);
+                      if (!target) return null;
+                      const offset = target.stackOffset || 0;
                       const path = peakFitResult.x.map((value, index) => `${index ? "L" : "M"}${xToPx(value).toFixed(2)},${yToPx(peakFitResult.fitted[index] + offset).toFixed(2)}`).join("");
                       return <g clipPath="url(#plot-clip)"><path d={path} fill="none" stroke="#e05a47" strokeWidth={Math.max(1, S.lineWidth)} strokeDasharray="5 3" vectorEffect="non-scaling-stroke"/><line x1={xToPx(peakFitResult.center)} x2={xToPx(peakFitResult.center)} y1={M.top} y2={M.top + mainHeight} stroke="#e05a47" strokeWidth="0.7" strokeDasharray="2 3" opacity="0.7" /></g>;
                     })()}
@@ -5462,8 +5469,8 @@ export default function App() {
                     <SelectField label="Profil" value={S.peakFitModel} onChange={(value) => patchSettings("peakFitModel", value)} options={[["gaussian", "Gaussien"], ["lorentzian", "Lorentzien"], ["pseudoVoigt", "Pseudo-Voigt"]]} />
                     <div className="two-columns"><NumberField label="Centre attendu" value={S.peakFitCenter} step={0.05} suffix="°" onChange={(value) => patchSettings("peakFitCenter", value)} /><NumberField label="Demi-fenêtre" value={S.peakFitWindow} min={0.05} step={0.05} suffix="°" onChange={(value) => patchSettings("peakFitWindow", value)} /></div>
                     <div className="two-columns"><NumberField label="FWHM instrumentale" value={S.instrumentFwhm} min={0} step={0.005} suffix="°" onChange={(value) => patchSettings("instrumentFwhm", value)} /><NumberField label="Constante de Scherrer K" value={S.scherrerK} min={0.5} max={1.5} step={0.01} onChange={(value) => patchSettings("scherrerK", value)} /></div>
-                    <div className="inline-actions"><Button variant="primary" onClick={runPeakFit}>Ajuster le pic sélectionné</Button></div>
-                    {peakFitResult && <div className="analysis-result"><strong>{activeProcessedPattern?.label}</strong><span>Centre : {peakFitResult.center.toFixed(4)}°</span><span>FWHM : {peakFitResult.fwhm.toFixed(4)}° · corrigée {peakFitResult.betaCorrectedDegrees.toFixed(4)}°</span><span>Aire : {peakFitResult.area.toExponential(4)} · R² : {peakFitResult.r2.toFixed(5)}</span><span>d : {peakFitResult.dSpacing.toFixed(4)} Å · Q : {peakFitResult.q.toFixed(4)} Å⁻¹</span><span>Taille apparente : {peakFitResult.crystalliteNm ? `${peakFitResult.crystalliteNm.toFixed(1)} nm` : "n.d."}</span><span>Microdéformation apparente : {peakFitResult.strain ? `${(peakFitResult.strain * 1e6).toFixed(0)} µε` : "n.d."}</span></div>}
+                    <div className="inline-actions"><Button variant="primary" onClick={runPeakFit}>Ajuster le pic sélectionné</Button>{peakFitResult && <Button variant="secondary" icon="close" onClick={removePeakFit}>Retirer l’ajustement</Button>}</div>
+                    {peakFitResult && <div className="analysis-result"><strong>{processed.find((pattern) => pattern.id === peakFitResult.patternId)?.label || "Courbe indisponible"}</strong><span>Centre : {peakFitResult.center.toFixed(4)}°</span><span>FWHM : {peakFitResult.fwhm.toFixed(4)}° · corrigée {peakFitResult.betaCorrectedDegrees.toFixed(4)}°</span><span>Aire : {peakFitResult.area.toExponential(4)} · R² : {peakFitResult.r2.toFixed(5)}</span><span>d : {peakFitResult.dSpacing.toFixed(4)} Å · Q : {peakFitResult.q.toFixed(4)} Å⁻¹</span><span>Taille apparente : {peakFitResult.crystalliteNm ? `${peakFitResult.crystalliteNm.toFixed(1)} nm` : "n.d."}</span><span>Microdéformation apparente : {peakFitResult.strain ? `${(peakFitResult.strain * 1e6).toFixed(0)} µε` : "n.d."}</span></div>}
                     <div className="callout">{tr("Scherrer et la microdéformation sur un seul pic sont des estimations apparentes. Une analyse Williamson–Hall multi-pics reste préférable.")}</div>
                   </Section>
 
