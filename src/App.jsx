@@ -2590,7 +2590,8 @@ export default function App() {
   const insetDockTop = insetEnabled && insetPlacementMode === "dock-top";
   const insetDockRightWidth = insetDockRight ? Math.max(190, S.figWidth * clamp(Number(S.insetWidthPct) || 34, 15, 70) / 100 + 22) : 0;
   const insetDockTopHeight = insetDockTop ? Math.max(145, Math.min(420, S.figWidth * 0.32 * clamp(Number(S.insetHeightPct) || 34, 15, 70) / 100 + 26)) : 0;
-  const M = { left: S.figureLayoutMode === "single" ? (S.showYAxisTicks ? 82 : 62) : 22, right: S.figureLayoutMode === "single" ? S.rightMargin : 22, top: (S.title ? 48 : 22) + insetDockTopHeight, gap: 10, axisHeight: S.figureLayoutMode === "single" ? 50 : 10 };
+  const previewRightMargin = dragPreview?.type === "rightMargin" ? dragPreview.margin : S.rightMargin;
+  const M = { left: S.figureLayoutMode === "single" ? (S.showYAxisTicks ? 82 : 62) : 22, right: S.figureLayoutMode === "single" ? previewRightMargin : 22, top: (S.title ? 48 : 22) + insetDockTopHeight, gap: 10, axisHeight: S.figureLayoutMode === "single" ? 50 : 10 };
   const curveMinimum = processed.length
     ? Math.min(...processed.map((pattern) => pattern.stackOffset + pattern.displayMinimum))
     : 0;
@@ -3429,6 +3430,10 @@ export default function App() {
         }
       } else if (interaction.type === "curveOrder") {
         setDragPreview({ type: "curveOrder", id: interaction.payload.id, svgY: point.svgY });
+      } else if (interaction.type === "rightMargin") {
+        const maximum = Math.max(50, S.figWidth - M.left - 120);
+        const margin = clamp(interaction.payload.margin - (point.svgX - interaction.start.svgX), 50, Math.min(400, maximum));
+        setDragPreview({ type: "rightMargin", margin: Math.round(margin) });
       }
       return;
     }
@@ -3527,6 +3532,9 @@ export default function App() {
         ...currentWorkspace,
         settings: { ...currentWorkspace.settings, xmin: dragPreview.xmin, xmax: dragPreview.xmax, viewYMin: null, viewYMax: null },
       })));
+    } else if (dragPreview?.type === "rightMargin") {
+      patchSettings("rightMargin", dragPreview.margin);
+      setMessage(`Marge droite : ${dragPreview.margin} px.`);
     }
     try { svgRef.current?.releasePointerCapture?.(interaction.pointerId); } catch { /* capture already released */ }
     interactionRef.current = null;
@@ -4512,6 +4520,25 @@ export default function App() {
                       </clipPath>
                     </defs>
 
+                    {S.figureLayoutMode === "single" && <g data-ui-only="true" className={`right-margin-resizer ${dragPreview?.type === "rightMargin" ? "is-dragging" : ""}`}>
+                      <rect
+                        x={M.left + plotWidth - 9}
+                        y={M.top}
+                        width="18"
+                        height={mainHeight}
+                        fill="transparent"
+                        style={{ cursor: "ew-resize" }}
+                        onPointerDown={(event) => beginCanvasDrag(event, "rightMargin", { margin: Number(S.rightMargin) || 145 })}
+                        onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); patchSettings("rightMargin", 145); setMessage("Marge droite réinitialisée à 145 px."); }}
+                      />
+                      <line pointerEvents="none" x1={M.left + plotWidth} x2={M.left + plotWidth} y1={M.top} y2={M.top + mainHeight} />
+                      <rect pointerEvents="none" className="right-margin-resizer__grip" x={M.left + plotWidth - 3} y={M.top + mainHeight / 2 - 18} width="6" height="36" rx="3" />
+                      {dragPreview?.type === "rightMargin" && <g className="right-margin-resizer__value" pointerEvents="none">
+                        <rect x={M.left + plotWidth - 47} y={M.top + 8} width="94" height="23" rx="5" />
+                        <text x={M.left + plotWidth} y={M.top + 23} textAnchor="middle">{Math.round(M.right)} px</text>
+                      </g>}
+                    </g>}
+
                     {S.figureLayoutMode === "single" ? (
                       processed.map((pattern) => {
                       if (!pattern.px?.length) return null;
@@ -5092,11 +5119,11 @@ export default function App() {
                     })()}
                     {dragPreview?.type === "overlayValueMove" && dragPreview.snapped && <circle data-ui-only="true" cx={dragPreview.stickX} cy={dragPreview.stickY + dragPreview.dy} r="7" fill="none" stroke="#e0507a" strokeWidth="1.2" strokeDasharray="3 2" pointerEvents="none" />}
                     {dragPreview?.type === "zoomRect" && <rect data-ui-only="true" x={Math.min(dragPreview.x1, dragPreview.x2)} y={M.top} width={Math.abs(dragPreview.x2 - dragPreview.x1)} height={mainHeight} fill="#dc7848" opacity="0.12" stroke="#dc7848" strokeWidth="1" strokeDasharray="4 3" pointerEvents="none" />}
-                    {dragPreview?.type === "curveOrder" && <line data-ui-only="true" x1={M.left} x2={M.left + plotWidth + S.rightMargin - 8} y1={dragPreview.svgY} y2={dragPreview.svgY} stroke="#dc7848" strokeWidth="1.2" strokeDasharray="4 3" opacity="0.8" />}
+                    {dragPreview?.type === "curveOrder" && <line data-ui-only="true" x1={M.left} x2={M.left + plotWidth + M.right - 8} y1={dragPreview.svgY} y2={dragPreview.svgY} stroke="#dc7848" strokeWidth="1.2" strokeDasharray="4 3" opacity="0.8" />}
                     {cursor && <g data-ui-only="true" pointerEvents="none"><line x1={cursor.svgX} x2={cursor.svgX} y1={M.top} y2={M.top + mainHeight} stroke={cursor.snapped ? "#dc7848" : "#67707c"} strokeWidth="0.7" strokeDasharray="3 3" opacity="0.75"/></g>}
                     {Array.isArray(dragPreview?.guides) && dragPreview.guides.map((guide, index) => guide.axis === "x"
                       ? <line data-ui-only="true" key={`guide-${index}`} x1={guide.px} x2={guide.px} y1={M.top} y2={M.top + mainHeight} stroke="#e0507a" strokeWidth="1" strokeDasharray="5 3" opacity="0.85" pointerEvents="none" />
-                      : <line data-ui-only="true" key={`guide-${index}`} x1={M.left} x2={M.left + plotWidth + S.rightMargin - 8} y1={guide.px} y2={guide.px} stroke="#e0507a" strokeWidth="1" strokeDasharray="5 3" opacity="0.85" pointerEvents="none" />)}
+                      : <line data-ui-only="true" key={`guide-${index}`} x1={M.left} x2={M.left + plotWidth + M.right - 8} y1={guide.px} y2={guide.px} stroke="#e0507a" strokeWidth="1" strokeDasharray="5 3" opacity="0.85" pointerEvents="none" />)}
                   </svg>
                 </div>
               </div>
