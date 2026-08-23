@@ -712,8 +712,9 @@ function PatternItem({
   );
 }
 
-function PhaseItem({ phase, annotationsVisible, selected, onSelect, onUpdate, onDelete, onAppend, onDragStart, onDrop }) {
+function PhaseItem({ phase, annotationsVisible, panelVisible, selected, onSelect, onUpdate, onDelete, onAppend, onDragStart, onDrop }) {
   const annotationActive = Boolean(annotationsVisible && phase.inAnnot);
+  const panelActive = Boolean(panelVisible && phase.inPanel);
   return (
     <article
       className={`data-item data-item--phase ${selected ? "is-selected" : ""} ${!phase.visible ? "is-hidden" : ""}`}
@@ -743,7 +744,7 @@ function PhaseItem({ phase, annotationsVisible, selected, onSelect, onUpdate, on
         <div className="data-item__chips">
           <span className="type-badge"><Icon name="phase" size={10} /> {phase.sourceKind === "manual" ? "manuel" : phase.sourceKind === "raman-spectrum" ? "RRUFF" : "référence"}</span>
           <button type="button" className={annotationActive ? "chip is-on" : "chip"} title={!annotationsVisible && phase.inAnnot ? tr("L’affichage global est désactivé. Cliquer pour le réactiver.") : undefined} onClick={(event) => { event.stopPropagation(); onUpdate("inAnnot", !annotationActive); }}>{tr("annotation")}</button>
-          <button type="button" className={phase.inPanel ? "chip is-on" : "chip"} onClick={(event) => { event.stopPropagation(); onUpdate("inPanel", !phase.inPanel); }}>{tr("panneau")}</button>
+          <button type="button" className={panelActive ? "chip is-on" : "chip"} title={!panelVisible && phase.inPanel ? tr("L’affichage global du panneau est désactivé. Cliquer pour le réactiver.") : undefined} onClick={(event) => { event.stopPropagation(); onUpdate("inPanel", !panelActive); }}>{tr("panneau")}</button>
           <button type="button" className={phase.inOverlay ? "chip is-on" : "chip"} title="Superposer les bâtonnets directement sur la figure" onClick={(event) => { event.stopPropagation(); onUpdate("inOverlay", !phase.inOverlay); }}>figure</button>
           <button type="button" className="chip chip--action" onClick={(event) => { event.stopPropagation(); onAppend(); }}>{tr("+ fiche")}</button>
         </div>
@@ -1422,6 +1423,8 @@ export default function App() {
       ...currentWorkspace,
       settings: key === "inAnnot" && value
         ? { ...currentWorkspace.settings, showAnnotations: true }
+        : key === "inPanel" && value
+          ? { ...currentWorkspace.settings, showPdfPanel: true }
         : currentWorkspace.settings,
       phases: currentWorkspace.phases.map((phase) => phase.id === id ? { ...phase, [key]: value } : phase),
     })), { coalesceKey: `phase:${id}:${key}` });
@@ -1438,6 +1441,19 @@ export default function App() {
           : currentWorkspace.phases,
       };
     }), { coalesceKey: `settings:${activeMode}:showAnnotations` });
+  }, [activeMode, history]);
+
+  const setReferencePanelVisible = useCallback((visible) => {
+    history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => {
+      const hasVisiblePanelPhase = currentWorkspace.phases.some((phase) => phase.visible && phase.inPanel);
+      return {
+        ...currentWorkspace,
+        settings: { ...currentWorkspace.settings, showPdfPanel: visible },
+        phases: visible && !hasVisiblePanelPhase
+          ? currentWorkspace.phases.map((phase) => phase.visible ? { ...phase, inPanel: true } : phase)
+          : currentWorkspace.phases,
+      };
+    }), { coalesceKey: `settings:${activeMode}:showPdfPanel` });
   }, [activeMode, history]);
 
   const updateNote = useCallback((id, key, value) => {
@@ -4281,6 +4297,7 @@ export default function App() {
                       key={phase.id}
                       phase={phase}
                       annotationsVisible={S.showAnnotations}
+                      panelVisible={S.showPdfPanel}
                       selected={isSelected("phase", phase.id)}
                       onSelect={(event) => selectItem(event, "phase", phase.id)}
                       onUpdate={(key, value) => updatePhase(phase.id, key, value)}
@@ -5447,8 +5464,13 @@ export default function App() {
                   </>}
                 </Section>
                 <Section title="Panneau de références" targetId="reference-panel-options">
-                  <Toggle label="Afficher le panneau" checked={S.showPdfPanel} onChange={(value) => patchSettings("showPdfPanel", value)} />
+                  <Toggle label="Afficher le panneau" checked={S.showPdfPanel} onChange={setReferencePanelVisible} description="Si aucune phase visible n’est sélectionnée, leur ajout au panneau est restauré automatiquement." />
                   {S.showPdfPanel && <>
+                    {phases.length ? <Field label="Phases dans le panneau" hint="Ce réglage est identique au bouton PANNEAU de chaque carte de phase.">
+                      <div className="phase-annotation-toggles">
+                        {phases.map((phase) => <Toggle key={`panel-toggle-${phase.id}`} label={phase.name} checked={Boolean(phase.inPanel)} onChange={(value) => updatePhase(phase.id, "inPanel", value)} description={phase.visible ? undefined : "Phase masquée : elle reste absente du panneau."} />)}
+                      </div>
+                    </Field> : <div className="callout">{tr("Importer d’abord des phases de référence.")}</div>}
                     <SliderField label="Hauteur" value={S.pdfPanelH} min={60} max={500} step={10} suffix="px" onChange={(value) => patchSettings("pdfPanelH", value)} />
                     <SliderField label="Épaisseur des bâtonnets" value={S.pdfStickW} min={0.3} max={4} step={0.05} onChange={(value) => patchSettings("pdfStickW", value)} />
                     <Toggle label="Noms des lignes" checked={S.showRowLabels} onChange={(value) => patchSettings("showRowLabels", value)} />
