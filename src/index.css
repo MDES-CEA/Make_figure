@@ -1709,3 +1709,173 @@ select option, select optgroup { background: #11151b; color: #eef1f5; }
   .export-preview-dialog__body { grid-template-columns: 1fr; }
   .export-preview-stage { min-height: 300px; border-right: 0; border-bottom: 1px solid var(--line, #2d3542); }
 }
+
+/* Interface-overhaul prototypes. These rules are intentionally isolated from
+   the production shell so Guided and Canvas-first can be compared safely. */
+.prototype-ui--guided .topbar.masthead,
+.prototype-ui--canvas .topbar.masthead {
+  height: 64px;
+  flex: 0 0 64px;
+}
+.prototype-ui--guided .masthead__edition,
+.prototype-ui--guided .masthead__ticker,
+.prototype-ui--canvas .masthead__edition,
+.prototype-ui--canvas .masthead__ticker { display: none; }
+.prototype-ui--guided .masthead__main,
+.prototype-ui--canvas .masthead__main { height: 64px; flex-basis: 64px; }
+.prototype-ui--guided .masthead .brand,
+.prototype-ui--canvas .masthead .brand { min-width: 154px; }
+
+.prototype-ui-switch {
+  display: grid;
+  grid-template-columns: auto repeat(2, minmax(60px, 1fr));
+  align-items: center;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--input);
+}
+.prototype-ui-switch > span {
+  padding: 0 6px;
+  color: var(--text-dim);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.prototype-ui-switch button {
+  min-height: 30px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-dim);
+  padding: 5px 9px;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.prototype-ui-switch button:hover { color: var(--text); }
+.prototype-ui-switch button.is-active {
+  background: var(--mode-accent-soft);
+  color: color-mix(in srgb, var(--mode-accent) 72%, white);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mode-accent) 30%, transparent);
+}
+
+.prototype-workflow-nav {
+  min-height: 68px;
+  flex: 0 0 68px;
+  display: grid;
+  grid-template-columns: 132px repeat(5, minmax(118px, 1fr)) auto;
+  align-items: stretch;
+  gap: 5px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--panel) 95%, #0d1117);
+}
+.prototype-workflow-nav__label {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  padding: 0 10px;
+}
+.prototype-workflow-nav__label span { color: var(--text); font-size: 11px; font-weight: 750; }
+.prototype-workflow-nav__label small { color: var(--text-dim); font-size: 9px; }
+.prototype-workflow-nav > button {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 19px 18px minmax(0,1fr);
+  align-items: center;
+  gap: 7px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-dim);
+  padding: 7px 8px;
+  text-align: left;
+  cursor: pointer;
+}
+.prototype-workflow-nav > button:hover { border-color: var(--border-strong); background: var(--panel-hover); color: var(--text-soft); }
+.prototype-workflow-nav > button.is-active {
+  border-color: color-mix(in srgb, var(--mode-accent) 48%, var(--border));
+  background: linear-gradient(135deg, var(--mode-accent-soft), var(--panel-raised));
+  color: var(--text);
+}
+.prototype-workflow-nav > button > span:last-child { min-width: 0; display: grid; gap: 2px; }
+.prototype-workflow-nav > button strong,
+.prototype-workflow-nav > button small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prototype-workflow-nav > button strong { font-size: 10.5px; }
+.prototype-workflow-nav > button small { color: var(--text-dim); font-size: 8.5px; }
+.prototype-workflow-nav__index {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  color: var(--text-dim);
+  font: 8px var(--font-mono);
+}
+.prototype-workflow-nav > button.is-active .prototype-workflow-nav__index {
+  border-color: var(--mode-accent);
+  background: var(--mode-accent);
+  color: #14181e;
+}
+.prototype-workflow-nav__selection { align-self: stretch; }
+
+.prototype-ui--guided .workbench {
+  grid-template-columns: minmax(340px, 380px) minmax(0, 1fr) !important;
+}
+.prototype-ui--guided .side-panel--left,
+.prototype-ui--guided .side-panel--right { grid-column: 1; grid-row: 1; border-left: 0; border-right: 1px solid var(--border); }
+.prototype-ui--guided .canvas-column { grid-column: 2; grid-row: 1; }
+.prototype-ui--guided[data-guided-task="data"] .side-panel--right { display: none; }
+.prototype-ui--guided:not([data-guided-task="data"]) .side-panel--left { display: none; }
+.prototype-ui--guided .side-panel--right .panel-tabs--right,
+.prototype-ui--guided .side-panel--right .workflow-hint,
+.prototype-ui--guided .side-panel--right .compose-navigation,
+.prototype-ui--guided .panel-resizer { display: none; }
+.prototype-ui--guided .side-panel.is-collapsed { visibility: visible; overflow: visible; pointer-events: auto; }
+.prototype-ui--guided .panel-titlebar { min-height: 54px; height: 54px; flex-basis: 54px; }
+.prototype-ui--guided .panel-titlebar .icon-button { display: none; }
+.prototype-ui--guided .panel-titlebar strong { font-size: 13px; }
+.prototype-scope-line { display: flex !important; align-items: center; gap: 6px; margin-top: 3px; }
+.prototype-scope-line em {
+  border: 1px solid color-mix(in srgb, var(--mode-accent) 42%, var(--border));
+  border-radius: 4px;
+  background: var(--mode-accent-soft);
+  color: color-mix(in srgb, var(--mode-accent) 72%, white);
+  padding: 2px 4px;
+  font: 7px var(--font-mono);
+  font-style: normal;
+  letter-spacing: .08em;
+}
+
+.prototype-ui--canvas .panel-tabs--right { grid-template-columns: repeat(5, minmax(0, 1fr)); min-height: 48px; flex-basis: 48px; }
+.prototype-ui--canvas .panel-tabs--right button { font-size: 9px; }
+.prototype-ui--canvas .compose-navigation { display: none; }
+.prototype-ui--canvas .side-panel--left { box-shadow: 8px 0 26px rgba(0,0,0,.08); }
+.prototype-ui--canvas .side-panel--right { box-shadow: -8px 0 26px rgba(0,0,0,.08); }
+
+.prototype-ui--guided .property-section__header,
+.prototype-ui--canvas .property-section__header { min-height: 42px; height: 42px; font-size: 11.5px; }
+.prototype-ui--guided .field__label,
+.prototype-ui--canvas .field__label,
+.prototype-ui--guided .toggle-row__label,
+.prototype-ui--canvas .toggle-row__label { font-size: 10.5px; }
+.prototype-ui--guided .field__hint,
+.prototype-ui--canvas .field__hint,
+.prototype-ui--guided .toggle-row__description,
+.prototype-ui--canvas .toggle-row__description { font-size: 9.5px; line-height: 1.5; }
+.prototype-ui--guided .side-panel__content,
+.prototype-ui--canvas .side-panel__content { padding: 12px; }
+.prototype-ui--guided .data-item__name,
+.prototype-ui--canvas .data-item__name { font-size: 12px; }
+
+@media (max-width: 1180px) {
+  .prototype-ui-switch > span { display: none; }
+  .prototype-workflow-nav { grid-template-columns: repeat(5, minmax(112px,1fr)) auto; overflow-x: auto; }
+  .prototype-workflow-nav__label { display: none; }
+  .prototype-ui--guided .workbench { grid-template-columns: 340px minmax(0,1fr) !important; }
+}

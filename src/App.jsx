@@ -1192,6 +1192,12 @@ export default function App() {
   const [leftTab, setLeftTab] = useState("patterns");
   const [rightTab, setRightTab] = useState("inspector");
   const [composerTab, setComposerTab] = useState("references");
+  const [interfaceVariant, setInterfaceVariant] = useState(() => {
+    const queryVariant = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("ui") : null;
+    const savedVariant = readLocalSetting("make-figure-prototype-interface", "guided");
+    return ["guided", "canvas"].includes(queryVariant) ? queryVariant : (["guided", "canvas"].includes(savedVariant) ? savedVariant : "guided");
+  });
+  const [guidedTask, setGuidedTask] = useState("data");
   const [appearanceLevel, setAppearanceLevel] = useState(() => readLocalSetting("make-figure-appearance-level", "essential") === "advanced" ? "advanced" : "essential");
   const [leftWidth, setLeftWidth] = useState(() => Number(readLocalSetting("make-figure-left-width")) || 310);
   const [rightWidth, setRightWidth] = useState(() => Number(readLocalSetting("make-figure-right-width")) || 350);
@@ -1252,6 +1258,19 @@ export default function App() {
   UI_LANGUAGE = language;
   useEffect(() => { writeLocalSetting("make-figure-language", language); }, [language]);
   useEffect(() => { writeLocalSetting("make-figure-appearance-level", appearanceLevel); }, [appearanceLevel]);
+  useEffect(() => {
+    writeLocalSetting("make-figure-prototype-interface", interfaceVariant);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("ui", interfaceVariant);
+      window.history.replaceState(window.history.state, "", url);
+    }
+  }, [interfaceVariant]);
+  useEffect(() => {
+    if (interfaceVariant !== "guided") return;
+    if (guidedTask === "data") setLeftCollapsed(false);
+    else setRightCollapsed(false);
+  }, [guidedTask, interfaceVariant]);
 
   useEffect(() => {
     if (activeMode !== "raman" || rightTab !== "compose" || composerTab !== "references" || ramanDatabaseStatus !== "idle") return undefined;
@@ -1358,8 +1377,15 @@ export default function App() {
     } else {
       setRightTab(tab);
     }
+    if (interfaceVariant === "guided") {
+      if (tab === "references") setGuidedTask("annotate");
+      else if (tab === "appearance") setGuidedTask("style");
+      else if (tab === "processing") setGuidedTask("process");
+      else if (tab === "export") setGuidedTask("export");
+      else setGuidedTask("inspect");
+    }
     setContextTarget(target || null);
-  }, []);
+  }, [interfaceVariant]);
 
   useEffect(() => {
     if (!contextTarget) return undefined;
@@ -1754,7 +1780,8 @@ export default function App() {
     });
     selectionAnchorRef.current = nextItem;
     setRightTab("inspector");
-  }, [idsForType, selectionKey]);
+    if (interfaceVariant === "guided") setGuidedTask("inspect");
+  }, [idsForType, interfaceVariant, selectionKey]);
 
   const clearSelection = useCallback(() => {
     setSelection([]);
@@ -1766,8 +1793,11 @@ export default function App() {
     const ids = idsForType(type);
     setSelection(ids.map((id) => ({ type, id })));
     selectionAnchorRef.current = ids.length ? { type, id: ids[ids.length - 1] } : null;
-    if (ids.length) setRightTab("inspector");
-  }, [idsForType, leftTab]);
+    if (ids.length) {
+      setRightTab("inspector");
+      if (interfaceVariant === "guided") setGuidedTask("inspect");
+    }
+  }, [idsForType, interfaceVariant, leftTab]);
 
   const readPhaseFile = async (file) => {
     const fallbackName = file.name.replace(/\.(dif|cif|txt|csv|dat)$/i, "").replace(/^PDF\s*/i, "");
@@ -4119,8 +4149,44 @@ export default function App() {
     </>
   );
 
+  const prototypeTasks = [
+    ["data", "Données", "Importer et organiser", "waveform"],
+    ["process", "Traiter", "Corriger et mesurer", "waveform"],
+    ["annotate", "Annoter", "Phases, zones et notes", "phase"],
+    ["style", "Mettre en forme", "Axes, texte et courbes", "sparkles"],
+    ["export", "Exporter", "Prévisualiser et télécharger", "download"],
+  ];
+
+  const activatePrototypeTask = (task) => {
+    setGuidedTask(task);
+    if (task === "data") {
+      setLeftCollapsed(false);
+      return;
+    }
+    setRightCollapsed(false);
+    if (task === "process") setRightTab("processing");
+    if (task === "annotate") { setRightTab("compose"); setComposerTab("references"); }
+    if (task === "style") { setRightTab("compose"); setComposerTab("appearance"); }
+    if (task === "export") setRightTab("export");
+    if (task === "inspect") setRightTab("inspector");
+  };
+
+  const activateCanvasPanel = (panel) => {
+    setRightCollapsed(false);
+    if (panel === "references" || panel === "appearance") {
+      setRightTab("compose");
+      setComposerTab(panel);
+    } else {
+      setRightTab(panel);
+    }
+  };
+
+  const canvasPanelActive = (panel) => panel === "references" || panel === "appearance"
+    ? rightTab === "compose" && composerTab === panel
+    : rightTab === panel;
+
   return (
-    <div className={`app-shell mode-${activeMode} density-${uiDensity} ${reduceMotion ? "reduce-motion" : ""} ${editorFullscreen ? "is-editor-fullscreen" : ""}`}>
+    <div data-guided-task={guidedTask} className={`app-shell mode-${activeMode} density-${uiDensity} prototype-ui--${interfaceVariant} ${reduceMotion ? "reduce-motion" : ""} ${editorFullscreen ? "is-editor-fullscreen" : ""}`}>
       <header className="topbar masthead">
         <div className="masthead__edition">
           <span>Make Figure</span>
@@ -4149,6 +4215,11 @@ export default function App() {
           </div>
 
           <div className="masthead__actions">
+            <div className="prototype-ui-switch" role="group" aria-label={tr("Prototype d’interface")}>
+              <span>{tr("Prototype")}</span>
+              <button type="button" className={interfaceVariant === "guided" ? "is-active" : ""} onClick={() => { setInterfaceVariant("guided"); activatePrototypeTask(guidedTask); }}>{tr("Guidé")}</button>
+              <button type="button" className={interfaceVariant === "canvas" ? "is-active" : ""} onClick={() => { setInterfaceVariant("canvas"); setLeftCollapsed(false); setRightCollapsed(false); }}>{tr("Canvas")}</button>
+            </div>
             <div className="topbar__group topbar__group--history">
               <IconButton icon="undo" title="Annuler · Ctrl+Z" disabled={!history.canUndo} onClick={history.undo} />
               <IconButton icon="redo" title="Rétablir · Ctrl+Shift+Z" disabled={!history.canRedo} onClick={history.redo} />
@@ -4192,6 +4263,12 @@ export default function App() {
           <span><b>{notes.length}</b> {tr("notes")}</span>
         </div>
       </header>
+
+      {interfaceVariant === "guided" && <nav className="prototype-workflow-nav" aria-label={tr("Étapes de création de la figure")}>
+        <div className="prototype-workflow-nav__label"><span>{tr("Flux guidé")}</span><small>{tr("Une étape à la fois")}</small></div>
+        {prototypeTasks.map(([value, label, description, icon], index) => <button type="button" key={value} className={guidedTask === value ? "is-active" : ""} aria-current={guidedTask === value ? "step" : undefined} onClick={() => activatePrototypeTask(value)}><span className="prototype-workflow-nav__index">{index + 1}</span><Icon name={icon} size={15} /><span><strong>{tr(label)}</strong><small>{tr(description)}</small></span></button>)}
+        {selectionCount > 0 && <button type="button" className={`prototype-workflow-nav__selection ${guidedTask === "inspect" ? "is-active" : ""}`} onClick={() => activatePrototypeTask("inspect")}><Icon name="cursor" size={15} /><span><strong>{tr("Sélection")}</strong><small>{selectionCount} {tr("élément(s)")}</small></span></button>}
+      </nav>}
 
       <main className="workbench" style={{ gridTemplateColumns: `${leftCollapsed ? 0 : leftWidth}px minmax(300px, 1fr) ${rightCollapsed ? 0 : rightWidth}px` }}>
         <aside className={`side-panel side-panel--left ${leftCollapsed ? "is-collapsed" : ""}`} aria-hidden={leftCollapsed}>
@@ -5117,13 +5194,19 @@ export default function App() {
 
         <aside className={`side-panel side-panel--right ${rightCollapsed ? "is-collapsed" : ""}`} aria-hidden={rightCollapsed}>
           {!rightCollapsed && <Resizer side="right" onReset={() => setRightWidth(350)} onResize={{ currentWidth: () => rightWidth, apply: (value) => setRightWidth(clamp(value, 280, 560)) }} />}
-          <div className="panel-titlebar"><div><strong>{tr("Propriétés et outils")}</strong><span>{selectionCount ? `${selectionCount} ${tr("sélectionné(s)")}` : `${modeLabel(activeMode)} · ${patterns.length + phases.length + notes.length + zones.length} ${tr("éléments")}`}</span></div><IconButton icon="panelRight" title="Replier le panneau de propriétés" onClick={() => setRightCollapsed(true)} /></div>
+          <div className="panel-titlebar"><div><strong>{tr(interfaceVariant === "guided" ? ({ process: "Traitement", annotate: "Annotations et références", style: "Style de la figure", export: "Export", inspect: "Élément sélectionné" }[guidedTask] || "Propriétés et outils") : "Propriétés et outils")}</strong><span className="prototype-scope-line">{interfaceVariant === "guided" && <em>{guidedTask === "inspect" ? tr("ÉLÉMENT") : tr("FIGURE")}</em>}{selectionCount ? `${selectionCount} ${tr("sélectionné(s)")}` : `${modeLabel(activeMode)} · ${patterns.length + phases.length + notes.length + zones.length} ${tr("éléments")}`}</span></div><IconButton icon="panelRight" title="Replier le panneau de propriétés" onClick={() => setRightCollapsed(true)} /></div>
           <nav className="panel-tabs panel-tabs--right">
-            {[ ["inspector", "Inspecter", "cursor"], ["processing", "Analyser", "waveform"], ["compose", "Composer", "sparkles"], ["export", "Exporter", "download"] ].map(([value, label, icon], index) => <button type="button" key={value} className={rightTab === value ? "is-active" : ""} aria-current={rightTab === value ? "step" : undefined} title={`${index + 1}. ${tr(label)}`} onClick={() => setRightTab(value)}><small>{index + 1}</small><Icon name={icon} size={12} />{tr(label)}{value === "inspector" && selectionCount > 0 && <span>{selectionCount}</span>}</button>)}
+            {(interfaceVariant === "canvas"
+              ? [["inspector", "Sélection", "cursor"], ["processing", "Traiter", "waveform"], ["references", "Annoter", "phase"], ["appearance", "Style", "sparkles"], ["export", "Exporter", "download"]]
+              : [["inspector", "Inspecter", "cursor"], ["processing", "Analyser", "waveform"], ["compose", "Composer", "sparkles"], ["export", "Exporter", "download"]]
+            ).map(([value, label, icon], index) => {
+              const active = interfaceVariant === "canvas" ? canvasPanelActive(value) : rightTab === value;
+              return <button type="button" key={value} className={active ? "is-active" : ""} aria-current={active ? "step" : undefined} title={`${index + 1}. ${tr(label)}`} onClick={() => interfaceVariant === "canvas" ? activateCanvasPanel(value) : setRightTab(value)}><small>{index + 1}</small><Icon name={icon} size={12} />{tr(label)}{value === "inspector" && selectionCount > 0 && <span>{selectionCount}</span>}</button>;
+            })}
           </nav>
           <div className="workflow-hint">{tr({ inspector: "Modifier uniquement l’élément sélectionné.", processing: "Prétraiter, détecter et mesurer les signaux.", compose: "Ajouter les références puis construire le rendu scientifique.", export: "Vérifier le résultat final avant téléchargement." }[rightTab])}</div>
           <div className="side-panel__content properties-scroll">
-            {rightTab === "compose" && <div className="compose-navigation" role="tablist" aria-label={tr("Outils de composition")}>
+            {rightTab === "compose" && interfaceVariant !== "canvas" && <div className="compose-navigation" role="tablist" aria-label={tr("Outils de composition")}>
               <button type="button" role="tab" aria-selected={composerTab === "references"} className={composerTab === "references" ? "is-active" : ""} onClick={() => setComposerTab("references")}><Icon name="phase" size={13} /><span>{tr("Références")}</span><small>{tr("Phases et annotations")}</small></button>
               <button type="button" role="tab" aria-selected={composerTab === "appearance"} className={composerTab === "appearance" ? "is-active" : ""} onClick={() => setComposerTab("appearance")}><Icon name="sparkles" size={13} /><span>{tr("Style")}</span><small>{tr("Axes, texte et mise en page")}</small></button>
             </div>}
