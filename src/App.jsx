@@ -1189,6 +1189,8 @@ export default function App() {
 
   const [leftTab, setLeftTab] = useState("patterns");
   const [rightTab, setRightTab] = useState("inspector");
+  const [composerTab, setComposerTab] = useState("references");
+  const [appearanceLevel, setAppearanceLevel] = useState(() => readLocalSetting("make-figure-appearance-level", "essential") === "advanced" ? "advanced" : "essential");
   const [leftWidth, setLeftWidth] = useState(() => Number(readLocalSetting("make-figure-left-width")) || 310);
   const [rightWidth, setRightWidth] = useState(() => Number(readLocalSetting("make-figure-right-width")) || 350);
   const [leftCollapsed, setLeftCollapsed] = useState(() => readLocalSetting("make-figure-left-collapsed", "false") === "true");
@@ -1247,9 +1249,10 @@ export default function App() {
   const [language, setLanguage] = useState(() => (readLocalSetting("make-figure-language") === "en" ? "en" : "fr"));
   UI_LANGUAGE = language;
   useEffect(() => { writeLocalSetting("make-figure-language", language); }, [language]);
+  useEffect(() => { writeLocalSetting("make-figure-appearance-level", appearanceLevel); }, [appearanceLevel]);
 
   useEffect(() => {
-    if (activeMode !== "raman" || rightTab !== "references" || ramanDatabaseStatus !== "idle") return undefined;
+    if (activeMode !== "raman" || rightTab !== "compose" || composerTab !== "references" || ramanDatabaseStatus !== "idle") return undefined;
     setRamanDatabaseStatus("loading");
     import("./ramanDatabaseSeed.json")
       .then((module) => {
@@ -1258,7 +1261,7 @@ export default function App() {
       })
       .catch(() => setRamanDatabaseStatus("error"));
     return undefined;
-  }, [activeMode, ramanDatabaseStatus, rightTab]);
+  }, [activeMode, composerTab, ramanDatabaseStatus, rightTab]);
 
   // Les libellés d'axes jamais personnalisés suivent la langue de l'interface ;
   // ceux saisis par l'utilisateur ne sont jamais écrasés.
@@ -1347,7 +1350,12 @@ export default function App() {
       selectionAnchorRef.current = { type, id };
     }
     setRightCollapsed(false);
-    setRightTab(tab);
+    if (tab === "references" || tab === "appearance") {
+      setComposerTab(tab);
+      setRightTab("compose");
+    } else {
+      setRightTab(tab);
+    }
     setContextTarget(target || null);
   }, []);
 
@@ -1368,7 +1376,7 @@ export default function App() {
       });
     });
     return () => { cancelAnimationFrame(firstFrame); if (secondFrame) cancelAnimationFrame(secondFrame); };
-  }, [contextTarget, rightTab, selection, reduceMotion]);
+  }, [composerTab, contextTarget, rightTab, selection, reduceMotion]);
 
   const patchSettings = useCallback((key, value, options) => {
     history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
@@ -2312,7 +2320,8 @@ export default function App() {
     clearSelection();
     setZoom(1);
     setLeftTab("patterns");
-    setRightTab("appearance");
+    setComposerTab("appearance");
+    setRightTab("compose");
     await saveStoredProject(next);
     await refreshProjectIndex();
     writeLocalSetting("make-figure-active-project", next.id);
@@ -4174,12 +4183,12 @@ export default function App() {
             onDelete={removeSelection}
             onClear={clearSelection}
           />
-          <div className="project-filter"><Icon name="cursor" size={12} /><input value={listFilter} onChange={(event) => setListFilter(event.target.value)} placeholder={tr("Filtrer la liste active…")} /><kbd>Ctrl+A</kbd></div>
+          {(leftTab !== "patterns" || patterns.length > 0) && <div className="project-filter"><Icon name="cursor" size={12} /><input value={listFilter} onChange={(event) => setListFilter(event.target.value)} placeholder={tr("Filtrer la liste active…")} /><kbd>Ctrl+A</kbd></div>}
           <div className="side-panel__content">
             {leftTab === "patterns" && (
               <>
                 <button type="button" className="drop-button" onClick={() => patternInputRef.current?.click()}><span className="drop-button__asset"><Icon name="waveform" /></span><span><strong>{tr("Importer des patrons")}</strong><small>.xy · .txt · .csv · .dat · .xml OPUS</small></span><Icon name="upload" size={14} /></button>
-                <div className="pattern-organizer">
+                {patterns.length > 0 && <div className="pattern-organizer">
                   <div className="pattern-organizer__row">
                     <label><span><Icon name="sort" size={12} /> {tr("Trier")}</span><select value={patternSort.key} onChange={(event) => setPatternSort((current) => ({ ...current, key: event.target.value }))}><option value="manual">{tr("Ordre manuel")}</option><option value="filename">{tr("Nom du fichier")}</option><option value="date">{tr("Date du fichier")}</option><option value="numeric">{tr("Valeur numérique")}</option><option value="group">{tr("Groupe")}</option></select></label>
                     <button type="button" className="organizer-direction" onClick={() => setPatternSort((current) => ({ ...current, direction: current.direction === "asc" ? "desc" : "asc" }))}>{patternSort.direction === "asc" ? "↑" : "↓"}</button>
@@ -4188,8 +4197,8 @@ export default function App() {
                   <div className="pattern-organizer__row">
                     <label><span><Icon name="group" size={12} /> {tr("Grouper l’affichage")}</span><select value={groupViewBy} onChange={(event) => setGroupViewBy(event.target.value)}><option value="none">{tr("Aucun")}</option><option value="group">{tr("Tous les groupes")}</option><option value="sample">{tr("Échantillon")}</option><option value="time">{tr("Temps")}</option><option value="temperature">{tr("Température")}</option><option value="treatment">{tr("Traitement")}</option></select></label>
                   </div>
-                </div>
-                {supportsAveraging && (
+                </div>}
+                {supportsAveraging && patterns.length > 0 && (
                   <div className="average-builder">
                     <div className="average-builder__header">
                       <div><strong>{tr("Moyenne d’acquisitions")}</strong><span>{ramanAverageSelection.length} {tr("acquisition(s) sélectionnée(s)")}</span></div>
@@ -5072,14 +5081,25 @@ export default function App() {
 
         <aside className={`side-panel side-panel--right ${rightCollapsed ? "is-collapsed" : ""}`} aria-hidden={rightCollapsed}>
           {!rightCollapsed && <Resizer side="right" onReset={() => setRightWidth(350)} onResize={{ currentWidth: () => rightWidth, apply: (value) => setRightWidth(clamp(value, 280, 560)) }} />}
-          <div className="panel-titlebar"><div><strong>{tr("Atelier")}</strong><span>{selectionCount ? `${selectionCount} ${tr("sélectionné(s)")}` : tr("Aucune sélection")}</span></div><IconButton icon="panelRight" title="Replier le panneau de propriétés" onClick={() => setRightCollapsed(true)} /></div>
+          <div className="panel-titlebar"><div><strong>{tr("Propriétés et outils")}</strong><span>{selectionCount ? `${selectionCount} ${tr("sélectionné(s)")}` : `${modeLabel(activeMode)} · ${patterns.length + phases.length + notes.length + zones.length} ${tr("éléments")}`}</span></div><IconButton icon="panelRight" title="Replier le panneau de propriétés" onClick={() => setRightCollapsed(true)} /></div>
           <nav className="panel-tabs panel-tabs--right">
-            {[ ["inspector", "Inspecteur", "cursor"], ["processing", "Traitement", "waveform"], ["references", "Références", "phase"], ["appearance", "Apparence", "sparkles"], ["export", "Export", "download"] ].map(([value, label, icon], index) => <button type="button" key={value} className={rightTab === value ? "is-active" : ""} aria-current={rightTab === value ? "step" : undefined} title={`${index + 1}. ${tr(label)}`} onClick={() => setRightTab(value)}><small>{index + 1}</small><Icon name={icon} size={12} />{tr(label)}{value === "inspector" && selectionCount > 0 && <span>{selectionCount}</span>}</button>)}
+            {[ ["inspector", "Inspecter", "cursor"], ["processing", "Analyser", "waveform"], ["compose", "Composer", "sparkles"], ["export", "Exporter", "download"] ].map(([value, label, icon], index) => <button type="button" key={value} className={rightTab === value ? "is-active" : ""} aria-current={rightTab === value ? "step" : undefined} title={`${index + 1}. ${tr(label)}`} onClick={() => setRightTab(value)}><small>{index + 1}</small><Icon name={icon} size={12} />{tr(label)}{value === "inspector" && selectionCount > 0 && <span>{selectionCount}</span>}</button>)}
           </nav>
-          <div className="workflow-hint">{{ inspector: "Sélectionner un élément et régler ses propriétés.", processing: "Corriger, normaliser et analyser les signaux.", references: "Ajouter phases, zones et annotations.", appearance: "Régler axes, textes, courbes et composition.", export: "Contrôler le rendu final avant téléchargement." }[rightTab]}</div>
+          <div className="workflow-hint">{tr({ inspector: "Modifier uniquement l’élément sélectionné.", processing: "Prétraiter, détecter et mesurer les signaux.", compose: "Ajouter les références puis construire le rendu scientifique.", export: "Vérifier le résultat final avant téléchargement." }[rightTab])}</div>
           <div className="side-panel__content properties-scroll">
-            {rightTab === "appearance" && (
+            {rightTab === "compose" && <div className="compose-navigation" role="tablist" aria-label={tr("Outils de composition")}>
+              <button type="button" role="tab" aria-selected={composerTab === "references"} className={composerTab === "references" ? "is-active" : ""} onClick={() => setComposerTab("references")}><Icon name="phase" size={13} /><span>{tr("Références")}</span><small>{tr("Phases et annotations")}</small></button>
+              <button type="button" role="tab" aria-selected={composerTab === "appearance"} className={composerTab === "appearance" ? "is-active" : ""} onClick={() => setComposerTab("appearance")}><Icon name="sparkles" size={13} /><span>{tr("Style")}</span><small>{tr("Axes, texte et mise en page")}</small></button>
+            </div>}
+            {rightTab === "compose" && composerTab === "appearance" && (
               <>
+                <div className="complexity-control">
+                  <div><strong>{tr("Niveau de réglage")}</strong><span>{tr(appearanceLevel === "essential" ? "Les contrôles nécessaires à une figure standard." : "Tous les réglages spécialisés et gabarits.")}</span></div>
+                  <div className="segmented-control" role="group" aria-label={tr("Niveau des réglages d’apparence")}>
+                    <button type="button" className={appearanceLevel === "essential" ? "is-active" : ""} onClick={() => setAppearanceLevel("essential")}>{tr("Essentiel")}</button>
+                    <button type="button" className={appearanceLevel === "advanced" ? "is-active" : ""} onClick={() => setAppearanceLevel("advanced")}>{tr("Avancé")}</button>
+                  </div>
+                </div>
                 <Section title="Texte et axes" targetId="axes-options">
                   <TextField targetId="figure-title" label="Titre" value={S.title} onChange={(value) => patchSettings("title", value)} placeholder="Titre facultatif" />
                   <TextField targetId="axis-x-label" label="Axe X" value={S.xlabel} onChange={(value) => patchSettings("xlabel", value)} />
@@ -5153,7 +5173,7 @@ export default function App() {
                   </div>
                   <div className="callout">Cliquer sur un texte de la figure affiche aussi les contrôles de taille et de gras directement sur la feuille.</div>
                 </Section>
-                <Section title="Typographie des annotations et encarts" defaultOpen={false}>
+                {appearanceLevel === "advanced" && <Section title="Typographie des annotations et encarts" defaultOpen={false}>
                   <div className="type-role-grid">
                     <SliderField label="Annotations de phases" value={S.annotFontSize} min={5} max={24} step={0.5} suffix="pt" onChange={(value) => patchSettings("annotFontSize", value)} /><Toggle label="Annotations en gras" checked={S.annotFontBold} onChange={(value) => patchSettings("annotFontBold", value)} />
                     <SliderField label="Clé des abréviations" value={S.abbrevKeyFontSize} min={5} max={24} step={0.5} suffix="pt" onChange={(value) => patchSettings("abbrevKeyFontSize", value)} /><Toggle label="Clé en gras" checked={S.abbrevKeyFontBold} onChange={(value) => patchSettings("abbrevKeyFontBold", value)} />
@@ -5163,7 +5183,7 @@ export default function App() {
                     <SliderField label="Noms du panneau de références" value={S.referenceRowFontSize} min={5} max={24} step={0.5} suffix="pt" onChange={(value) => patchSettings("referenceRowFontSize", value)} /><Toggle label="Noms des références en gras" checked={S.referenceRowFontBold} onChange={(value) => patchSettings("referenceRowFontBold", value)} />
                     <SliderField label="Sous-titres des références" value={S.referenceSubtitleFontSize} min={5} max={20} step={0.5} suffix="pt" onChange={(value) => patchSettings("referenceSubtitleFontSize", value)} /><Toggle label="Sous-titres en gras" checked={S.referenceSubtitleFontBold} onChange={(value) => patchSettings("referenceSubtitleFontBold", value)} />
                   </div>
-                </Section>
+                </Section>}
 
                 <Section title="Courbes">
                   <SliderField label="Épaisseur" value={S.lineWidth} min={0.3} max={4} step={0.05} onChange={(value) => patchSettings("lineWidth", value)} />
@@ -5186,23 +5206,23 @@ export default function App() {
                   <Toggle label="Couleurs manuelles" checked={S.useCustomColors} onChange={(value) => patchSettings("useCustomColors", value)} />
                 </Section>
 
-                <Section title="Dimensions et gabarits">
+                {appearanceLevel === "advanced" && <Section title="Dimensions et gabarits">
                   <SelectField label="Gabarit de revue" value="" onChange={applyJournalPreset} options={[["", "Choisir…"], ...Object.entries(JOURNAL_PRESETS).map(([key, preset]) => [key, preset.label])]} />
                   <SelectField label="Preset général" value="" onChange={applyPreset} options={[["", "Choisir…"], ...Object.entries(PRESETS).map(([key, preset]) => [key, preset.label])]} />
                   <SliderField label="Largeur de figure" value={S.figWidth} min={500} max={3000} step={25} suffix="px" onChange={(value) => patchSettings("figWidth", value)} />
                   <SliderField label="Marge droite" value={S.rightMargin} min={50} max={400} step={5} suffix="px" onChange={(value) => patchSettings("rightMargin", value)} />
-                </Section>
+                </Section>}
 
-                <Section title="Composition multi-panneaux" defaultOpen={false}>
+                {appearanceLevel === "advanced" && <Section title="Composition multi-panneaux" defaultOpen={false}>
                   <SelectField label="Structure de la figure" value={S.figureLayoutMode || "single"} onChange={(value) => patchSettings("figureLayoutMode", value)} options={FIGURE_LAYOUT_OPTIONS} />
                   {S.figureLayoutMode === "grid" && <SliderField label="Colonnes" value={S.gridColumns} min={1} max={4} step={1} onChange={(value) => patchSettings("gridColumns", Math.round(value))} />}
                   {S.figureLayoutMode !== "single" && <><SliderField label="Espace entre panneaux" value={S.panelGap} min={4} max={60} step={2} suffix="px" onChange={(value) => patchSettings("panelGap", value)} /><Toggle label="Lettrage automatique (a), (b)…" checked={S.panelLettering} onChange={(value) => patchSettings("panelLettering", value)} /><Toggle label="Légende partagée" checked={S.sharedPatternLegend} onChange={(value) => patchSettings("sharedPatternLegend", value)} /></>}
                   {["sideBySide", "beforeAfter", "differenceRatio"].includes(S.figureLayoutMode) && <SelectField label="Patron A" value={S.comparisonPatternAId || ""} onChange={(value) => patchSettings("comparisonPatternAId", value)} options={[["", "Sélection / premier visible"], ...patterns.filter((pattern) => pattern.visible).map((pattern) => [pattern.id, pattern.label])]} />}
                   {["sideBySide", "differenceRatio"].includes(S.figureLayoutMode) && <SelectField label="Patron B" value={S.comparisonPatternBId || ""} onChange={(value) => patchSettings("comparisonPatternBId", value)} options={[["", "Deuxième patron visible"], ...patterns.filter((pattern) => pattern.visible).map((pattern) => [pattern.id, pattern.label])]} />}
                   <div className="callout">{tr("Les modes multi-panneaux utilisent un rendu volontairement simplifié : annotations de phases, notes et panneau de références sont réservés à la figure unique afin d’éviter une composition illisible.")}</div>
-                </Section>
+                </Section>}
 
-                <Section title="Axe X brisé" defaultOpen={false}>
+                {appearanceLevel === "advanced" && <Section title="Axe X brisé" defaultOpen={false}>
                   <Toggle label="Activer la coupure" checked={S.brokenAxisEnabled} onChange={(value) => patchSettings("brokenAxisEnabled", value)} description={activeMode === "drx" ? "En DRX, disponible lorsque l’axe principal est 2θ." : "Supprime une plage sans intérêt entre deux régions spectrales."} />
                   {S.brokenAxisEnabled && <>
                     <div className="two-columns">
@@ -5212,14 +5232,14 @@ export default function App() {
                     <SliderField label="Largeur visuelle de coupure" value={S.brokenAxisGapPx} min={8} max={50} step={1} suffix="px" onChange={(value) => patchSettings("brokenAxisGapPx", value)} />
                     {!breakActive && <div className="callout">La coupure n’est pas appliquée : les bornes doivent être strictement comprises dans la fenêtre affichée{activeMode === "drx" ? " et l’axe principal doit être 2θ" : ""}.</div>}
                   </>}
-                </Section>
+                </Section>}
 
 
-                <Section title="Styles réutilisables" defaultOpen={false}>
+                {appearanceLevel === "advanced" && <Section title="Styles réutilisables" defaultOpen={false}>
                   <TextField label="Nom du style" value={templateName} onChange={setTemplateName} placeholder="Ex. Water Research · DRX" />
                   <div className="inline-actions"><Button variant="secondary" icon="save" onClick={saveStyleTemplate}>Enregistrer le style courant</Button></div>
                   {styleTemplates.length ? <div className="library-list">{styleTemplates.map((entry) => <div key={entry.id} className="library-row"><span><strong>{entry.name}</strong><small>{new Date(entry.savedAt).toLocaleDateString(uiLocale())}</small></span><Button variant="secondary" onClick={() => applyStyleTemplate(entry)}>Appliquer</Button><IconButton icon="trash" danger title="Supprimer" onClick={() => setStyleTemplates((current) => current.filter((item) => item.id !== entry.id))} /></div>)}</div> : <div className="callout">{tr("Aucun style local enregistré.")}</div>}
-                </Section>
+                </Section>}
               </>
             )}
 
@@ -5344,7 +5364,7 @@ export default function App() {
               </>
             )}
 
-            {rightTab === "references" && (
+            {rightTab === "compose" && composerTab === "references" && (
               <>
                 {activeMode === "raman" && <Section title="Base Raman locale" defaultOpen={true}>
                   <Field label="Recherche nom / formule / éléments" targetId="raman-database-search">
