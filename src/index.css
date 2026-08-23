@@ -1518,6 +1518,30 @@ select option, select optgroup { background: #11151b; color: #eef1f5; }
 .pattern-organizer select option { background: #11151b; color: #eef1f5; }
 .figure-page svg text { -webkit-user-select: none; user-select: none; }
 .figure-page svg [data-ui-only="true"] { vector-effect: non-scaling-stroke; }
+.right-margin-resizer > line,
+.right-margin-resizer__grip {
+  opacity: 0;
+  transition: opacity .12s ease, fill .12s ease;
+}
+.right-margin-resizer > line {
+  stroke: #d28a55;
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+}
+.right-margin-resizer__grip {
+  fill: #d28a55;
+  stroke: #fff;
+  stroke-width: .7;
+  filter: drop-shadow(0 2px 3px rgba(0,0,0,.25));
+}
+.right-margin-resizer:hover > line,
+.right-margin-resizer:hover .right-margin-resizer__grip,
+.right-margin-resizer.is-dragging > line,
+.right-margin-resizer.is-dragging .right-margin-resizer__grip { opacity: .92; }
+.right-margin-resizer:hover .right-margin-resizer__grip,
+.right-margin-resizer.is-dragging .right-margin-resizer__grip { fill: #eea96f; }
+.right-margin-resizer__value rect { fill: rgba(24,29,37,.94); stroke: #d28a55; stroke-width: .7; }
+.right-margin-resizer__value text { fill: #fff; font: 10px var(--font-mono, monospace); }
 .figure-text-toolbar {
   position: absolute;
   z-index: 8;
