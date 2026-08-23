@@ -3,6 +3,7 @@ import useHistoryState from "./useHistoryState";
 import { translate, translateMessage, defaultAxisLabels, STOCK_AXIS_LABELS } from "./i18n.js";
 import { exportScaleLimits, serializeSvgForExport, svgDataUrl } from "./exportUtils.js";
 import { isPhaseDashed } from "./phaseStyles.js";
+import { canUpdatePatternField } from "./patternEditing.js";
 import {
   CMAPS,
   PHASE_COLORS,
@@ -1401,7 +1402,7 @@ export default function App() {
     history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
       ...currentWorkspace,
       patterns: currentWorkspace.patterns.map((pattern) => pattern.id === id
-        ? (pattern.locked && key !== "locked" ? pattern : { ...pattern, [key]: value })
+        ? (canUpdatePatternField(pattern, key) ? { ...pattern, [key]: value } : pattern)
         : pattern),
     })), { coalesceKey: `pattern:${id}:${key}` });
   }, [activeMode, history]);
@@ -3915,7 +3916,7 @@ export default function App() {
           <Toggle label="Gras individuel" checked={activePattern.labelBold ?? S.patternLabelBold} onChange={(value) => updatePattern(activePattern.id, "labelBold", value)} />
           <div className="inline-actions"><Button variant="secondary" icon="reset" onClick={() => history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({ ...currentWorkspace, patterns: currentWorkspace.patterns.map((pattern) => pattern.id === activePattern.id ? { ...pattern, labelDx: 0, labelDy: 0, labelFontSize: null, labelBold: undefined } : pattern) })))}>Réinitialiser l’étiquette</Button></div>
         </Section>
-        <Toggle label="Verrouiller le patron" checked={Boolean(activePattern.locked)} onChange={(value) => updatePattern(activePattern.id, "locked", value)} description="Empêche le renommage, le déplacement, les transformations et la suppression accidentelle." />
+        <Toggle label="Verrouiller le patron" checked={Boolean(activePattern.locked)} onChange={(value) => updatePattern(activePattern.id, "locked", value)} description="Protège le nom, la courbe, les transformations et la suppression. L’étiquette de courbe reste modifiable." />
         <TextAreaField label="Notes du patron" value={activePattern.userNotes || ""} onChange={(value) => updatePattern(activePattern.id, "userNotes", value)} rows={4} placeholder="Observations expérimentales, préparation, anomalie…" />
         <div className="two-columns">
           <SelectField label="Type de groupe" value={activePattern.groupType || ""} onChange={(value) => updatePattern(activePattern.id, "groupType", value)} options={[["", "Aucun"], ["sample", "Échantillon"], ["time", "Temps"], ["temperature", "Température"], ["treatment", "Traitement"]]} />
@@ -4524,12 +4525,12 @@ export default function App() {
                               <text
                                 x={labelX} y={labelYpx} dominantBaseline="middle" fontSize={fontSize}
                                 fontWeight={(pattern.labelBold ?? S.patternLabelBold) ? "700" : "400"} fill={color} fontFamily={figureFont}
-                                style={{ cursor: pattern.locked ? "not-allowed" : "move", userSelect: "none" }}
+                                style={{ cursor: "move", userSelect: "none" }}
                                 onClick={(event) => { selectItem(event, "pattern", pattern.id); activateTextTarget(event, { kind: "pattern", id: pattern.id, label: `Patron · ${pattern.label}`, sizeKey: "labelFontSize", boldKey: "labelBold", fallbackSizeKey: "patternLabelSize", fallbackBoldKey: "patternLabelBold" }); }}
                                 onDoubleClick={(event) => openContextOptions(event, { tab: "inspector", type: "pattern", id: pattern.id, target: "pattern-name" })}
-                                onPointerDown={(event) => { if (event.detail >= 2) { openContextOptions(event, { tab: "inspector", type: "pattern", id: pattern.id, target: "pattern-name" }); return; } if (!pattern.locked) beginCanvasDrag(event, "patternLabel", { id: pattern.id, dx, dy, fontSize }); }}
+                                onPointerDown={(event) => { if (event.detail >= 2) { openContextOptions(event, { tab: "inspector", type: "pattern", id: pattern.id, target: "pattern-name" }); return; } beginCanvasDrag(event, "patternLabel", { id: pattern.id, dx, dy, fontSize }); }}
                               >{text}</text>
-                              {selected && !pattern.locked && <g data-ui-only="true">
+                              {selected && <g data-ui-only="true">
                                 <rect x={labelX - 4} y={labelYpx - fontSize * 0.72} width={estimatedWidth + 8} height={fontSize * 1.42} fill="none" stroke={color} strokeWidth="0.8" strokeDasharray="3 2" opacity="0.65" pointerEvents="none" />
                                 <rect x={labelX + estimatedWidth + 1} y={labelYpx - 4} width="8" height="8" rx="2" fill={color} stroke="#fff" strokeWidth="1" style={{ cursor: "nwse-resize" }} onPointerDown={(event) => beginCanvasDrag(event, "patternLabelResize", { id: pattern.id, fontSize })} />
                               </g>}
