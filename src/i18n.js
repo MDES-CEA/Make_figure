@@ -70,6 +70,7 @@ const EN = {
   "Si aucune phase visible n’est sélectionnée, leur activation est restaurée automatiquement.": "If no visible phase is selected, all visible phases are enabled automatically.",
   "Ce réglage est identique au bouton ANNOTATION de chaque carte de phase.": "This is the same setting as the ANNOTATION button on each phase card.",
   "Phase masquée : ses annotations restent invisibles.": "Hidden phase: its annotations remain invisible.",
+  "L’affichage global est désactivé. Cliquer pour le réactiver.": "Global annotation display is off. Click to enable it.",
   "Outils de composition": "Composition tools",
   "Phases et annotations": "Phases and annotations",
   "Style": "Style",

@@ -712,7 +712,8 @@ function PatternItem({
   );
 }
 
-function PhaseItem({ phase, selected, onSelect, onUpdate, onDelete, onAppend, onDragStart, onDrop }) {
+function PhaseItem({ phase, annotationsVisible, selected, onSelect, onUpdate, onDelete, onAppend, onDragStart, onDrop }) {
+  const annotationActive = Boolean(annotationsVisible && phase.inAnnot);
   return (
     <article
       className={`data-item data-item--phase ${selected ? "is-selected" : ""} ${!phase.visible ? "is-hidden" : ""}`}
@@ -741,7 +742,7 @@ function PhaseItem({ phase, selected, onSelect, onUpdate, onDelete, onAppend, on
         <span className="data-item__meta">{phase.peaks.length} {tr("pics")} · {truncateLabel(phaseSubtitle(phase), 44)}</span>
         <div className="data-item__chips">
           <span className="type-badge"><Icon name="phase" size={10} /> {phase.sourceKind === "manual" ? "manuel" : phase.sourceKind === "raman-spectrum" ? "RRUFF" : "référence"}</span>
-          <button type="button" className={phase.inAnnot ? "chip is-on" : "chip"} onClick={(event) => { event.stopPropagation(); onUpdate("inAnnot", !phase.inAnnot); }}>{tr("annotation")}</button>
+          <button type="button" className={annotationActive ? "chip is-on" : "chip"} title={!annotationsVisible && phase.inAnnot ? tr("L’affichage global est désactivé. Cliquer pour le réactiver.") : undefined} onClick={(event) => { event.stopPropagation(); onUpdate("inAnnot", !annotationActive); }}>{tr("annotation")}</button>
           <button type="button" className={phase.inPanel ? "chip is-on" : "chip"} onClick={(event) => { event.stopPropagation(); onUpdate("inPanel", !phase.inPanel); }}>{tr("panneau")}</button>
           <button type="button" className={phase.inOverlay ? "chip is-on" : "chip"} title="Superposer les bâtonnets directement sur la figure" onClick={(event) => { event.stopPropagation(); onUpdate("inOverlay", !phase.inOverlay); }}>figure</button>
           <button type="button" className="chip chip--action" onClick={(event) => { event.stopPropagation(); onAppend(); }}>{tr("+ fiche")}</button>
@@ -4279,6 +4280,7 @@ export default function App() {
                     <PhaseItem
                       key={phase.id}
                       phase={phase}
+                      annotationsVisible={S.showAnnotations}
                       selected={isSelected("phase", phase.id)}
                       onSelect={(event) => selectItem(event, "phase", phase.id)}
                       onUpdate={(key, value) => updatePhase(phase.id, key, value)}
