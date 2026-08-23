@@ -52,6 +52,7 @@ const EN = {
   "Annuler": "Cancel",
   "Effacer": "Clear",
   "Ajuster": "Fit",
+  "Retirer l’ajustement": "Remove fit",
   "Suivre": "Track",
   "Calculer la prévisualisation": "Compute preview",
   "Réinitialiser la position": "Reset position",
