@@ -1419,6 +1419,9 @@ export default function App() {
   const updatePhase = useCallback((id, key, value) => {
     history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
       ...currentWorkspace,
+      settings: key === "inAnnot" && value
+        ? { ...currentWorkspace.settings, showAnnotations: true }
+        : currentWorkspace.settings,
       phases: currentWorkspace.phases.map((phase) => phase.id === id ? { ...phase, [key]: value } : phase),
     })), { coalesceKey: `phase:${id}:${key}` });
   }, [activeMode, history]);
