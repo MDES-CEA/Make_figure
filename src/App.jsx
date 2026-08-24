@@ -4185,7 +4185,7 @@ export default function App() {
     : ({ inspector: "Propriétés de la sélection", processing: "Traitement des données", export: "Export de la figure" }[rightTab] || "Outils de la figure");
 
   return (
-    <div className={`app-shell mode-${activeMode} density-${uiDensity} ${reduceMotion ? "reduce-motion" : ""} ${editorFullscreen ? "is-editor-fullscreen" : ""}`}>
+    <div className={`app-shell mode-${activeMode} lang-${language} density-${uiDensity} ${reduceMotion ? "reduce-motion" : ""} ${editorFullscreen ? "is-editor-fullscreen" : ""}`}>
       <header className="topbar masthead">
         <div className="masthead__edition">
           <span>{APP_NAME}</span>
