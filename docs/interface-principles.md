@@ -40,6 +40,7 @@ This checklist is the acceptance gate for interface changes. It is intended to k
 ## Implementation
 
 - Remove superseded CSS instead of appending another override layer.
+- Run `npm run lint:css` when modifying the stylesheet; the check rejects top-level declarations superseded by the same selector later in the file.
 - Split components when one file combines unrelated data processing, storage, export and interface responsibilities.
 - Keep scientific calculations independent from rendering components and cover them with focused tests.
 - Reuse the design tokens and existing components; do not introduce one-off colours, spacing or interaction patterns.
@@ -50,7 +51,6 @@ This checklist is the acceptance gate for interface changes. It is intended to k
 The interface cleanup does not by itself resolve three existing maintenance risks:
 
 - `src/App.jsx` combines application state, import/export, scientific workflows and most interface rendering in one large component.
-- `src/index.css` contains chronological redesign layers whose later rules override earlier ones.
 - Translation keys are primarily French source strings rather than stable semantic identifiers.
 - The production build currently places most application code in a single JavaScript bundle, which limits incremental loading.
 
