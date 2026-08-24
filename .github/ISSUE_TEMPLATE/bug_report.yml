@@ -1,0 +1,80 @@
+name: Signaler un problème
+description: Signaler un bug, un blocage ou un comportement difficile à comprendre dans Make Figure.
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Merci de décrire un seul problème par rapport. Ne joignez pas de données confidentielles.
+
+  - type: dropdown
+    id: workspace
+    attributes:
+      label: Espace concerné
+      options:
+        - DRX / XRD
+        - Raman
+        - IR
+        - Interface générale
+        - Export
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Description du problème
+      description: Indiquez ce qui ne fonctionne pas ou ce qui est difficile à comprendre.
+      placeholder: Le problème apparaît lorsque…
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Étapes pour reproduire
+      description: Décrivez les actions dans leur ordre exact.
+      placeholder: |
+        1. Importer…
+        2. Ouvrir…
+        3. Cliquer sur…
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Résultat attendu
+      placeholder: Je m’attendais à…
+    validations:
+      required: true
+
+  - type: input
+    id: browser
+    attributes:
+      label: Navigateur
+      description: "Exemple : Firefox 154, Chrome 140, Safari 19."
+      placeholder: Navigateur et version
+    validations:
+      required: true
+
+  - type: input
+    id: file_format
+    attributes:
+      label: Format des données
+      description: Indiquez uniquement le format, sans joindre de données confidentielles.
+      placeholder: .xy, .csv, .txt, .dat, .xml OPUS, CIF…
+
+  - type: textarea
+    id: attachments
+    attributes:
+      label: Capture d’écran ou fichier minimal
+      description: Glissez ici une capture ou un petit fichier non confidentiel permettant de reproduire le problème.
+
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Vérification
+      options:
+        - label: Le rapport et ses pièces jointes ne contiennent aucune donnée confidentielle.
+          required: true
