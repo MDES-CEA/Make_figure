@@ -13,7 +13,7 @@
   --border-strong: #3a4554;
   --text: #eef1f5;
   --text-soft: #a5afbc;
-  --text-dim: #707b8b;
+  --text-dim: #8995a7;
   --accent: #d28a55;
   --accent-high: #eea96f;
   --accent-soft: rgba(210, 138, 85, 0.14);
@@ -512,7 +512,7 @@ textarea:focus { border-color: var(--selection); }
   opacity: .45;
 }
 .brand { position: relative; }
-.brand strong { background: linear-gradient(100deg, #fff, #c7cfda 70%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.brand strong { color: #eef1f5; }
 .brand span { transition: color .3s ease; }
 .brand:hover span { color: var(--mode-accent); }
 
@@ -830,7 +830,7 @@ textarea:focus { border-color: var(--selection); }
 .workspace-asset__labels text { fill: color-mix(in srgb, var(--mode-accent) 72%, white); font: 600 8px var(--font-mono); letter-spacing: .12em; }
 .workspace-asset.is-compact .workspace-asset__labels { display: none; }
 .welcome-card__eyebrow { display: inline-flex; align-items: center; gap: 6px; margin-top: 4px; color: color-mix(in srgb, var(--mode-accent) 75%, white); }
-.welcome-card h1 { font-size: 24px; background: linear-gradient(100deg, #fff, color-mix(in srgb, var(--mode-accent) 38%, #cbd2dc)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.welcome-card h1 { font-size: 24px; color: #eef1f5; }
 .welcome-card__privacy { display: inline-flex; align-items: center; gap: 5px; }
 .welcome-card__privacy svg { color: var(--success); }
 
