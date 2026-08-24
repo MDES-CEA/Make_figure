@@ -65,6 +65,8 @@ npm run preview
 
 The application is built with React, Vite and Tailwind CSS v4. It is a static client-side application and does not require a backend.
 
+Interface changes are reviewed against the [interface principles](docs/interface-principles.md), including limits on decorative effects, redundant copy and speculative features.
+
 ## Feedback
 
 Use the in-app **Report a problem** button or [open a GitHub issue](https://github.com/MDES-CEA/Make_figure/issues/new?template=bug_report.yml). Include the active workspace, browser, steps to reproduce and a screenshot when possible.

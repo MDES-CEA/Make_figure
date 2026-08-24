@@ -326,7 +326,6 @@ function Icon({ name, size = 16 }) {
     note: <><path d="M5 4h14v12l-5 5H5z"/><path d="M14 21v-5h5"/></>,
     csv: <><path d="M5 3h10l4 4v14H5z"/><path d="M15 3v5h5M8 12h8M8 16h8"/></>,
     reset: <><path d="M4 4v7h6"/><path d="M5.5 15a7 7 0 1 0 .6-7.7L4 10"/></>,
-    sparkles: <><path d="m12 3 1.2 3.1L16 7.5l-2.8 1.4L12 12l-1.2-3.1L8 7.5l2.8-1.4z"/><path d="m18.5 13 .8 2 1.7.8-1.7.9-.8 2-.8-2-1.7-.9 1.7-.8z"/><path d="m5.5 14 .7 1.8 1.6.7-1.6.8-.7 1.8-.7-1.8-1.6-.8 1.6-.7z"/></>,
     motion: <><path d="M3 8h7M3 12h11M3 16h7"/><path d="m15 7 5 5-5 5"/></>,
     motionOff: <><path d="M3 8h4M3 12h7M3 16h4"/><path d="m13 7 5 5-5 5"/><path d="M4 4l16 16"/></>,
     waveform: <><path d="M3 13h3l2-7 3 13 3-10 2 7h5"/></>,
@@ -360,82 +359,58 @@ function Icon({ name, size = 16 }) {
 function Logo() {
   return (
     <div className="app-logo" aria-hidden="true">
-      <span className="app-logo__halo" />
       <svg width="36" height="32" viewBox="0 0 36 32">
-        <defs>
-          <linearGradient id="logoGradient" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stopColor="#7b6cff" />
-            <stop offset="0.52" stopColor="#d85ca4" />
-            <stop offset="1" stopColor="#f0a366" />
-          </linearGradient>
-        </defs>
-        <circle className="app-logo__orbit" cx="18" cy="16" r="13" fill="none" stroke="url(#logoGradient)" strokeWidth=".8" strokeDasharray="3 5" />
+        <circle className="app-logo__orbit" cx="18" cy="16" r="13" fill="none" stroke="#667486" strokeWidth=".8" strokeDasharray="3 5" />
         {[0, 1, 2].map((index) => (
           <path
             className={`app-logo__trace app-logo__trace--${index + 1}`}
             key={index}
             d={`M3 ${25 - index * 7} L10 ${25 - index * 7} L13 ${12 - index * 7 + 4} L16 ${25 - index * 7} L23 ${25 - index * 7} L26 ${18 - index * 7 + 2} L29 ${25 - index * 7} L33 ${25 - index * 7}`}
             fill="none"
-            stroke="url(#logoGradient)"
+            stroke="#d28a55"
             strokeWidth="1.7"
             strokeLinejoin="round"
           />
         ))}
-        <circle className="app-logo__spark" cx="30" cy="6" r="1.7" fill="#f6b77f" />
       </svg>
     </div>
   );
 }
 
 const WORKSPACE_ASSET_COLORS = {
-  drx: ["#e39a62", "#7d6dff"],
-  raman: ["#7c6cff", "#d55aa3"],
-  ir: ["#3fb8a6", "#4a8fd6"],
+  drx: "#d28a55",
+  raman: "#5f9fb1",
+  ir: "#c77868",
 };
 
 const APP_NAME = "Diffraction & Spectra Studio";
 
 function WorkspaceIllustration({ mode = "drx", compact = false }) {
   const resolvedMode = resolveMode(mode);
-  const [colorFrom, colorTo] = WORKSPACE_ASSET_COLORS[resolvedMode];
+  const signalColor = WORKSPACE_ASSET_COLORS[resolvedMode];
   return (
     <svg className={`workspace-asset ${compact ? "is-compact" : ""}`} viewBox="0 0 320 170" aria-hidden="true">
-      <defs>
-        <linearGradient id={`assetGradient-${resolvedMode}`} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor={colorFrom} />
-          <stop offset="1" stopColor={colorTo} />
-        </linearGradient>
-        <radialGradient id={`assetGlow-${resolvedMode}`} cx="50%" cy="50%" r="50%">
-          <stop offset="0" stopColor={colorFrom} stopOpacity=".32" />
-          <stop offset="1" stopColor={colorFrom} stopOpacity="0" />
-        </radialGradient>
-      </defs>
-      <ellipse className="workspace-asset__glow" cx="160" cy="88" rx="120" ry="65" fill={`url(#assetGlow-${resolvedMode})`} />
       <path className="workspace-asset__grid" d="M35 132H286M35 100H286M35 68H286M76 35V143M126 35V143M176 35V143M226 35V143M276 35V143" />
       <path className="workspace-asset__axis" d="M35 30V143H291" />
       {resolvedMode === "raman" && (
         <>
           <path pathLength="1" className="workspace-asset__signal workspace-asset__signal--back" d="M38 126C54 124 61 116 72 119c13 4 20 8 31-10 13-22 24-5 35-7 13-2 15-29 28-29 15 0 15 46 32 42 12-2 15-17 28-17 13 0 17 23 31 19 11-3 13-14 29-12" />
-          <path pathLength="1" className="workspace-asset__signal" stroke={`url(#assetGradient-${resolvedMode})`} d="M38 131C57 128 62 122 75 124c15 2 20 0 29-15 12-20 23-3 35-6 14-3 14-45 30-45 16 0 14 56 33 51 14-3 15-25 30-23 14 2 16 31 32 22 8-5 13-11 23-8" />
-          <circle className="workspace-asset__particle workspace-asset__particle--1" cx="169" cy="58" r="3" />
-          <circle className="workspace-asset__particle workspace-asset__particle--2" cx="232" cy="86" r="2.4" />
+          <path pathLength="1" className="workspace-asset__signal" stroke={signalColor} d="M38 131C57 128 62 122 75 124c15 2 20 0 29-15 12-20 23-3 35-6 14-3 14-45 30-45 16 0 14 56 33 51 14-3 15-25 30-23 14 2 16 31 32 22 8-5 13-11 23-8" />
         </>
       )}
       {resolvedMode === "drx" && (
         <>
           {[58, 84, 112, 144, 169, 213, 251, 276].map((x, index) => (
-            <line key={x} pathLength="1" className="workspace-asset__stick" x1={x} x2={x} y1="132" y2={132 - [22, 46, 29, 79, 36, 62, 27, 45][index]} stroke={`url(#assetGradient-${resolvedMode})`} />
+            <line key={x} pathLength="1" className="workspace-asset__stick" x1={x} x2={x} y1="132" y2={132 - [22, 46, 29, 79, 36, 62, 27, 45][index]} stroke={signalColor} />
           ))}
-          <path pathLength="1" className="workspace-asset__signal" stroke={`url(#assetGradient-${resolvedMode})`} d="M38 130 52 129 58 108 63 129 79 128 84 87 90 129 107 128 112 103 117 129 139 128 144 52 150 129 164 128 169 96 175 129 207 128 213 68 220 129 246 128 251 104 257 129 271 128 276 88 282 130" />
+          <path pathLength="1" className="workspace-asset__signal" stroke={signalColor} d="M38 130 52 129 58 108 63 129 79 128 84 87 90 129 107 128 112 103 117 129 139 128 144 52 150 129 164 128 169 96 175 129 207 128 213 68 220 129 246 128 251 104 257 129 271 128 276 88 282 130" />
         </>
       )}
       {resolvedMode === "ir" && (
         // Allure d’un spectre en transmittance : ligne de base haute, bandes vers le bas.
         <>
           <path pathLength="1" className="workspace-asset__signal workspace-asset__signal--back" d="M38 52c22 1 30 3 44 5 12 2 16 34 27 34 12 0 14-30 25-29 15 1 12 12 24 13 14 1 18 46 31 46 12 0 13-44 26-45 15-1 16 22 30 23 13 1 19 12 36 11" />
-          <path pathLength="1" className="workspace-asset__signal" stroke={`url(#assetGradient-${resolvedMode})`} d="M38 48c22 1 31 2 45 4 12 2 15 41 27 41 13 0 14-35 26-34 15 1 12 14 25 15 14 1 17 54 31 54 13 0 13-51 27-52 15-1 16 26 30 27 13 1 20 13 37 12" />
-          <circle className="workspace-asset__particle workspace-asset__particle--1" cx="161" cy="112" r="3" />
-          <circle className="workspace-asset__particle workspace-asset__particle--2" cx="219" cy="110" r="2.4" />
+          <path pathLength="1" className="workspace-asset__signal" stroke={signalColor} d="M38 48c22 1 31 2 45 4 12 2 15 41 27 41 13 0 14-35 26-34 15 1 12 14 25 15 14 1 17 54 31 54 13 0 13-51 27-52 15-1 16 26 30 27 13 1 20 13 37 12" />
         </>
       )}
       <g className="workspace-asset__labels">
@@ -450,7 +425,7 @@ function WorkspaceIllustration({ mode = "drx", compact = false }) {
 
 function MiniAsset({ kind = "pattern" }) {
   const icon = kind === "phase" ? "phase" : kind === "zone" ? "zone" : kind === "note" ? "note" : kind === "selection" ? "cursor" : "waveform";
-  return <span className={`mini-asset mini-asset--${kind}`}><Icon name={icon} size={20} /><i /><b /></span>;
+  return <span className={`mini-asset mini-asset--${kind}`}><Icon name={icon} size={20} /></span>;
 }
 
 function Button({ children, icon, variant = "ghost", active = false, disabled = false, title, onClick, className = "" }) {
@@ -706,7 +681,7 @@ function PatternItem({
         <div className="data-item__chips">
           {pattern.isAverage ? <span className="derived-badge"><Icon name="average" size={10} /> {tr("patron moyen")}</span> : <span className="type-badge"><Icon name="waveform" size={10} /> {tr("acquisition")}</span>}
           {pattern.locked && <span className="type-badge type-badge--locked"><Icon name="lock" size={10} /> {tr("verrouillé")}</span>}
-          {pattern.processingOverrides?.enabled && <span className="type-badge"><Icon name="sparkles" size={10} /> {tr("traitement individuel")}</span>}
+          {pattern.processingOverrides?.enabled && <span className="type-badge"><Icon name="waveform" size={10} /> {tr("traitement individuel")}</span>}
         </div>
       </div>
       <div className="data-item__actions">
@@ -1236,7 +1211,7 @@ export default function App() {
   const [ramanAverageSelection, setRamanAverageSelection] = useState([]);
   const [ramanAverageLabel, setRamanAverageLabel] = useState("");
   const [manualPhase, setManualPhase] = useState({ name: "", abbrev: "", peaks: "", color: PHASE_COLORS[0] });
-  const [zoneDraft, setZoneDraft] = useState({ name: "", xmin: 500, xmax: 700, color: "#7c5cff", opacity: 0.12 });
+  const [zoneDraft, setZoneDraft] = useState({ name: "", xmin: 500, xmax: 700, color: "#5f9fb1", opacity: 0.12 });
   const [peakFitResult, setPeakFitResult] = useState(null);
   const [multiFitResult, setMultiFitResult] = useState(null);
   const [multiFitDraft, setMultiFitDraft] = useState({ xmin: "", xmax: "", centers: "", model: "pseudoVoigt" });
@@ -4158,7 +4133,7 @@ export default function App() {
     ["inspector", "Sélection", "cursor"],
     ["processing", "Traitement", "waveform"],
     ["references", "Références", "phase"],
-    ["appearance", "Apparence", "sparkles"],
+    ["appearance", "Apparence", "layout"],
     ["export", "Export", "download"],
   ];
 
@@ -4201,7 +4176,6 @@ export default function App() {
             <Logo />
             <div className="brand__copy">
               <strong>{APP_NAME}</strong>
-              <span title={project.name || tr("Projet sans titre")}>{project.name || tr("Projet sans titre")}</span>
             </div>
           </div>
 
@@ -4517,13 +4491,12 @@ export default function App() {
             {!visibleCount ? (
               <div className="welcome-card">
                 <div className="welcome-card__visual"><WorkspaceIllustration mode={activeMode} /></div>
-                <span className="welcome-card__eyebrow"><Icon name="sparkles" size={12} /> {tr("Espace")} {tr(modeLabel(activeMode))}</span>
                 <h1>{tr(activeMode === "drx" ? "Composer une figure de diffraction" : activeMode === "ir" ? "Composer une figure infrarouge" : "Composer une figure Raman")}</h1>
                 <p>{tr("Importer les acquisitions, ajouter les références, appliquer le traitement du signal puis produire une figure scientifique prête à publier.")}</p>
                 <div className="welcome-card__actions">
                   <Button variant="primary" icon="upload" onClick={() => patternInputRef.current?.click()}>{tr("Importer des patrons")}</Button>
                   <Button variant="secondary" icon="phase" onClick={() => phaseInputRef.current?.click()}>Ajouter des phases</Button>
-                  <Button variant="secondary" icon="sparkles" onClick={loadSampleData}>Jeu d’exemple</Button>
+                  <Button variant="secondary" icon="waveform" onClick={loadSampleData}>Jeu d’exemple</Button>
                 </div>
                 <div className="welcome-card__privacy"><Icon name="check" size={12} /> {tr("Traitement exclusivement local dans le navigateur.")}</div>
               </div>
@@ -4904,7 +4877,7 @@ export default function App() {
                       const toPath = (values) => multiFitResult.x.map((value, index) => `${index ? "L" : "M"}${xToPx(value).toFixed(2)},${yToPx(values[index] + offset).toFixed(2)}`).join("");
                       return <g clipPath="url(#plot-clip)">
                         {multiFitResult.components.map((component, index) => (
-                          <path key={`multifit-${index}`} d={toPath(component.curve.map((value, i) => value + multiFitResult.background[i]))} fill="none" stroke="#7c5cff" strokeWidth={Math.max(0.8, S.lineWidth * 0.8)} strokeDasharray="4 3" opacity="0.75" vectorEffect="non-scaling-stroke" />
+                          <path key={`multifit-${index}`} d={toPath(component.curve.map((value, i) => value + multiFitResult.background[i]))} fill="none" stroke="#507f9d" strokeWidth={Math.max(0.8, S.lineWidth * 0.8)} strokeDasharray="4 3" opacity="0.75" vectorEffect="non-scaling-stroke" />
                         ))}
                         <path d={toPath(multiFitResult.total)} fill="none" stroke="#e05a47" strokeWidth={Math.max(1, S.lineWidth)} vectorEffect="non-scaling-stroke" opacity="0.9" />
                       </g>;
