@@ -172,6 +172,8 @@ const PRESETS = {
   compact: { label: "Écran compact", figWidth: 900, axisFontSize: 12, tickFontSize: 10, titleFontSize: 14, lineWidth: 0.8 },
 };
 
+const REPORT_ISSUE_URL = "https://github.com/MDES-CEA/Make_figure/issues/new?template=bug_report.yml";
+
 function clamp(value, minimum, maximum) {
   return Math.max(minimum, Math.min(maximum, value));
 }
@@ -350,6 +352,7 @@ function Icon({ name, size = 16 }) {
     zoomRect: <><rect x="4" y="4" width="11" height="11" strokeDasharray="2 2"/><circle cx="15.5" cy="15.5" r="4.5"/><path d="m19 19 2 2"/></>,
     group: <><circle cx="8" cy="8" r="3"/><circle cx="16" cy="8" r="3"/><path d="M3 20a5 5 0 0 1 10 0M11 20a5 5 0 0 1 10 0"/></>,
     tag: <><path d="M4 4h7l9 9-7 7-9-9z"/><circle cx="8" cy="8" r="1.5"/></>,
+    bug: <><path d="M9 9h6v8a3 3 0 0 1-6 0z"/><path d="M10 9V7a2 2 0 0 1 4 0v2M6 13h3M15 13h3M6 17h3M15 17h3M8 7 6 5M16 7l2-2"/></>,
   };
   return <svg {...common}>{paths[name] || paths.more}</svg>;
 }
@@ -4234,6 +4237,7 @@ export default function App() {
                 onClick={() => setLanguage((value) => (value === "fr" ? "en" : "fr"))}
               >{language === "fr" ? "FR" : "EN"}</button>
               <IconButton icon={reduceMotion ? "motionOff" : "motion"} active={reduceMotion} title={reduceMotion ? "Animations réduites" : "Réduire les animations"} onClick={() => setReduceMotion((value) => !value)} />
+              <Button variant="ghost" icon="bug" title="Ouvrir un rapport de problème sur GitHub" onClick={() => window.open(REPORT_ISSUE_URL, "_blank", "noopener,noreferrer")}>Signaler un problème</Button>
               <Button variant="primary" icon="preview" disabled={isExporting} onClick={() => openExportPreview("png")}>{isExporting ? "Export…" : "Prévisualiser l’export"}</Button>
             </div>
           </div>
