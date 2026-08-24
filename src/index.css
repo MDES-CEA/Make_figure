@@ -1469,7 +1469,7 @@ input[type="range"]:hover::-webkit-slider-thumb { transform: scale(1.2); }
 .figure-page--raw { position: relative; flex: 0 0 auto; }
 .raw-comparison-svg { display: block; background: #fff; }
 .figure-page--raw::before {
-  content: "RAW"; position: absolute; z-index: 2; top: 10px; right: 12px;
+  content: "BRUT"; position: absolute; z-index: 2; top: 10px; right: 12px;
   padding: 3px 6px; border-radius: 5px; background: #202630; color: #fff;
   font: 700 9px var(--font-mono); letter-spacing: .08em;
 }
@@ -1511,6 +1511,8 @@ input[type="range"]:hover::-webkit-slider-thumb { transform: scale(1.2); }
   padding: 3px 6px; border-radius: 5px; background: var(--accent); color: #14181f;
   font: 800 9px var(--font-mono); letter-spacing: .08em;
 }
+.app-shell.lang-en .figure-page--raw::before { content: "RAW"; }
+.app-shell.lang-en .page-stage.is-comparison .figure-page:not(.figure-page--raw)::before { content: "PROCESSED"; }
 
 
 /* v12 — native select menus, draggable labels and direct X-range editing */
