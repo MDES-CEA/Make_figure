@@ -25,4 +25,22 @@ describe("accessibilité de l’interface", () => {
     const unnamed = [...interactive].filter((element) => !computeAccessibleName(element).trim());
     expect(unnamed).toEqual([]);
   });
+
+  it("affiche la nouvelle marque, révèle tout le tracé DRX et traduit l’accueil", () => {
+    const { container } = render(<App />);
+
+    expect(screen.getAllByText("Diffraction & Spectra Studio").length).toBeGreaterThan(0);
+    const animatedGeometry = container.querySelectorAll(".workspace-asset__signal, .workspace-asset__stick");
+    expect(animatedGeometry.length).toBeGreaterThan(0);
+    expect([...animatedGeometry].every((element) => element.getAttribute("pathLength") === "1")).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "FR" }));
+    expect(document.documentElement.lang).toBe("en");
+    expect(screen.getByRole("heading", { name: "Compose a diffraction figure" })).toBeTruthy();
+    expect(screen.getByText("Import the acquisitions, add the references, apply signal processing, then produce a publication-ready scientific figure.")).toBeTruthy();
+    expect(screen.getByText("Processing happens entirely locally in the browser.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Import patterns" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Add phases" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Sample data" })).toBeTruthy();
+  });
 });
