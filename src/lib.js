@@ -2623,6 +2623,11 @@ export function parseOpusBinary(buffer, options = {}) {
 // Intégration des zones nommées (Raman / IR)
 // ---------------------------------------------------------------------------
 
+export function zoneBoundaryEdges(startPx, endPx) {
+  const leftEdge = Number(startPx) <= Number(endPx) ? "min" : "max";
+  return { leftEdge, rightEdge: leftEdge === "min" ? "max" : "min" };
+}
+
 function trapezoidBetween(x, y, xmin, xmax) {
   let area = 0;
   for (let i = 1; i < x.length; i += 1) {
