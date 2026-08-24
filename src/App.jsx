@@ -606,7 +606,7 @@ function SliderField({ label, value, onChange, min, max, step = 1, suffix, targe
   return (
     <Field label={label} targetId={targetId}>
       <div className="slider-field">
-        <input type="range" value={value} min={min} max={max} step={step} onChange={commitRange} />
+        <input type="range" value={value} min={min} max={max} step={step} aria-label={`${tr(label)} — ${tr("curseur")}`} onChange={commitRange} />
         <div className="input-with-suffix is-compact">
           <NumericInput value={value} min={min} max={max} step={step} onCommit={onChange} ariaLabel={tr(label)} />
           {suffix && <span>{suffix}</span>}
@@ -647,7 +647,7 @@ function SelectField({ label, value, onChange, options, targetId }) {
 
 function Toggle({ label, checked, onChange, description }) {
   return (
-    <button type="button" className="toggle-row" onClick={() => onChange(!checked)}>
+    <button type="button" className="toggle-row" aria-pressed={checked} onClick={() => onChange(!checked)}>
       <span>
         <span className="toggle-row__label">{tr(label)}</span>
         {description && <span className="toggle-row__description">{tr(description)}</span>}
@@ -688,6 +688,7 @@ function PatternItem({
       <div className="data-item__content">
         <input
           className="data-item__name"
+          aria-label={`${tr("Nom de la courbe")} ${index + 1}`}
           value={pattern.label}
           disabled={pattern.locked}
           onClick={(event) => event.stopPropagation()}
@@ -733,12 +734,14 @@ function PhaseItem({ phase, annotationsVisible, panelVisible, selected, onSelect
         value={phase.color}
         className="color-dot"
         title="Couleur de la phase"
+        aria-label={`${tr("Couleur de la phase")} — ${phase.name}`}
         onClick={(event) => event.stopPropagation()}
         onChange={(event) => onUpdate("color", event.target.value)}
       />
       <div className="data-item__content">
         <input
           className="data-item__name"
+          aria-label={tr("Nom de la référence")}
           value={phase.name}
           onClick={(event) => event.stopPropagation()}
           onChange={(event) => onUpdate("name", event.target.value)}
@@ -766,7 +769,7 @@ function NoteItem({ note, selected, onSelect, onUpdate, onDelete }) {
     <article className={`data-item data-item--note ${selected ? "is-selected" : ""} ${safe.visible === false ? "is-hidden" : ""}`} onClick={onSelect}>
       <span className="data-item__swatch" style={{ background: safe.color }} />
       <div className="data-item__content">
-        <input className="data-item__name" value={safe.text} onClick={(event) => event.stopPropagation()} onChange={(event) => onUpdate("text", event.target.value)} />
+        <input className="data-item__name" aria-label={tr("Texte de la note")} value={safe.text} onClick={(event) => event.stopPropagation()} onChange={(event) => onUpdate("text", event.target.value)} />
         <span className="data-item__meta">x = {safe.x.toLocaleString(uiLocale(), { maximumFractionDigits: 3 })} · y = {Math.round(safe.yFrac * 100)} %</span>
       </div>
       <div className="data-item__actions"><IconButton icon={safe.visible === false ? "eyeOff" : "eye"} title={safe.visible === false ? "Afficher" : "Masquer"} onClick={(event) => { event?.stopPropagation?.(); onUpdate("visible", safe.visible === false); }} /><IconButton icon="trash" title="Supprimer" danger onClick={(event) => { event?.stopPropagation?.(); onDelete(); }} /></div>
@@ -799,9 +802,9 @@ function PhasePeaksEditor({ phase, onApply }) {
 function ZoneItem({ zone, selected, onSelect, onUpdate, onDelete }) {
   return (
     <article className={`data-item data-item--zone ${selected ? "is-selected" : ""} ${!zone.visible ? "is-hidden" : ""}`} onClick={onSelect}>
-      <input type="color" value={zone.color} className="color-dot" title="Couleur de la zone" onClick={(event) => event.stopPropagation()} onChange={(event) => onUpdate("color", event.target.value)} />
+      <input type="color" value={zone.color} className="color-dot" title="Couleur de la zone" aria-label={`${tr("Couleur de la zone")} — ${zone.name}`} onClick={(event) => event.stopPropagation()} onChange={(event) => onUpdate("color", event.target.value)} />
       <div className="data-item__content">
-        <input className="data-item__name" value={zone.name} onClick={(event) => event.stopPropagation()} onChange={(event) => onUpdate("name", event.target.value)} />
+        <input className="data-item__name" aria-label={tr("Nom de la zone")} value={zone.name} onClick={(event) => event.stopPropagation()} onChange={(event) => onUpdate("name", event.target.value)} />
         <span className="data-item__meta">{Number(zone.xmin).toLocaleString(uiLocale())}–{Number(zone.xmax).toLocaleString(uiLocale())} cm⁻¹</span>
       </div>
       <div className="data-item__actions">
@@ -812,7 +815,7 @@ function ZoneItem({ zone, selected, onSelect, onUpdate, onDelete }) {
   );
 }
 
-function Resizer({ side, onResize, onReset }) {
+function Resizer({ side, onResize, onReset, min = 250, max = 560 }) {
   const start = (event) => {
     event.preventDefault();
     const startX = event.clientX;
@@ -835,7 +838,7 @@ function Resizer({ side, onResize, onReset }) {
     const delta = direction * (event.shiftKey ? 40 : 10) * (side === 'left' ? 1 : -1);
     onResize.apply(onResize.currentWidth() + delta);
   };
-  return <div className={`panel-resizer panel-resizer--${side}`} role="separator" aria-orientation="vertical" tabIndex="0" onKeyDown={keyboardResize} onDoubleClick={onReset} onPointerDown={start} />;
+  return <div className={`panel-resizer panel-resizer--${side}`} role="separator" aria-label={tr(side === "left" ? "Redimensionner le panneau de données" : "Redimensionner le panneau d’outils")} aria-orientation="vertical" aria-valuemin={min} aria-valuemax={max} aria-valuenow={Math.round(onResize.currentWidth())} tabIndex="0" onKeyDown={keyboardResize} onDoubleClick={onReset} onPointerDown={start} />;
 }
 
 function ProjectSwitcher({ project, entries, open, search, setSearch, onToggle, onSwitch, onCreate, onRename, onDuplicate, onDelete, onExport, menuRef }) {
@@ -854,7 +857,7 @@ function ProjectSwitcher({ project, entries, open, search, setSearch, onToggle, 
             <div><span>Bibliothèque locale</span><strong>{entries.length} projet(s)</strong></div>
             <IconButton icon="close" title="Fermer" onClick={onToggle} />
           </div>
-          <div className="project-menu__search"><Icon name="folder" size={13} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Rechercher un projet…" /></div>
+          <div className="project-menu__search"><Icon name="folder" size={13} /><input value={search} aria-label={tr("Rechercher un projet…")} onChange={(event) => setSearch(event.target.value)} placeholder={tr("Rechercher un projet…")} /></div>
           <div className="project-menu__list">
             {filtered.map((entry) => (
               <button type="button" key={entry.id} className={`project-row ${entry.id === project.id ? 'is-active' : ''}`} onClick={() => onSwitch(entry.id)}>
@@ -1043,7 +1046,7 @@ function RangeNavigator({ patterns, fullRange, xmin, xmax, axisMode = "native", 
       onPointerUp={finish}
       onPointerCancel={finish}
     >
-      <svg viewBox="0 0 100 42" preserveAspectRatio="none" aria-label={tr("Navigateur de plage X")}>
+      <svg viewBox="0 0 100 42" preserveAspectRatio="none" role="img" aria-label={tr("Navigateur de plage X")}>
         {overview.map((item, index) => <path key={item.id} d={item.path} fill="none" stroke="currentColor" opacity={0.14 + index * 0.04} strokeWidth="0.45" />)}
         <rect x="0" y="1" width={Math.max(0, leftPct)} height="40" className="range-navigator__outside" />
         <rect x={rightPct} y="1" width={Math.max(0, 100 - rightPct)} height="40" className="range-navigator__outside" />
@@ -4197,7 +4200,7 @@ export default function App() {
             </div>
           </div>
 
-          <div className={`mode-switch is-${activeMode}`} aria-label="Mode d’analyse">
+          <div className={`mode-switch is-${activeMode}`} role="group" aria-label={tr("Mode d’analyse")}>
             <span className="mode-switch__indicator" />
             {[["drx", "DRX", "xray"], ["raman", "Raman", "waveform"], ["ir", "IR", "infrared"]].map(([value, label, icon]) => (
               <button type="button" key={value} className={activeMode === value ? "is-active" : ""} onClick={() => setMode(value)}>
@@ -4276,7 +4279,7 @@ export default function App() {
             onDelete={removeSelection}
             onClear={clearSelection}
           />
-          {(leftTab !== "patterns" || patterns.length > 0) && <div className="project-filter"><Icon name="cursor" size={12} /><input value={listFilter} onChange={(event) => setListFilter(event.target.value)} placeholder={tr("Filtrer la liste active…")} /><kbd>Ctrl+A</kbd></div>}
+          {(leftTab !== "patterns" || patterns.length > 0) && <div className="project-filter"><Icon name="cursor" size={12} /><input value={listFilter} aria-label={tr("Filtrer la liste active…")} onChange={(event) => setListFilter(event.target.value)} placeholder={tr("Filtrer la liste active…")} /><kbd>Ctrl+A</kbd></div>}
           <div className="side-panel__content">
             {leftTab === "patterns" && (
               <>
@@ -4287,7 +4290,7 @@ export default function App() {
                   <div className="pattern-organizer">
                   <div className="pattern-organizer__row">
                     <label><span><Icon name="sort" size={12} /> {tr("Trier")}</span><select value={patternSort.key} onChange={(event) => setPatternSort((current) => ({ ...current, key: event.target.value }))}><option value="manual">{tr("Ordre manuel")}</option><option value="filename">{tr("Nom du fichier")}</option><option value="date">{tr("Date du fichier")}</option><option value="numeric">{tr("Valeur numérique")}</option><option value="group">{tr("Groupe")}</option></select></label>
-                    <button type="button" className="organizer-direction" onClick={() => setPatternSort((current) => ({ ...current, direction: current.direction === "asc" ? "desc" : "asc" }))}>{patternSort.direction === "asc" ? "↑" : "↓"}</button>
+                    <button type="button" className="organizer-direction" aria-label={tr(patternSort.direction === "asc" ? "Ordre croissant" : "Ordre décroissant")} onClick={() => setPatternSort((current) => ({ ...current, direction: current.direction === "asc" ? "desc" : "asc" }))}>{patternSort.direction === "asc" ? "↑" : "↓"}</button>
                     <Button variant="secondary" disabled={patternSort.key === "manual"} onClick={sortPatterns}>Appliquer</Button>
                   </div>
                   <div className="pattern-organizer__row">
@@ -4300,7 +4303,7 @@ export default function App() {
                       <div><strong>{tr("Moyenne d’acquisitions")}</strong><span>{ramanAverageSelection.length} {tr("acquisition(s) sélectionnée(s)")}</span></div>
                       <button type="button" onClick={() => setRamanAverageSelection(patterns.filter((pattern) => pattern.visible && !pattern.isAverage).map((pattern) => pattern.id))}>{tr("Sélectionner visibles")}</button>
                     </div>
-                    <input type="text" value={ramanAverageLabel} placeholder={tr("Nom du patron moyen")} onChange={(event) => setRamanAverageLabel(event.target.value)} />
+                    <input type="text" value={ramanAverageLabel} aria-label={tr("Nom du patron moyen")} placeholder={tr("Nom du patron moyen")} onChange={(event) => setRamanAverageLabel(event.target.value)} />
                     <div className="average-builder__grid">
                       <label><span>{tr("Agrégation")}</span><select value={S.ramanAverageMethod} onChange={(event) => patchSettings("ramanAverageMethod", event.target.value)}><option value="mean">{tr("Moyenne")}</option><option value="median">{tr("Médiane")}</option></select></label>
                       <label><span>Avant moyenne</span><select value={S.ramanAverageNormalize} onChange={(event) => patchSettings("ramanAverageNormalize", event.target.value)}><option value="none">{tr("Intensités brutes")}</option><option value="max">{tr("Normaliser au maximum")}</option><option value="area">{tr("Normaliser à l’aire")}</option><option value="minmax">{tr("Min–max")}</option></select></label>
@@ -4350,12 +4353,12 @@ export default function App() {
                 <div className="manual-builder">
                   <div className="manual-builder__header"><strong>{tr("Ajouter une phase manuellement")}</strong><span>{tr("Positions seules ou position:intensité")}</span></div>
                   <div className="manual-builder__grid">
-                    <input type="text" value={manualPhase.name} placeholder="Nom, ex. Vatérite" onChange={(event) => setManualPhase((current) => ({ ...current, name: event.target.value }))} />
-                    <input type="text" value={manualPhase.abbrev} placeholder="Abréviation" onChange={(event) => setManualPhase((current) => ({ ...current, abbrev: event.target.value }))} />
+                    <input type="text" value={manualPhase.name} aria-label={tr("Nom de la référence")} placeholder="Nom, ex. Vatérite" onChange={(event) => setManualPhase((current) => ({ ...current, name: event.target.value }))} />
+                    <input type="text" value={manualPhase.abbrev} aria-label={tr("Abréviation de la référence")} placeholder="Abréviation" onChange={(event) => setManualPhase((current) => ({ ...current, abbrev: event.target.value }))} />
                   </div>
-                  <textarea rows="4" value={manualPhase.peaks} placeholder="107; 280; 713; 750; 1085\nou 107:40; 280:100; 713:65" onChange={(event) => setManualPhase((current) => ({ ...current, peaks: event.target.value }))} />
+                  <textarea rows="4" value={manualPhase.peaks} aria-label={tr("Positions et intensités des pics")} placeholder="107; 280; 713; 750; 1085\nou 107:40; 280:100; 713:65" onChange={(event) => setManualPhase((current) => ({ ...current, peaks: event.target.value }))} />
                   <div className="manual-builder__footer">
-                    <input type="color" value={manualPhase.color} onChange={(event) => setManualPhase((current) => ({ ...current, color: event.target.value }))} />
+                    <input type="color" value={manualPhase.color} aria-label={tr("Couleur de la phase")} onChange={(event) => setManualPhase((current) => ({ ...current, color: event.target.value }))} />
                     <Button variant="primary" onClick={createManualPhase}>Ajouter la phase</Button>
                   </div>
                 </div>
@@ -4384,13 +4387,13 @@ export default function App() {
               <>
                 <div className="manual-builder zone-builder">
                   <div className="manual-builder__header"><strong>{tr("Ajouter une zone")}</strong><span>Bandes, vibrations ou domaines d’attribution</span></div>
-                  <input type="text" value={zoneDraft.name} placeholder="Nom, ex. ν IO — iode" onChange={(event) => setZoneDraft((current) => ({ ...current, name: event.target.value }))} />
+                  <input type="text" value={zoneDraft.name} aria-label={tr("Nom de la zone")} placeholder="Nom, ex. ν IO — iode" onChange={(event) => setZoneDraft((current) => ({ ...current, name: event.target.value }))} />
                   <div className="manual-builder__grid">
                     <label><span>X min</span><NumericInput value={zoneDraft.xmin} step={1} onCommit={(value) => setZoneDraft((current) => ({ ...current, xmin: value }))} ariaLabel={tr("X min de la zone")} /></label>
                     <label><span>X max</span><NumericInput value={zoneDraft.xmax} step={1} onCommit={(value) => setZoneDraft((current) => ({ ...current, xmax: value }))} ariaLabel={tr("X max de la zone")} /></label>
                   </div>
                   <div className="manual-builder__footer">
-                    <input type="color" value={zoneDraft.color} onChange={(event) => setZoneDraft((current) => ({ ...current, color: event.target.value }))} />
+                    <input type="color" value={zoneDraft.color} aria-label={tr("Couleur de la zone")} onChange={(event) => setZoneDraft((current) => ({ ...current, color: event.target.value }))} />
                     <Button variant="primary" onClick={createZone}>Ajouter la zone</Button>
                   </div>
                 </div>
@@ -5491,7 +5494,7 @@ export default function App() {
               <>
                 {activeMode === "raman" && <Section title="Base Raman locale" defaultOpen={true}>
                   <Field label="Recherche nom / formule / éléments" targetId="raman-database-search">
-                    <input type="text" value={ramanDatabaseQuery} placeholder="ex. hydroxyapatite, Ca, P, O" onChange={(event) => setRamanDatabaseQuery(event.target.value)} />
+                    <input type="text" value={ramanDatabaseQuery} aria-label={tr("Rechercher dans la base Raman")} placeholder="ex. hydroxyapatite, Ca, P, O" onChange={(event) => setRamanDatabaseQuery(event.target.value)} />
                   </Field>
                   <Field label="Éléments" hint="Filtre les résultats par composition chimique">
                     <div className="inline-actions">
@@ -5611,7 +5614,7 @@ export default function App() {
       <input ref={sessionInputRef} type="file" accept=".json" hidden onChange={(event) => { loadSessionFile([...event.target.files]); event.target.value = ""; }} />
       <input ref={appendPhaseInputRef} type="file" accept=".dif,.txt,.csv,.dat" hidden onChange={(event) => { appendPhaseFile([...event.target.files]); event.target.value = ""; }} />
 
-      {message && <div className="toast"><span className="toast__icon"><Icon name="check" size={13} /></span><span>{translateMessage(message, language)}</span><button type="button" onClick={() => setMessage("")}><Icon name="close" size={14} /></button></div>}
+      {message && <div className="toast" role="status" aria-live="polite"><span className="toast__icon"><Icon name="check" size={13} /></span><span>{translateMessage(message, language)}</span><button type="button" aria-label={tr("Fermer la notification")} title={tr("Fermer la notification")} onClick={() => setMessage("")}><Icon name="close" size={14} /></button></div>}
       {isExporting && <div className="export-overlay"><div className="export-orbit"><Icon name="download" size={20} /></div><strong>{tr("Génération de la figure")}</strong><span>{tr("Préparation du fichier haute résolution…")}</span></div>}
       {exportPreview.open && <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeExportPreview(); }}>
         <section className="export-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="export-preview-title">
