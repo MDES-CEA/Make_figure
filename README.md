@@ -1,4 +1,4 @@
-# Générateur de figures DRX / Raman
+# Diffraction & Spectra Studio
 
 Outil web statique de génération de diffractogrammes empilés (DRX) et spectres Raman,
 de spectres infrarouges, avec fiches de référence et personnalisation du rendu.
