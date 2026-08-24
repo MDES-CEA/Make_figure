@@ -54,6 +54,8 @@ const EN = {
   "Ajuster": "Fit",
   "Retirer l’ajustement": "Remove fit",
   "Suivre": "Track",
+  "Signaler un problème": "Report a problem",
+  "Ouvrir un rapport de problème sur GitHub": "Open a GitHub problem report",
   "Calculer la prévisualisation": "Compute preview",
   "Réinitialiser la position": "Reset position",
   "Réinitialiser l’encart": "Reset inset",
