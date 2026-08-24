@@ -393,6 +393,8 @@ const WORKSPACE_ASSET_COLORS = {
   ir: ["#3fb8a6", "#4a8fd6"],
 };
 
+const APP_NAME = "Diffraction & Spectra Studio";
+
 function WorkspaceIllustration({ mode = "drx", compact = false }) {
   const resolvedMode = resolveMode(mode);
   const [colorFrom, colorTo] = WORKSPACE_ASSET_COLORS[resolvedMode];
@@ -413,8 +415,8 @@ function WorkspaceIllustration({ mode = "drx", compact = false }) {
       <path className="workspace-asset__axis" d="M35 30V143H291" />
       {resolvedMode === "raman" && (
         <>
-          <path className="workspace-asset__signal workspace-asset__signal--back" d="M38 126C54 124 61 116 72 119c13 4 20 8 31-10 13-22 24-5 35-7 13-2 15-29 28-29 15 0 15 46 32 42 12-2 15-17 28-17 13 0 17 23 31 19 11-3 13-14 29-12" />
-          <path className="workspace-asset__signal" stroke={`url(#assetGradient-${resolvedMode})`} d="M38 131C57 128 62 122 75 124c15 2 20 0 29-15 12-20 23-3 35-6 14-3 14-45 30-45 16 0 14 56 33 51 14-3 15-25 30-23 14 2 16 31 32 22 8-5 13-11 23-8" />
+          <path pathLength="1" className="workspace-asset__signal workspace-asset__signal--back" d="M38 126C54 124 61 116 72 119c13 4 20 8 31-10 13-22 24-5 35-7 13-2 15-29 28-29 15 0 15 46 32 42 12-2 15-17 28-17 13 0 17 23 31 19 11-3 13-14 29-12" />
+          <path pathLength="1" className="workspace-asset__signal" stroke={`url(#assetGradient-${resolvedMode})`} d="M38 131C57 128 62 122 75 124c15 2 20 0 29-15 12-20 23-3 35-6 14-3 14-45 30-45 16 0 14 56 33 51 14-3 15-25 30-23 14 2 16 31 32 22 8-5 13-11 23-8" />
           <circle className="workspace-asset__particle workspace-asset__particle--1" cx="169" cy="58" r="3" />
           <circle className="workspace-asset__particle workspace-asset__particle--2" cx="232" cy="86" r="2.4" />
         </>
@@ -422,16 +424,16 @@ function WorkspaceIllustration({ mode = "drx", compact = false }) {
       {resolvedMode === "drx" && (
         <>
           {[58, 84, 112, 144, 169, 213, 251, 276].map((x, index) => (
-            <line key={x} className="workspace-asset__stick" x1={x} x2={x} y1="132" y2={132 - [22, 46, 29, 79, 36, 62, 27, 45][index]} stroke={`url(#assetGradient-${resolvedMode})`} />
+            <line key={x} pathLength="1" className="workspace-asset__stick" x1={x} x2={x} y1="132" y2={132 - [22, 46, 29, 79, 36, 62, 27, 45][index]} stroke={`url(#assetGradient-${resolvedMode})`} />
           ))}
-          <path className="workspace-asset__signal" stroke={`url(#assetGradient-${resolvedMode})`} d="M38 130 52 129 58 108 63 129 79 128 84 87 90 129 107 128 112 103 117 129 139 128 144 52 150 129 164 128 169 96 175 129 207 128 213 68 220 129 246 128 251 104 257 129 271 128 276 88 282 130" />
+          <path pathLength="1" className="workspace-asset__signal" stroke={`url(#assetGradient-${resolvedMode})`} d="M38 130 52 129 58 108 63 129 79 128 84 87 90 129 107 128 112 103 117 129 139 128 144 52 150 129 164 128 169 96 175 129 207 128 213 68 220 129 246 128 251 104 257 129 271 128 276 88 282 130" />
         </>
       )}
       {resolvedMode === "ir" && (
         // Allure d’un spectre en transmittance : ligne de base haute, bandes vers le bas.
         <>
-          <path className="workspace-asset__signal workspace-asset__signal--back" d="M38 52c22 1 30 3 44 5 12 2 16 34 27 34 12 0 14-30 25-29 15 1 12 12 24 13 14 1 18 46 31 46 12 0 13-44 26-45 15-1 16 22 30 23 13 1 19 12 36 11" />
-          <path className="workspace-asset__signal" stroke={`url(#assetGradient-${resolvedMode})`} d="M38 48c22 1 31 2 45 4 12 2 15 41 27 41 13 0 14-35 26-34 15 1 12 14 25 15 14 1 17 54 31 54 13 0 13-51 27-52 15-1 16 26 30 27 13 1 20 13 37 12" />
+          <path pathLength="1" className="workspace-asset__signal workspace-asset__signal--back" d="M38 52c22 1 30 3 44 5 12 2 16 34 27 34 12 0 14-30 25-29 15 1 12 12 24 13 14 1 18 46 31 46 12 0 13-44 26-45 15-1 16 22 30 23 13 1 19 12 36 11" />
+          <path pathLength="1" className="workspace-asset__signal" stroke={`url(#assetGradient-${resolvedMode})`} d="M38 48c22 1 31 2 45 4 12 2 15 41 27 41 13 0 14-35 26-34 15 1 12 14 25 15 14 1 17 54 31 54 13 0 13-51 27-52 15-1 16 26 30 27 13 1 20 13 37 12" />
           <circle className="workspace-asset__particle workspace-asset__particle--1" cx="161" cy="112" r="3" />
           <circle className="workspace-asset__particle workspace-asset__particle--2" cx="219" cy="110" r="2.4" />
         </>
@@ -439,7 +441,7 @@ function WorkspaceIllustration({ mode = "drx", compact = false }) {
       <g className="workspace-asset__labels">
         {/* En IR le haut du cadre est occupé par la ligne de base : badge en bas à gauche. */}
         <rect x="43" y={resolvedMode === "ir" ? 112 : 40} width="62" height="18" rx="9" />
-        <text x="74" y={resolvedMode === "ir" ? 124 : 52} textAnchor="middle">{modeLabel(resolvedMode).toUpperCase()}</text>
+        <text x="74" y={resolvedMode === "ir" ? 124 : 52} textAnchor="middle">{tr(modeLabel(resolvedMode)).toUpperCase()}</text>
         <rect x="218" y="141" width="65" height="14" rx="7" />
       </g>
     </svg>
@@ -702,9 +704,9 @@ function PatternItem({
           </label>
         )}
         <div className="data-item__chips">
-          {pattern.isAverage ? <span className="derived-badge"><Icon name="average" size={10} /> patron moyen</span> : <span className="type-badge"><Icon name="waveform" size={10} /> acquisition</span>}
-          {pattern.locked && <span className="type-badge type-badge--locked"><Icon name="lock" size={10} /> verrouillé</span>}
-          {pattern.processingOverrides?.enabled && <span className="type-badge"><Icon name="sparkles" size={10} /> traitement individuel</span>}
+          {pattern.isAverage ? <span className="derived-badge"><Icon name="average" size={10} /> {tr("patron moyen")}</span> : <span className="type-badge"><Icon name="waveform" size={10} /> {tr("acquisition")}</span>}
+          {pattern.locked && <span className="type-badge type-badge--locked"><Icon name="lock" size={10} /> {tr("verrouillé")}</span>}
+          {pattern.processingOverrides?.enabled && <span className="type-badge"><Icon name="sparkles" size={10} /> {tr("traitement individuel")}</span>}
         </div>
       </div>
       <div className="data-item__actions">
@@ -733,7 +735,7 @@ function PhaseItem({ phase, annotationsVisible, panelVisible, selected, onSelect
         type="color"
         value={phase.color}
         className="color-dot"
-        title="Couleur de la phase"
+        title={tr("Couleur de la phase")}
         aria-label={`${tr("Couleur de la phase")} — ${phase.name}`}
         onClick={(event) => event.stopPropagation()}
         onChange={(event) => onUpdate("color", event.target.value)}
@@ -748,10 +750,10 @@ function PhaseItem({ phase, annotationsVisible, panelVisible, selected, onSelect
         />
         <span className="data-item__meta">{phase.peaks.length} {tr("pics")} · {truncateLabel(phaseSubtitle(phase), 44)}</span>
         <div className="data-item__chips">
-          <span className="type-badge"><Icon name="phase" size={10} /> {phase.sourceKind === "manual" ? "manuel" : phase.sourceKind === "raman-spectrum" ? "RRUFF" : "référence"}</span>
+          <span className="type-badge"><Icon name="phase" size={10} /> {phase.sourceKind === "manual" ? tr("manuel") : phase.sourceKind === "raman-spectrum" ? "RRUFF" : tr("référence")}</span>
           <button type="button" className={annotationActive ? "chip is-on" : "chip"} title={!annotationsVisible && phase.inAnnot ? tr("L’affichage global est désactivé. Cliquer pour le réactiver.") : undefined} onClick={(event) => { event.stopPropagation(); onUpdate("inAnnot", !annotationActive); }}>{tr("annotation")}</button>
           <button type="button" className={panelActive ? "chip is-on" : "chip"} title={!panelVisible && phase.inPanel ? tr("L’affichage global du panneau est désactivé. Cliquer pour le réactiver.") : undefined} onClick={(event) => { event.stopPropagation(); onUpdate("inPanel", !panelActive); }}>{tr("panneau")}</button>
-          <button type="button" className={phase.inOverlay ? "chip is-on" : "chip"} title="Superposer les bâtonnets directement sur la figure" onClick={(event) => { event.stopPropagation(); onUpdate("inOverlay", !phase.inOverlay); }}>figure</button>
+          <button type="button" className={phase.inOverlay ? "chip is-on" : "chip"} title={tr("Superposer les bâtonnets directement sur la figure")} onClick={(event) => { event.stopPropagation(); onUpdate("inOverlay", !phase.inOverlay); }}>{tr("figure")}</button>
           <button type="button" className="chip chip--action" onClick={(event) => { event.stopPropagation(); onAppend(); }}>{tr("+ fiche")}</button>
         </div>
       </div>
@@ -802,7 +804,7 @@ function PhasePeaksEditor({ phase, onApply }) {
 function ZoneItem({ zone, selected, onSelect, onUpdate, onDelete }) {
   return (
     <article className={`data-item data-item--zone ${selected ? "is-selected" : ""} ${!zone.visible ? "is-hidden" : ""}`} onClick={onSelect}>
-      <input type="color" value={zone.color} className="color-dot" title="Couleur de la zone" aria-label={`${tr("Couleur de la zone")} — ${zone.name}`} onClick={(event) => event.stopPropagation()} onChange={(event) => onUpdate("color", event.target.value)} />
+      <input type="color" value={zone.color} className="color-dot" title={tr("Couleur de la zone")} aria-label={`${tr("Couleur de la zone")} — ${zone.name}`} onClick={(event) => event.stopPropagation()} onChange={(event) => onUpdate("color", event.target.value)} />
       <div className="data-item__content">
         <input className="data-item__name" aria-label={tr("Nom de la zone")} value={zone.name} onClick={(event) => event.stopPropagation()} onChange={(event) => onUpdate("name", event.target.value)} />
         <span className="data-item__meta">{Number(zone.xmin).toLocaleString(uiLocale())}–{Number(zone.xmax).toLocaleString(uiLocale())} cm⁻¹</span>
@@ -854,7 +856,7 @@ function ProjectSwitcher({ project, entries, open, search, setSearch, onToggle, 
       {open && (
         <div className="project-menu" role="dialog" aria-label={tr("Bibliothèque de projets")}>
           <div className="project-menu__header">
-            <div><span>Bibliothèque locale</span><strong>{entries.length} projet(s)</strong></div>
+            <div><span>{tr("Bibliothèque locale")}</span><strong>{entries.length} {tr("projet(s)")}</strong></div>
             <IconButton icon="close" title="Fermer" onClick={onToggle} />
           </div>
           <div className="project-menu__search"><Icon name="folder" size={13} /><input value={search} aria-label={tr("Rechercher un projet…")} onChange={(event) => setSearch(event.target.value)} placeholder={tr("Rechercher un projet…")} /></div>
@@ -862,10 +864,10 @@ function ProjectSwitcher({ project, entries, open, search, setSearch, onToggle, 
             {filtered.map((entry) => (
               <button type="button" key={entry.id} className={`project-row ${entry.id === project.id ? 'is-active' : ''}`} onClick={() => onSwitch(entry.id)}>
                 <span className="project-row__mark">{entry.id === project.id ? <Icon name="check" size={12} /> : null}</span>
-                <span className="project-row__copy"><strong>{entry.name}</strong><small>{entry.drxCount} DRX · {entry.ramanCount} Raman · {entry.irCount || 0} IR · {new Date(entry.updatedAt).toLocaleDateString('fr-FR')}</small></span>
+                <span className="project-row__copy"><strong>{entry.name}</strong><small>{entry.drxCount} {tr("DRX")} · {entry.ramanCount} Raman · {entry.irCount || 0} IR · {new Date(entry.updatedAt).toLocaleDateString(uiLocale())}</small></span>
               </button>
             ))}
-            {!filtered.length && <div className="project-menu__empty">Aucun projet correspondant.</div>}
+            {!filtered.length && <div className="project-menu__empty">{tr("Aucun projet correspondant.")}</div>}
           </div>
           <div className="project-menu__actions">
             <Button icon="plus" variant="primary" onClick={onCreate}>Nouveau</Button>
@@ -1111,7 +1113,7 @@ function FigureLayoutLayer({ mode, processed, rawProcessed, activePatternId, set
   if (mode === "sideBySide") panels = [selectedA, selectedB].filter(Boolean).map((pattern) => ({ title: pattern.label, series: [{ ...pattern, values: pattern.displayY }] }));
   if (mode === "beforeAfter" && selectedA) {
     const raw = rawProcessed.find((pattern) => pattern.id === selectedA.id) || selectedA;
-    panels = [{ title: `${selectedA.label} · brut`, series: [{ ...raw, values: raw.displayY }] }, { title: `${selectedA.label} · traité`, series: [{ ...selectedA, values: selectedA.displayY }] }];
+    panels = [{ title: `${selectedA.label} · ${tr("brut")}`, series: [{ ...raw, values: raw.displayY }] }, { title: `${selectedA.label} · ${tr("traité")}`, series: [{ ...selectedA, values: selectedA.displayY }] }];
   }
   if (mode === "differenceRatio" && selectedA && selectedB) {
     const xValues = selectedA.sourceX.filter((value) => value >= xmin && value <= xmax);
@@ -1122,8 +1124,8 @@ function FigureLayoutLayer({ mode, processed, rawProcessed, activePatternId, set
       difference.push(a - b); ratio.push(a / (Math.abs(b) > Number(settings.ratioEpsilon || 1e-6) ? b : Number(settings.ratioEpsilon || 1e-6)));
     });
     panels = [
-      { title: `${selectedA.label} − ${selectedB.label}`, zero: true, series: [{ id: "difference", sourceX: xValues, values: difference, label: "Différence", syntheticColor: colors.get(selectedA.id) || "#333" }] },
-      { title: `${selectedA.label} / ${selectedB.label}`, zero: false, series: [{ id: "ratio", sourceX: xValues, values: ratio, label: "Rapport", syntheticColor: colors.get(selectedB.id) || "#555" }] },
+      { title: `${selectedA.label} − ${selectedB.label}`, zero: true, series: [{ id: "difference", sourceX: xValues, values: difference, label: tr("Différence"), syntheticColor: colors.get(selectedA.id) || "#333" }] },
+      { title: `${selectedA.label} / ${selectedB.label}`, zero: false, series: [{ id: "ratio", sourceX: xValues, values: ratio, label: tr("Rapport"), syntheticColor: colors.get(selectedB.id) || "#555" }] },
     ];
   }
   if (!panels.length) return null;
@@ -1159,7 +1161,7 @@ function FigureLayoutLayer({ mode, processed, rawProcessed, activePatternId, set
           return <path key={series.id} d={path} fill="none" stroke={series.syntheticColor || colors.get(series.id) || "#222"} strokeWidth={settings.lineWidth || 1} vectorEffect="non-scaling-stroke" />;
         })}
         <text x={px + 8} y={py + 16} fontSize={settings.panelTitleFontSize || 10} fontWeight={settings.panelTitleFontBold ? "700" : "400"} fill="#20252b" style={{ cursor: "pointer" }} onClick={(event) => onTextSelect?.(event, { kind: "settings", label: "Titres des panneaux", sizeKey: "panelTitleFontSize", boldKey: "panelTitleFontBold" })}>{settings.panelLettering !== false ? `(${String.fromCharCode(panelLetterStart + panelIndex)}) ` : ""}{truncateLabel(panel.title, 42)}</text>
-        <text x={(inner.left + inner.right) / 2} y={py + panelHeight - 7} textAnchor="middle" fontSize={settings.panelAxisFontSize || 9} fontWeight={settings.panelAxisFontBold ? "700" : "400"} fill="#343a40" style={{ cursor: "pointer" }} onClick={(event) => onTextSelect?.(event, { kind: "settings", label: "Axes des panneaux", sizeKey: "panelAxisFontSize", boldKey: "panelAxisFontBold" })}>{settings.mode === "drx" ? "2θ (°)" : settings.mode === "ir" ? "Nombre d’onde (cm⁻¹)" : "Raman shift (cm⁻¹)"}</text>
+        <text x={(inner.left + inner.right) / 2} y={py + panelHeight - 7} textAnchor="middle" fontSize={settings.panelAxisFontSize || 9} fontWeight={settings.panelAxisFontBold ? "700" : "400"} fill="#343a40" style={{ cursor: "pointer" }} onClick={(event) => onTextSelect?.(event, { kind: "settings", label: "Axes des panneaux", sizeKey: "panelAxisFontSize", boldKey: "panelAxisFontBold" })}>{settings.mode === "drx" ? "2θ (°)" : tr(settings.mode === "ir" ? "Nombre d’onde (cm⁻¹)" : "Décalage Raman (cm⁻¹)")}</text>
       </g>;
     })}
     {settings.sharedPatternLegend && <g>
@@ -1256,7 +1258,10 @@ export default function App() {
   // travail, pas de la figure.
   const [language, setLanguage] = useState(() => (readLocalSetting("make-figure-language") === "en" ? "en" : "fr"));
   UI_LANGUAGE = language;
-  useEffect(() => { writeLocalSetting("make-figure-language", language); }, [language]);
+  useEffect(() => {
+    writeLocalSetting("make-figure-language", language);
+    document.documentElement.lang = language;
+  }, [language]);
   useEffect(() => { writeLocalSetting("make-figure-appearance-level", appearanceLevel); }, [appearanceLevel]);
 
   useEffect(() => {
@@ -1279,7 +1284,7 @@ export default function App() {
       let changed = false;
       // Nom de projet resté au libellé par défaut : il suit aussi la langue.
       let name = current.name;
-      const stockNames = [["Premier projet", "First project"], ["Projet", "Project"]];
+      const stockNames = [["Premier projet", "First project"], ["Projet sans titre", "Untitled project"], ["Projet", "Project"]];
       for (const [fr, en] of stockNames) {
         const source = language === "en" ? fr : en;
         const target = language === "en" ? en : fr;
@@ -1526,7 +1531,7 @@ export default function App() {
       return next;
     });
     setSelection([]); selectionAnchorRef.current = null;
-    setMessage(`${type === "pattern" ? "Patron" : "Phase"} déplacé vers l’espace ${modeLabel(destination)}.`);
+    setMessage(`${tr(type === "pattern" ? "Patron" : "Phase")} déplacé vers l’espace ${tr(modeLabel(destination))}.`);
   }, [activeMode, history]);
 
   const refreshProjectIndex = useCallback(async () => {
@@ -1901,7 +1906,7 @@ export default function App() {
       setLeftTab("patterns");
       const selectedId = additionsByMode[primaryMode][0].id;
       setSelection([{ type: "pattern", id: selectedId }]); selectionAnchorRef.current = { type: "pattern", id: selectedId };
-      const summary = importedModes.map((mode) => `${additionsByMode[mode].length} vers ${modeLabel(mode)}`).join(" · ");
+      const summary = importedModes.map((mode) => `${additionsByMode[mode].length} ${tr("vers")} ${tr(modeLabel(mode))}`).join(" · ");
       setMessage(`Patrons importés : ${summary}${warnings.length ? ` · ${warnings.join(" · ")}` : ""}`);
     } else if (warnings.length) setMessage(warnings.join(" · "));
   }, [activeMode, history]);
@@ -1970,7 +1975,7 @@ export default function App() {
       });
       setLeftTab("phases");
       { const selectedId = additionsByMode[primaryMode][0]?.id || additionsByMode[importedModes[0]][0].id; setSelection([{ type: "phase", id: selectedId }]); selectionAnchorRef.current = { type: "phase", id: selectedId }; }
-      const summary = importedModes.map((mode) => `${additionsByMode[mode].length} vers ${modeLabel(mode)}`).join(" · ");
+      const summary = importedModes.map((mode) => `${additionsByMode[mode].length} ${tr("vers")} ${tr(modeLabel(mode))}`).join(" · ");
       setMessage(`Phases importées : ${summary}${warnings.length ? ` · ${warnings.join(" · ")}` : ""}`);
     } else if (warnings.length) setMessage(warnings.join(" · "));
   }, [activeMode, history, project.workspaces]);
@@ -2075,7 +2080,7 @@ export default function App() {
     setZoneDraft((current) => ({ ...current, name: "" }));
     setSelection([{ type: "zone", id: zone.id }]); selectionAnchorRef.current = { type: "zone", id: zone.id };
     setRightTab("inspector");
-    setMessage(`Zone « ${name} » ajoutée à l’espace ${modeLabel(activeMode)}.`);
+    setMessage(`Zone « ${name} » ajoutée à l’espace ${tr(modeLabel(activeMode))}.`);
   };
 
   const toggleRamanAveragePattern = (id, checked) => {
@@ -2092,7 +2097,7 @@ export default function App() {
     }
     try {
       const averaged = averagePatterns(selected, {
-        label: ramanAverageLabel || `Moyenne ${modeLabel(activeMode)} · ${selected.length} acquisitions`,
+        label: ramanAverageLabel || `${tr("Moyenne")} ${tr(modeLabel(activeMode))} · ${selected.length} ${tr("acquisitions")}`,
         method: S.ramanAverageMethod,
         normalizeMode: S.ramanAverageNormalize,
       });
@@ -2125,7 +2130,7 @@ export default function App() {
     setTextTarget(null);
     setCursor(null);
     if (!MODES_WITH_ZONES.includes(resolvedMode) && leftTab === "zones") setLeftTab("patterns");
-    setMessage(`Espace ${modeLabel(resolvedMode)} actif. Les données des autres espaces restent conservées.`);
+    setMessage(`Espace ${tr(modeLabel(resolvedMode))} actif. Les données des autres espaces restent conservées.`);
   };
 
   const removeItems = useCallback((items) => {
@@ -2352,7 +2357,7 @@ export default function App() {
 
   const createNewProject = async () => {
     const defaultName = `${tr("Projet")} ${projectIndex.length + 1}`;
-    const name = window.prompt("Nom du nouveau projet", defaultName);
+    const name = window.prompt(tr("Nom du nouveau projet"), defaultName);
     if (name === null) return;
     const next = createEmptyProject(activeMode, { name: name.trim() || defaultName });
     history.replace(next);
@@ -2373,7 +2378,7 @@ export default function App() {
     try {
       await saveStoredProject(project);
       const next = await loadStoredProject(id);
-      if (!next) throw new Error("Projet introuvable");
+      if (!next) throw new Error(tr("Projet introuvable"));
       history.replace(next);
       clearSelection();
       setZoom(1);
@@ -2387,7 +2392,7 @@ export default function App() {
   };
 
   const renameCurrentProject = async () => {
-    const name = window.prompt("Nouveau nom du projet", project.name || "Projet sans titre");
+    const name = window.prompt(tr("Nouveau nom du projet"), project.name || tr("Projet sans titre"));
     if (name === null || !name.trim()) return;
     history.set((current) => ({ ...current, name: name.trim(), updatedAt: Date.now() }), { replace: true });
     setProjectMenuOpen(false);
@@ -2406,7 +2411,7 @@ export default function App() {
   };
 
   const deleteCurrentProject = async () => {
-    if (!window.confirm(`Supprimer définitivement le projet local « ${project.name} » ?`)) return;
+    if (!window.confirm(`${tr("Supprimer définitivement le projet local")} « ${project.name} » ?`)) return;
     await deleteStoredProject(project.id);
     const remaining = await refreshProjectIndex();
     const loaded = remaining.length ? await loadStoredProject(remaining[0].id) : null;
@@ -2983,7 +2988,7 @@ export default function App() {
       savedAt: undefined,
     };
     history.set((current) => updateWorkspaceProject(current, targetMode, (currentWorkspace) => ({ ...currentWorkspace, phases: [...currentWorkspace.phases, phase] })));
-    setMessage(`Phase « ${phase.name} » ajoutée dans l’espace ${modeLabel(targetMode)}.`);
+    setMessage(`Phase « ${phase.name} » ajoutée dans l’espace ${tr(modeLabel(targetMode))}.`);
   }, [activeMode, history, phases.length]);
 
   const applyJournalPreset = useCallback((key) => {
@@ -3785,7 +3790,7 @@ export default function App() {
       zones: MODES_WITH_ZONES.includes(activeMode) ? [...(currentWorkspace.zones || []), ...zonesToAdd] : currentWorkspace.zones,
     })));
     setLeftTab("patterns");
-    setMessage(`Jeu d'exemple ${modeLabel(activeMode)} chargé : ${patternsToAdd.length} patron(s), ${phasesToAdd.length} phase(s). Données synthétiques, à des fins de découverte uniquement.`);
+    setMessage(`Jeu d'exemple ${tr(modeLabel(activeMode))} chargé : ${patternsToAdd.length} patron(s), ${phasesToAdd.length} phase(s). Données synthétiques, à des fins de découverte uniquement.`);
   }, [activeMode, history]);
 
   const onSvgClick = (event) => {
@@ -3922,10 +3927,10 @@ export default function App() {
     <>
       <Section title="Sélection multiple" badge={selectionCount}>
         <div className="selection-summary">
-          {selectedByType.pattern.size > 0 && <span><Icon name="waveform" size={12} /><strong>{selectedByType.pattern.size}</strong> patron(s)</span>}
-          {selectedByType.phase.size > 0 && <span><Icon name="phase" size={12} /><strong>{selectedByType.phase.size}</strong> phase(s)</span>}
-          {selectedByType.zone.size > 0 && <span><Icon name="zone" size={12} /><strong>{selectedByType.zone.size}</strong> zone(s)</span>}
-          {selectedByType.note.size > 0 && <span><Icon name="note" size={12} /><strong>{selectedByType.note.size}</strong> note(s)</span>}
+          {selectedByType.pattern.size > 0 && <span><Icon name="waveform" size={12} /><strong>{selectedByType.pattern.size}</strong> {tr("patron(s)")}</span>}
+          {selectedByType.phase.size > 0 && <span><Icon name="phase" size={12} /><strong>{selectedByType.phase.size}</strong> {tr("phase(s)")}</span>}
+          {selectedByType.zone.size > 0 && <span><Icon name="zone" size={12} /><strong>{selectedByType.zone.size}</strong> {tr("zone(s)")}</span>}
+          {selectedByType.note.size > 0 && <span><Icon name="note" size={12} /><strong>{selectedByType.note.size}</strong> {tr("note(s)")}</span>}
         </div>
         <div className="bulk-inspector-grid">
           <Button variant="secondary" icon="eye" onClick={() => setSelectedVisibility(true)}>Afficher</Button>
@@ -3958,12 +3963,12 @@ export default function App() {
       )}
       {selectedByType.phase.size > 0 && (
         <Section title="Phases sélectionnées">
-          <Field label="Appliquer une couleur"><div className="color-field"><input type="color" defaultValue="#cc0000" onChange={(event) => { const color = event.target.value; history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({ ...currentWorkspace, phases: currentWorkspace.phases.map((item) => selectedByType.phase.has(item.id) ? { ...item, color } : item) }))); }} /><code>{selectedByType.phase.size} phase(s)</code></div></Field>
+          <Field label="Appliquer une couleur"><div className="color-field"><input type="color" defaultValue="#cc0000" onChange={(event) => { const color = event.target.value; history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({ ...currentWorkspace, phases: currentWorkspace.phases.map((item) => selectedByType.phase.has(item.id) ? { ...item, color } : item) }))); }} /><code>{selectedByType.phase.size} {tr("phase(s)")}</code></div></Field>
           <div className="inline-actions"><Button variant="secondary" onClick={() => history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({ ...currentWorkspace, phases: currentWorkspace.phases.map((item) => selectedByType.phase.has(item.id) ? { ...item, inAnnot: true, inPanel: true } : item) })))}>Activer annotations et panneau</Button></div>
           <SelectField label="Déplacer vers" value={activeMode} onChange={moveSelectionToWorkspace} options={workspaceOptions} />
         </Section>
       )}
-      <Section title="Raccourcis" defaultOpen={false}><div className="shortcut-list"><span><kbd>Ctrl/Cmd</kbd> Ajouter ou retirer</span><span><kbd>Shift</kbd> Sélectionner une plage</span><span><kbd>Ctrl/Cmd+A</kbd> Tout sélectionner dans l’onglet</span><span><kbd>{tr("Suppr.")}</kbd> Supprimer la sélection</span></div></Section>
+      <Section title="Raccourcis" defaultOpen={false}><div className="shortcut-list"><span><kbd>Ctrl/Cmd</kbd> {tr("Ajouter ou retirer")}</span><span><kbd>Shift</kbd> {tr("Sélectionner une plage")}</span><span><kbd>Ctrl/Cmd+A</kbd> {tr("Tout sélectionner dans l’onglet")}</span><span><kbd>{tr("Suppr.")}</kbd> {tr("Supprimer la sélection")}</span></div></Section>
     </>
   ) : activePattern ? (
     <>
@@ -3998,16 +4003,16 @@ export default function App() {
         <TextField label="Nom du groupe" value={activePattern.groupName || ""} onChange={(value) => updatePattern(activePattern.id, "groupName", value)} />
         <div className="info-box">
           <span>{activePattern.fileName}</span>
-          <span>{activePattern.x.length.toLocaleString(uiLocale())} points</span>
-          <span>Plage : {Number(activePattern.x[0]).toLocaleString(uiLocale())} — {Number(activePattern.x.at(-1)).toLocaleString(uiLocale())}</span>
-          {activePattern.fileMetadata && <span>Fichier : {formatBytes(activePattern.fileMetadata.size)}{activePattern.fileMetadata.lastModified ? ` · ${new Date(activePattern.fileMetadata.lastModified).toLocaleString(uiLocale())}` : ""}</span>}
+          <span>{activePattern.x.length.toLocaleString(uiLocale())} {tr("points")}</span>
+          <span>{tr("Plage :")} {Number(activePattern.x[0]).toLocaleString(uiLocale())} — {Number(activePattern.x.at(-1)).toLocaleString(uiLocale())}</span>
+          {activePattern.fileMetadata && <span>{tr("Fichier :")} {formatBytes(activePattern.fileMetadata.size)}{activePattern.fileMetadata.lastModified ? ` · ${new Date(activePattern.fileMetadata.lastModified).toLocaleString(uiLocale())}` : ""}</span>}
           <span>{tr("Traitement")} : {tr(activePattern.processingOverrides?.enabled ? "individuel" : "réglages globaux")} · {tr("lissage")} {activePattern.processingOverrides?.smoothW ?? S.smoothW} · {tr("fond")} {activePattern.processingOverrides?.baselineMode ?? S.baselineMode} · {tr("normalisation")} {activePattern.processingOverrides?.normalizeMode ?? S.normalizeMode}</span>
-          {activePattern.isAverage && <span>Patron dérivé : {activePattern.replicateCount} acquisitions · {activePattern.averageMethod === "median" ? "médiane" : "moyenne"}</span>}
-          {activePattern.isAverage && <span>Pré-normalisation : {activePattern.averageNormalizeMode || "none"}</span>}
-          {activePattern.isAverage && <span>Sources : {(activePattern.sourceFiles || []).join(", ")}</span>}
-          {selectedVisibleIndex >= 0 && <span>Position visible : {selectedVisibleIndex + 1}/{visibleCount}</span>}
-          {Number.isFinite(activePattern.alignmentScore) && <span>Corrélation d’alignement : {activePattern.alignmentScore.toFixed(4)}</span>}
-          {Number.isFinite(activePattern.alignmentShift) && activePattern.alignmentShift !== 0 && <span>Décalage automatique cumulé : {activePattern.alignmentShift.toFixed(4)}</span>}
+          {activePattern.isAverage && <span>{tr("Patron dérivé :")} {activePattern.replicateCount} {tr("acquisitions")} · {tr(activePattern.averageMethod === "median" ? "médiane" : "moyenne")}</span>}
+          {activePattern.isAverage && <span>{tr("Pré-normalisation :")} {activePattern.averageNormalizeMode || "none"}</span>}
+          {activePattern.isAverage && <span>{tr("Sources :")} {(activePattern.sourceFiles || []).join(", ")}</span>}
+          {selectedVisibleIndex >= 0 && <span>{tr("Position visible :")} {selectedVisibleIndex + 1}/{visibleCount}</span>}
+          {Number.isFinite(activePattern.alignmentScore) && <span>{tr("Corrélation d’alignement :")} {activePattern.alignmentScore.toFixed(4)}</span>}
+          {Number.isFinite(activePattern.alignmentShift) && activePattern.alignmentShift !== 0 && <span>{tr("Décalage automatique cumulé :")} {activePattern.alignmentShift.toFixed(4)}</span>}
         </div>
         <div className="inline-actions"><Button variant="secondary" icon="duplicate" onClick={duplicateSelection}>Dupliquer pour une variante</Button><Button variant="secondary" icon="sort" onClick={() => updatePattern(activePattern.id, "orderValue", extractOrderValue(activePattern.fileName || activePattern.label))}>Extraire l’ordre</Button></div>
       </Section>
@@ -4053,10 +4058,10 @@ export default function App() {
         <div className="two-columns"><NumberField label="Décalage label X" value={activePhase.labelOffsetX || 0} step={S.mode === "drx" ? 0.05 : 1} onChange={(value) => updatePhase(activePhase.id, "labelOffsetX", value)} /><NumberField label="Décalage label Y" value={activePhase.labelOffsetY || 0} step={0.05} onChange={(value) => updatePhase(activePhase.id, "labelOffsetY", value)} /></div>
         <div className="inline-actions"><Button variant="secondary" icon="reset" onClick={() => { updatePhase(activePhase.id, "labelOffsetX", 0); updatePhase(activePhase.id, "labelOffsetY", 0); }}>Réinitialiser la position des labels</Button></div>
         <div className="info-box">
-          <span>{activePhase.peaks.length} pics</span>
+          <span>{activePhase.peaks.length} {tr("pics")}</span>
           <span>{activePhase.files.join(", ")}</span>
-          {activePhase.metadata?.RRUFFID && <span>RRUFF : {activePhase.metadata.RRUFFID}</span>}
-          {activePhase.metadata?.["RAMAN WAVELENGTH"] && <span>Laser : {activePhase.metadata["RAMAN WAVELENGTH"]} nm</span>}
+          {activePhase.metadata?.RRUFFID && <span>{tr("RRUFF :")} {activePhase.metadata.RRUFFID}</span>}
+          {activePhase.metadata?.["RAMAN WAVELENGTH"] && <span>{tr("Laser :")} {activePhase.metadata["RAMAN WAVELENGTH"]} nm</span>}
           {activePhase.metadata?.["IDEAL CHEMISTRY"] && <span>{activePhase.metadata["IDEAL CHEMISTRY"]}</span>}
         </div>
       </Section>
@@ -4128,7 +4133,7 @@ export default function App() {
       <Section title="Projet actif">
         <TextField label="Nom du projet" value={project.name || ""} onChange={(value) => history.set((current) => ({ ...current, name: value, updatedAt: Date.now() }), { replace: true })} />
         <TextAreaField label="Description" value={project.description || ""} onChange={(value) => history.set((current) => ({ ...current, description: value, updatedAt: Date.now() }), { replace: true })} rows={3} placeholder={tr("Objet de la série, conditions expérimentales…")} />
-        <div className="project-stats-grid">{MODES.map((mode) => <span key={mode}><strong>{workspaceStats[mode].total}</strong>{modeLabel(mode)}</span>)}<span><strong>{patterns.length + phases.length}</strong>{tr("éléments actifs")}</span><span><strong>{new Date(project.updatedAt || Date.now()).toLocaleDateString(uiLocale())}</strong>{tr("mise à jour")}</span></div>
+        <div className="project-stats-grid">{MODES.map((mode) => <span key={mode}><strong>{workspaceStats[mode].total}</strong>{tr(modeLabel(mode))}</span>)}<span><strong>{patterns.length + phases.length}</strong>{tr("éléments actifs")}</span><span><strong>{new Date(project.updatedAt || Date.now()).toLocaleDateString(uiLocale())}</strong>{tr("mise à jour")}</span></div>
         <div className="inline-actions"><Button variant="primary" icon="plus" onClick={createNewProject}>Nouveau projet</Button><Button variant="secondary" icon="duplicate" onClick={duplicateCurrentProject}>Dupliquer</Button></div>
       </Section>
       <Section title="Disposition de l’interface">
@@ -4143,7 +4148,7 @@ export default function App() {
         <Toggle label="Navigateur de plage" checked={showNavigator} onChange={setShowNavigator} />
         <Toggle label="Comparaison brut / traité" checked={comparisonView} onChange={setComparisonView} />
         <Toggle label="Édition plein écran" checked={editorFullscreen} onChange={setEditorFullscreen} />
-        <div className="callout">Cliquer un texte ouvre ses contrôles directs. Glisser les étiquettes, notes, légendes et encarts pour les repositionner. Les raccourcis V, H, P, Z et N changent d’outil.</div>
+        <div className="callout">{tr("Cliquer un texte ouvre ses contrôles directs. Glisser les étiquettes, notes, légendes et encarts pour les repositionner. Les raccourcis V, H, P, Z et N changent d’outil.")}</div>
       </Section>
       <EmptyPanel kind="selection" title="Inspecteur contextuel" body="Sélectionner un ou plusieurs éléments. Ctrl/Cmd ajoute à la sélection ; Shift sélectionne une plage." />
     </>
@@ -4183,8 +4188,8 @@ export default function App() {
     <div className={`app-shell mode-${activeMode} density-${uiDensity} ${reduceMotion ? "reduce-motion" : ""} ${editorFullscreen ? "is-editor-fullscreen" : ""}`}>
       <header className="topbar masthead">
         <div className="masthead__edition">
-          <span>Make Figure</span>
-          <span>{project.name || "Projet sans titre"}</span>
+          <span>{APP_NAME}</span>
+          <span>{project.name || tr("Projet sans titre")}</span>
           <span className={`autosave-state autosave-state--${autosaveState}`}>
             <i />
             {autosaveState === "saving" ? tr("Enregistrement") : autosaveState === "error" ? tr("Autosauvegarde indisponible") : tr("Sauvegardé localement")}
@@ -4195,8 +4200,8 @@ export default function App() {
           <div className="brand">
             <Logo />
             <div className="brand__copy">
-              <strong>Make Figure</strong>
-              <span title={project.name || "Projet sans titre"}>{project.name || "Projet sans titre"}</span>
+              <strong>{APP_NAME}</strong>
+              <span title={project.name || tr("Projet sans titre")}>{project.name || tr("Projet sans titre")}</span>
             </div>
           </div>
 
@@ -4204,7 +4209,7 @@ export default function App() {
             <span className="mode-switch__indicator" />
             {[["drx", "DRX", "xray"], ["raman", "Raman", "waveform"], ["ir", "IR", "infrared"]].map(([value, label, icon]) => (
               <button type="button" key={value} className={activeMode === value ? "is-active" : ""} onClick={() => setMode(value)}>
-                <Icon name={icon} size={13} /><span>{label}</span><small>{workspaceStats[value].total}</small>
+                <Icon name={icon} size={13} /><span>{tr(label)}</span><small>{workspaceStats[value].total}</small>
               </button>
             ))}
           </div>
@@ -4247,7 +4252,7 @@ export default function App() {
         </div>
 
         <div className="masthead__ticker" aria-label={tr("Résumé du projet actif")}>
-          <span className="masthead__breaking">{modeLabel(activeMode)}</span>
+          <span className="masthead__breaking">{tr(modeLabel(activeMode))}</span>
           <span><b>{patterns.length}</b> {tr("patrons")}</span>
           <span><b>{phases.length}</b> {tr("phases")}</span>
           {supportsZones && <span><b>{zones.length}</b> {tr("zones")}</span>}
@@ -4257,7 +4262,7 @@ export default function App() {
 
       <main className="workbench core-workspace" style={{ gridTemplateColumns: `${leftCollapsed ? 0 : leftWidth}px minmax(300px, 1fr) ${rightCollapsed ? 0 : rightWidth}px` }}>
         <aside className={`side-panel side-panel--left ${leftCollapsed ? "is-collapsed" : ""}`} aria-hidden={leftCollapsed}>
-          <div className="panel-titlebar"><div><strong>{tr("Données")} · {modeLabel(activeMode)}</strong><span>{patterns.length + phases.length + notes.length + zones.length} {tr("éléments")}</span></div><IconButton icon="panelLeft" title="Replier le panneau de données" onClick={() => setLeftCollapsed(true)} /></div>
+          <div className="panel-titlebar"><div><strong>{tr("Données")} · {tr(modeLabel(activeMode))}</strong><span>{patterns.length + phases.length + notes.length + zones.length} {tr("éléments")}</span></div><IconButton icon="panelLeft" title="Replier le panneau de données" onClick={() => setLeftCollapsed(true)} /></div>
           <nav className="panel-tabs">
             {[
               ["patterns", "Courbes", patterns.length],
@@ -4306,7 +4311,7 @@ export default function App() {
                     <input type="text" value={ramanAverageLabel} aria-label={tr("Nom du patron moyen")} placeholder={tr("Nom du patron moyen")} onChange={(event) => setRamanAverageLabel(event.target.value)} />
                     <div className="average-builder__grid">
                       <label><span>{tr("Agrégation")}</span><select value={S.ramanAverageMethod} onChange={(event) => patchSettings("ramanAverageMethod", event.target.value)}><option value="mean">{tr("Moyenne")}</option><option value="median">{tr("Médiane")}</option></select></label>
-                      <label><span>Avant moyenne</span><select value={S.ramanAverageNormalize} onChange={(event) => patchSettings("ramanAverageNormalize", event.target.value)}><option value="none">{tr("Intensités brutes")}</option><option value="max">{tr("Normaliser au maximum")}</option><option value="area">{tr("Normaliser à l’aire")}</option><option value="minmax">{tr("Min–max")}</option></select></label>
+                      <label><span>{tr("Avant moyenne")}</span><select value={S.ramanAverageNormalize} onChange={(event) => patchSettings("ramanAverageNormalize", event.target.value)}><option value="none">{tr("Intensités brutes")}</option><option value="max">{tr("Normaliser au maximum")}</option><option value="area">{tr("Normaliser à l’aire")}</option><option value="minmax">{tr("Min–max")}</option></select></label>
                     </div>
                     <Toggle label="Masquer les acquisitions source" checked={S.ramanAverageHideSources} onChange={(value) => patchSettings("ramanAverageHideSources", value)} />
                     <div className="average-builder__actions">
@@ -4346,17 +4351,17 @@ export default function App() {
             )}
             {leftTab === "phases" && (
               <>
-                <button type="button" className="drop-button" onClick={() => phaseInputRef.current?.click()}><span className="drop-button__asset"><Icon name="phase" /></span><span><strong>{tr("Importer des phases")}</strong><small>{activeMode === "drx" ? ".dif ou liste de pics DRX" : activeMode === "ir" ? "Liste de bandes IR (cm⁻¹)" : "RRUFF ou liste de pics Raman"}</small></span><Icon name="upload" size={14} /></button>
+                <button type="button" className="drop-button" onClick={() => phaseInputRef.current?.click()}><span className="drop-button__asset"><Icon name="phase" /></span><span><strong>{tr("Importer des phases")}</strong><small>{tr(activeMode === "drx" ? ".dif ou liste de pics DRX" : activeMode === "ir" ? "Liste de bandes IR (cm⁻¹)" : "RRUFF ou liste de pics Raman")}</small></span><Icon name="upload" size={14} /></button>
                 <details className="data-tools-disclosure">
                   <summary><span><Icon name="plus" size={13} />{tr("Ajouter manuellement")}</span><small>{tr("Nom et positions des pics")}</small><Icon name="chevronDown" size={13} /></summary>
                   <div className="data-tools-disclosure__body">
                 <div className="manual-builder">
                   <div className="manual-builder__header"><strong>{tr("Ajouter une phase manuellement")}</strong><span>{tr("Positions seules ou position:intensité")}</span></div>
                   <div className="manual-builder__grid">
-                    <input type="text" value={manualPhase.name} aria-label={tr("Nom de la référence")} placeholder="Nom, ex. Vatérite" onChange={(event) => setManualPhase((current) => ({ ...current, name: event.target.value }))} />
-                    <input type="text" value={manualPhase.abbrev} aria-label={tr("Abréviation de la référence")} placeholder="Abréviation" onChange={(event) => setManualPhase((current) => ({ ...current, abbrev: event.target.value }))} />
+                    <input type="text" value={manualPhase.name} aria-label={tr("Nom de la référence")} placeholder={tr("Nom, ex. Vatérite")} onChange={(event) => setManualPhase((current) => ({ ...current, name: event.target.value }))} />
+                    <input type="text" value={manualPhase.abbrev} aria-label={tr("Abréviation de la référence")} placeholder={tr("Abréviation")} onChange={(event) => setManualPhase((current) => ({ ...current, abbrev: event.target.value }))} />
                   </div>
-                  <textarea rows="4" value={manualPhase.peaks} aria-label={tr("Positions et intensités des pics")} placeholder="107; 280; 713; 750; 1085\nou 107:40; 280:100; 713:65" onChange={(event) => setManualPhase((current) => ({ ...current, peaks: event.target.value }))} />
+                  <textarea rows="4" value={manualPhase.peaks} aria-label={tr("Positions et intensités des pics")} placeholder={tr("107; 280; 713; 750; 1085\nou 107:40; 280:100; 713:65")} onChange={(event) => setManualPhase((current) => ({ ...current, peaks: event.target.value }))} />
                   <div className="manual-builder__footer">
                     <input type="color" value={manualPhase.color} aria-label={tr("Couleur de la phase")} onChange={(event) => setManualPhase((current) => ({ ...current, color: event.target.value }))} />
                     <Button variant="primary" onClick={createManualPhase}>Ajouter la phase</Button>
@@ -4386,11 +4391,11 @@ export default function App() {
             {leftTab === "zones" && (
               <>
                 <div className="manual-builder zone-builder">
-                  <div className="manual-builder__header"><strong>{tr("Ajouter une zone")}</strong><span>Bandes, vibrations ou domaines d’attribution</span></div>
-                  <input type="text" value={zoneDraft.name} aria-label={tr("Nom de la zone")} placeholder="Nom, ex. ν IO — iode" onChange={(event) => setZoneDraft((current) => ({ ...current, name: event.target.value }))} />
+                  <div className="manual-builder__header"><strong>{tr("Ajouter une zone")}</strong><span>{tr("Bandes, vibrations ou domaines d’attribution")}</span></div>
+                  <input type="text" value={zoneDraft.name} aria-label={tr("Nom de la zone")} placeholder={tr("Nom, ex. ν IO — iode")} onChange={(event) => setZoneDraft((current) => ({ ...current, name: event.target.value }))} />
                   <div className="manual-builder__grid">
-                    <label><span>X min</span><NumericInput value={zoneDraft.xmin} step={1} onCommit={(value) => setZoneDraft((current) => ({ ...current, xmin: value }))} ariaLabel={tr("X min de la zone")} /></label>
-                    <label><span>X max</span><NumericInput value={zoneDraft.xmax} step={1} onCommit={(value) => setZoneDraft((current) => ({ ...current, xmax: value }))} ariaLabel={tr("X max de la zone")} /></label>
+                    <label><span>{tr("X min")}</span><NumericInput value={zoneDraft.xmin} step={1} onCommit={(value) => setZoneDraft((current) => ({ ...current, xmin: value }))} ariaLabel={tr("X min de la zone")} /></label>
+                    <label><span>{tr("X max")}</span><NumericInput value={zoneDraft.xmax} step={1} onCommit={(value) => setZoneDraft((current) => ({ ...current, xmax: value }))} ariaLabel={tr("X max de la zone")} /></label>
                   </div>
                   <div className="manual-builder__footer">
                     <input type="color" value={zoneDraft.color} aria-label={tr("Couleur de la zone")} onChange={(event) => setZoneDraft((current) => ({ ...current, color: event.target.value }))} />
@@ -4508,19 +4513,19 @@ export default function App() {
             onPointerCancel={stopPan}
             onWheel={workspaceWheel}
           >
-            {dropActive && <div className="drop-overlay"><div className="drop-overlay__asset"><WorkspaceIllustration mode={activeMode} compact /></div><Icon name="upload" size={24} /><strong>Déposer les fichiers</strong><span>{tr(".dif → DRX · RRUFF Raman → Raman · .xml OPUS → IR · autres fichiers → espace actif.")}</span></div>}
+            {dropActive && <div className="drop-overlay"><div className="drop-overlay__asset"><WorkspaceIllustration mode={activeMode} compact /></div><Icon name="upload" size={24} /><strong>{tr("Déposer les fichiers")}</strong><span>{tr(".dif → DRX · RRUFF Raman → Raman · .xml OPUS → IR · autres fichiers → espace actif.")}</span></div>}
             {!visibleCount ? (
               <div className="welcome-card">
                 <div className="welcome-card__visual"><WorkspaceIllustration mode={activeMode} /></div>
-                <span className="welcome-card__eyebrow"><Icon name="sparkles" size={12} /> Espace {modeLabel(activeMode)}</span>
-                <h1>{activeMode === "drx" ? "Composer une figure de diffraction" : activeMode === "ir" ? "Composer une figure infrarouge" : "Composer une figure Raman"}</h1>
-                <p>Importer les acquisitions, ajouter les références, appliquer le traitement du signal puis produire une figure scientifique prête à publier.</p>
+                <span className="welcome-card__eyebrow"><Icon name="sparkles" size={12} /> {tr("Espace")} {tr(modeLabel(activeMode))}</span>
+                <h1>{tr(activeMode === "drx" ? "Composer une figure de diffraction" : activeMode === "ir" ? "Composer une figure infrarouge" : "Composer une figure Raman")}</h1>
+                <p>{tr("Importer les acquisitions, ajouter les références, appliquer le traitement du signal puis produire une figure scientifique prête à publier.")}</p>
                 <div className="welcome-card__actions">
                   <Button variant="primary" icon="upload" onClick={() => patternInputRef.current?.click()}>{tr("Importer des patrons")}</Button>
                   <Button variant="secondary" icon="phase" onClick={() => phaseInputRef.current?.click()}>Ajouter des phases</Button>
                   <Button variant="secondary" icon="sparkles" onClick={loadSampleData}>Jeu d’exemple</Button>
                 </div>
-                <div className="welcome-card__privacy"><Icon name="check" size={12} /> Traitement exclusivement local dans le navigateur.</div>
+                <div className="welcome-card__privacy"><Icon name="check" size={12} /> {tr("Traitement exclusivement local dans le navigateur.")}</div>
               </div>
             ) : (
               <div className={`page-stage ${comparisonView ? "is-comparison" : ""}`} style={{ width: comparisonView ? W * displayZoom * 2 + 24 : W * displayZoom, height: H * displayZoom }}>
@@ -4531,12 +4536,12 @@ export default function App() {
                 )}
                 <div className="figure-page" style={{ width: W * displayZoom, height: H * displayZoom }}>
                   {textTarget && textTargetStyle && <div className="figure-text-toolbar" data-ui-only="true" onPointerDown={(event) => event.stopPropagation()}>
-                    <span title={textTarget.label}>{truncateLabel(textTarget.label, 22)}</span>
-                    <button type="button" title="Réduire le texte" onClick={() => updateTextTargetStyle("size", clamp(textTargetStyle.size - 0.5, 5, 60))}>−</button>
-                    <input type="number" min="5" max="60" step="0.5" value={textTargetStyle.size} aria-label={`Taille · ${textTarget.label}`} onChange={(event) => updateTextTargetStyle("size", clamp(Number(event.target.value), 5, 60))} />
-                    <button type="button" title="Agrandir le texte" onClick={() => updateTextTargetStyle("size", clamp(textTargetStyle.size + 0.5, 5, 60))}>+</button>
-                    <button type="button" className={textTargetStyle.bold ? "is-active" : ""} aria-pressed={textTargetStyle.bold} title="Gras" onClick={() => updateTextTargetStyle("bold", !textTargetStyle.bold)}><strong>B</strong></button>
-                    <button type="button" title="Fermer les contrôles de texte" onClick={() => setTextTarget(null)}>×</button>
+                    <span title={tr(textTarget.label)}>{truncateLabel(tr(textTarget.label), 22)}</span>
+                    <button type="button" title={tr("Réduire le texte")} onClick={() => updateTextTargetStyle("size", clamp(textTargetStyle.size - 0.5, 5, 60))}>−</button>
+                    <input type="number" min="5" max="60" step="0.5" value={textTargetStyle.size} aria-label={`${tr("Taille")} · ${tr(textTarget.label)}`} onChange={(event) => updateTextTargetStyle("size", clamp(Number(event.target.value), 5, 60))} />
+                    <button type="button" title={tr("Agrandir le texte")} onClick={() => updateTextTargetStyle("size", clamp(textTargetStyle.size + 0.5, 5, 60))}>+</button>
+                    <button type="button" className={textTargetStyle.bold ? "is-active" : ""} aria-pressed={textTargetStyle.bold} title={tr("Gras")} onClick={() => updateTextTargetStyle("bold", !textTargetStyle.bold)}><strong>B</strong></button>
+                    <button type="button" title={tr("Fermer les contrôles de texte")} onClick={() => setTextTarget(null)}>×</button>
                   </div>}
                   <svg
                     ref={svgRef}
@@ -5180,7 +5185,7 @@ export default function App() {
                         {activeMode === "drx" && S.showSecondaryYAxis && <g>
                           <line x1={M.left + plotWidth} x2={M.left + plotWidth} y1={M.top} y2={M.top + mainHeight} stroke="#15191f" strokeWidth="0.8" />
                           {[0, 25, 50, 75, 100].map((value) => { const yy = M.top + mainHeight - (value / 100) * mainHeight; return <g key={`secondary-y-${value}`}><line x1={M.left + plotWidth} x2={M.left + plotWidth + 4} y1={yy} y2={yy} stroke="#15191f" strokeWidth="0.8"/><text x={M.left + plotWidth + 7} y={yy + 3} fontSize={Math.max(6, S.tickFontSize - 2)} fontWeight={S.tickFontBold ? "700" : "400"} fill="#15191f" onClick={(event) => activateTextTarget(event, { kind: "settings", label: "Graduations", sizeKey: "tickFontSize", boldKey: "tickFontBold" })}>{value}</text></g>; })}
-                          <text x={M.left + plotWidth + 38} y={M.top + mainHeight / 2} textAnchor="middle" fontSize={Math.max(7, S.axisFontSize - 2)} fontWeight={S.axisFontBold ? "700" : "400"} fill="#15191f" transform={`rotate(90 ${M.left + plotWidth + 38} ${M.top + mainHeight / 2})`} onClick={(event) => activateTextTarget(event, { kind: "settings", label: "Titres des axes", sizeKey: "axisFontSize", boldKey: "axisFontBold" })}>Relative intensity (%)</text>
+                          <text x={M.left + plotWidth + 38} y={M.top + mainHeight / 2} textAnchor="middle" fontSize={Math.max(7, S.axisFontSize - 2)} fontWeight={S.axisFontBold ? "700" : "400"} fill="#15191f" transform={`rotate(90 ${M.left + plotWidth + 38} ${M.top + mainHeight / 2})`} onClick={(event) => activateTextTarget(event, { kind: "settings", label: "Titres des axes", sizeKey: "axisFontSize", boldKey: "axisFontBold" })}>{tr("Intensité relative (%)")}</text>
                         </g>}
                         {breakActive && <g>
                           <path d={`M${xToPx(Number(S.brokenAxisStart)) + 2} ${axisY - 4}l5 8M${xToPx(Number(S.brokenAxisStart)) + 8} ${axisY - 4}l5 8`} stroke="#15191f" strokeWidth="1" fill="none" />
@@ -5202,19 +5207,19 @@ export default function App() {
           </div>
 
           <footer className="statusbar">
-            <span title={project.name}><strong>{truncateLabel(project.name, 24)}</strong></span><span><strong>{modeLabel(activeMode)}</strong></span><span><strong>{patterns.length}</strong> {tr("patrons")}</span>
+            <span title={project.name}><strong>{truncateLabel(project.name, 24)}</strong></span><span><strong>{tr(modeLabel(activeMode))}</strong></span><span><strong>{patterns.length}</strong> {tr("patrons")}</span>
             <span><strong>{phases.length}</strong> {tr("phases")}</span>
             <span><strong>{visibleCount}</strong> {tr("visibles")}</span>
             {selectionCount > 0 && <span className="statusbar__selection"><strong>{selectionCount}</strong> {tr("sélectionné(s)")}</span>}
             <span><strong>{processed.reduce((sum, pattern) => sum + (pattern.detectedPeaks?.length || 0), 0)}</strong> {tr("pics détectés")}</span>
-            <span>{LAYOUT_OPTIONS.find(([value]) => value === S.layoutMode)?.[1]}</span>
+            <span>{tr(LAYOUT_OPTIONS.find(([value]) => value === S.layoutMode)?.[1])}</span>
             <span className="statusbar__spacer" />
             {cursor ? <><span>x = <strong>{cursor.dataX.toFixed(S.mode === "drx" ? 3 : 1)}</strong></span>{cursor.nearest && <span>{activePattern?.label}: <strong>{cursor.nearest.y.toFixed(4)}</strong></span>}</> : <span>{tr("Déplacer le curseur sur la figure pour lire les coordonnées.")}</span>}
           </footer>
         </section>
 
         <aside className={`side-panel side-panel--right workspace-tool-drawer ${rightCollapsed ? "is-collapsed" : ""}`} aria-hidden={rightCollapsed} style={{ width: rightWidth }}>
-          <div className="panel-titlebar"><div><strong>{tr(workspaceToolTitle)}</strong><span>{selectionCount ? `${selectionCount} ${tr("sélectionné(s)")}` : `${modeLabel(activeMode)} · ${patterns.length + phases.length + notes.length + zones.length} ${tr("éléments")}`}</span></div><IconButton icon="close" title={tr("Fermer les outils")} onClick={() => setRightCollapsed(true)} /></div>
+          <div className="panel-titlebar"><div><strong>{tr(workspaceToolTitle)}</strong><span>{selectionCount ? `${selectionCount} ${tr("sélectionné(s)")}` : `${tr(modeLabel(activeMode))} · ${patterns.length + phases.length + notes.length + zones.length} ${tr("éléments")}`}</span></div><IconButton icon="close" title={tr("Fermer les outils")} onClick={() => setRightCollapsed(true)} /></div>
           <div className="side-panel__content properties-scroll">
             {rightTab === "compose" && composerTab === "appearance" && (
               <>
@@ -5296,7 +5301,7 @@ export default function App() {
                     <SliderField label="Titres des panneaux" value={S.panelTitleFontSize} min={5} max={30} step={0.5} suffix="pt" onChange={(value) => patchSettings("panelTitleFontSize", value)} /><Toggle label="Titres de panneaux en gras" checked={S.panelTitleFontBold} onChange={(value) => patchSettings("panelTitleFontBold", value)} />
                     <SliderField label="Axes des panneaux" value={S.panelAxisFontSize} min={5} max={24} step={0.5} suffix="pt" onChange={(value) => patchSettings("panelAxisFontSize", value)} /><Toggle label="Axes de panneaux en gras" checked={S.panelAxisFontBold} onChange={(value) => patchSettings("panelAxisFontBold", value)} />
                   </div>
-                  <div className="callout">Cliquer sur un texte de la figure affiche aussi les contrôles de taille et de gras directement sur la feuille.</div>
+                  <div className="callout">{tr("Cliquer sur un texte de la figure affiche aussi les contrôles de taille et de gras directement sur la feuille.")}</div>
                 </Section>
                 {appearanceLevel === "advanced" && <Section title="Typographie des annotations et encarts" defaultOpen={false}>
                   <div className="type-role-grid">
@@ -5356,7 +5361,7 @@ export default function App() {
                       <NumberField label="Fin de coupure" value={S.brokenAxisEnd} step={activeMode === "drx" ? 0.5 : 10} suffix={primaryAxisUnit} onChange={(value) => patchSettings("brokenAxisEnd", value)} />
                     </div>
                     <SliderField label="Largeur visuelle de coupure" value={S.brokenAxisGapPx} min={8} max={50} step={1} suffix="px" onChange={(value) => patchSettings("brokenAxisGapPx", value)} />
-                    {!breakActive && <div className="callout">La coupure n’est pas appliquée : les bornes doivent être strictement comprises dans la fenêtre affichée{activeMode === "drx" ? " et l’axe principal doit être 2θ" : ""}.</div>}
+                    {!breakActive && <div className="callout">{tr("La coupure n’est pas appliquée : les bornes doivent être strictement comprises dans la fenêtre affichée")}{activeMode === "drx" ? tr(" et l’axe principal doit être 2θ") : ""}.</div>}
                   </>}
                 </Section>}
 
@@ -5395,14 +5400,14 @@ export default function App() {
                   <Toggle label="Afficher les marqueurs sur la figure" checked={S.showDetectedPeaks} onChange={(value) => patchSettings("showDetectedPeaks", value)} />
                   <Toggle label="Afficher les valeurs des pics" checked={S.showPeakLabels !== false} onChange={(value) => patchSettings("showPeakLabels", value)} />
                   <div className="callout">{tr("Outil « Pics » de la barre du canevas : un clic sur une courbe ajoute un pic au maximum local le plus proche ; un clic sur un marqueur ou sa valeur le retire. Les pics ajoutés sont pleins, les pics détectés sont creux.")}</div>
-                  {activePattern && ((activePattern.userPeaks?.length || 0) + (activePattern.excludedPeaks?.length || 0) > 0) && <div className="inline-actions"><Button variant="secondary" icon="reset" onClick={() => resetPeakEdits(activePattern.id)}>Réinitialiser ajouts/retraits ({(activePattern.userPeaks?.length || 0)} + / {(activePattern.excludedPeaks?.length || 0)} −)</Button></div>}
+                  {activePattern && ((activePattern.userPeaks?.length || 0) + (activePattern.excludedPeaks?.length || 0) > 0) && <div className="inline-actions"><Button variant="secondary" icon="reset" onClick={() => resetPeakEdits(activePattern.id)}>{tr("Réinitialiser ajouts/retraits")} ({(activePattern.userPeaks?.length || 0)} + / {(activePattern.excludedPeaks?.length || 0)} −)</Button></div>}
                   <SliderField label="Hauteur minimale" value={S.peakMinHeight} min={0} max={100} step={1} suffix="%" onChange={(value) => patchSettings("peakMinHeight", value)} />
                   <SliderField label="Proéminence minimale" value={S.peakMinProminence} min={0} max={100} step={0.5} suffix="%" onChange={(value) => patchSettings("peakMinProminence", value)} />
                   <NumberField label="Distance minimale X" value={S.peakMinDistance} min={0} step={S.mode === "drx" ? 0.05 : 1} onChange={(value) => patchSettings("peakMinDistance", value)} />
                   <SliderField label="Fenêtre de proéminence" value={S.peakLookaround} min={2} max={250} step={1} suffix="pts" onChange={(value) => patchSettings("peakLookaround", Math.round(value))} />
                   <SliderField label="Nombre maximal de labels" value={S.peakMaxLabels} min={0} max={100} step={1} onChange={(value) => patchSettings("peakMaxLabels", Math.round(value))} />
                   {activeProcessedPattern ? <div className="peak-results">
-                    <div className="peak-results__header"><strong>{truncateLabel(activeProcessedPattern.label, 28)}</strong><span>{activeProcessedPattern.detectedPeaks?.length || 0} maximum(s)</span></div>
+                    <div className="peak-results__header"><strong>{truncateLabel(activeProcessedPattern.label, 28)}</strong><span>{activeProcessedPattern.detectedPeaks?.length || 0} {tr("maximum(s)")}</span></div>
                     <div className="peak-results__table"><div className="peak-results__row is-head"><span>{tr("Position")}</span><span>{tr("Hauteur")}</span><span>{tr("Prom.")}</span><span>{tr("Actions")}</span></div>{(activeProcessedPattern.detectedPeaks || []).slice(0, 30).map((peak, index) => <div className="peak-results__row" key={`${peak.x}-${index}`}><span>{Number(peak.x).toFixed(activeMode === "drx" ? 4 : 1)}{peak.manual ? " ✎" : ""}</span><span>{Number(peak.heightPct).toFixed(1)} %</span><span>{Number(peak.prominencePct).toFixed(1)} %</span><span><button type="button" title={tr("Ajouter au suivi de série")} onClick={() => addDetectedPeakToTracking(peak, index)}>{tr("Suivre")}</button>{activeMode === "drx" && <button type="button" title={tr("Ajuster ce pic")} onClick={() => fitDetectedPeak(peak)}>{tr("Ajuster")}</button>}<button type="button" title={tr(peak.manual ? "Supprimer ce pic ajouté manuellement" : "Exclure ce pic de la détection")} onClick={() => removePeak(activeProcessedPattern.id, peak)}>{tr("Retirer")}</button></span></div>)}</div>
                   </div> : <div className="callout">{tr("Sélectionner un patron visible pour afficher sa table de maxima.")}</div>}
                   <div className="inline-actions"><Button variant="secondary" icon="csv" onClick={exportDetectedPeaksCsv}>Exporter la table complète</Button></div>
@@ -5452,7 +5457,7 @@ export default function App() {
                   <NumberField label="Décalage maximal ±" value={S.alignmentMaxShift} min={0} step={S.mode === "drx" ? 0.05 : 1} onChange={(value) => { patchSettings("alignmentMaxShift", value); setAlignmentPreview(null); }} />
                   <NumberField label="Pas de recherche" value={S.alignmentStep} min={0.0001} step={S.mode === "drx" ? 0.005 : 0.1} onChange={(value) => { patchSettings("alignmentStep", value); setAlignmentPreview(null); }} />
                   <div className="inline-actions"><Button variant="secondary" onClick={previewVisiblePatternAlignment}>Calculer la prévisualisation</Button>{alignmentPreview && <Button variant="primary" onClick={applyAlignmentPreview}>Appliquer</Button>}<Button variant="secondary" icon="reset" onClick={removeAutomaticAlignment}>Retirer l’alignement auto</Button></div>
-                  {alignmentPreview && <div className="alignment-preview"><div className="alignment-preview__header"><strong>Référence : {truncateLabel(alignmentPreview.referenceLabel, 24)}</strong><span>{alignmentPreview.xmin}–{alignmentPreview.xmax}</span></div>{alignmentPreview.results.map((result) => <div className="alignment-preview__row" key={result.id}><span>{truncateLabel(result.label, 24)}{result.reference ? " · référence" : result.locked ? " · verrouillé" : ""}</span><strong>{result.shift >= 0 ? "+" : ""}{result.shift.toFixed(activeMode === "drx" ? 4 : 1)}</strong><small>{Number.isFinite(result.score) ? `r = ${result.score.toFixed(4)}` : "corrélation indisponible"}</small></div>)}</div>}
+                  {alignmentPreview && <div className="alignment-preview"><div className="alignment-preview__header"><strong>{tr("Référence :")} {truncateLabel(alignmentPreview.referenceLabel, 24)}</strong><span>{alignmentPreview.xmin}–{alignmentPreview.xmax}</span></div>{alignmentPreview.results.map((result) => <div className="alignment-preview__row" key={result.id}><span>{truncateLabel(result.label, 24)}{result.reference ? ` · ${tr("référence")}` : result.locked ? ` · ${tr("verrouillé")}` : ""}</span><strong>{result.shift >= 0 ? "+" : ""}{result.shift.toFixed(activeMode === "drx" ? 4 : 1)}</strong><small>{Number.isFinite(result.score) ? `r = ${result.score.toFixed(4)}` : tr("corrélation indisponible")}</small></div>)}</div>}
                 </Section>
 
                 {activeMode === "drx" && <>
@@ -5477,7 +5482,7 @@ export default function App() {
                     <div className="two-columns"><NumberField label="Centre attendu" value={S.peakFitCenter} step={0.05} suffix="°" onChange={(value) => patchSettings("peakFitCenter", value)} /><NumberField label="Demi-fenêtre" value={S.peakFitWindow} min={0.05} step={0.05} suffix="°" onChange={(value) => patchSettings("peakFitWindow", value)} /></div>
                     <div className="two-columns"><NumberField label="FWHM instrumentale" value={S.instrumentFwhm} min={0} step={0.005} suffix="°" onChange={(value) => patchSettings("instrumentFwhm", value)} /><NumberField label="Constante de Scherrer K" value={S.scherrerK} min={0.5} max={1.5} step={0.01} onChange={(value) => patchSettings("scherrerK", value)} /></div>
                     <div className="inline-actions"><Button variant="primary" onClick={runPeakFit}>Ajuster le pic sélectionné</Button>{peakFitResult && <Button variant="secondary" icon="close" onClick={removePeakFit}>Retirer l’ajustement</Button>}</div>
-                    {peakFitResult && <div className="analysis-result"><strong>{processed.find((pattern) => pattern.id === peakFitResult.patternId)?.label || "Courbe indisponible"}</strong><span>Centre : {peakFitResult.center.toFixed(4)}°</span><span>FWHM : {peakFitResult.fwhm.toFixed(4)}° · corrigée {peakFitResult.betaCorrectedDegrees.toFixed(4)}°</span><span>Aire : {peakFitResult.area.toExponential(4)} · R² : {peakFitResult.r2.toFixed(5)}</span><span>d : {peakFitResult.dSpacing.toFixed(4)} Å · Q : {peakFitResult.q.toFixed(4)} Å⁻¹</span><span>Taille apparente : {peakFitResult.crystalliteNm ? `${peakFitResult.crystalliteNm.toFixed(1)} nm` : "n.d."}</span><span>Microdéformation apparente : {peakFitResult.strain ? `${(peakFitResult.strain * 1e6).toFixed(0)} µε` : "n.d."}</span></div>}
+                    {peakFitResult && <div className="analysis-result"><strong>{processed.find((pattern) => pattern.id === peakFitResult.patternId)?.label || tr("Courbe indisponible")}</strong><span>{tr("Centre :")} {peakFitResult.center.toFixed(4)}°</span><span>FWHM : {peakFitResult.fwhm.toFixed(4)}° · {tr("corrigée")} {peakFitResult.betaCorrectedDegrees.toFixed(4)}°</span><span>{tr("Aire :")} {peakFitResult.area.toExponential(4)} · R² : {peakFitResult.r2.toFixed(5)}</span><span>d : {peakFitResult.dSpacing.toFixed(4)} Å · Q : {peakFitResult.q.toFixed(4)} Å⁻¹</span><span>{tr("Taille apparente :")} {peakFitResult.crystalliteNm ? `${peakFitResult.crystalliteNm.toFixed(1)} nm` : tr("n.d.")}</span><span>{tr("Microdéformation apparente :")} {peakFitResult.strain ? `${(peakFitResult.strain * 1e6).toFixed(0)} µε` : tr("n.d.")}</span></div>}
                     <div className="callout">{tr("Scherrer et la microdéformation sur un seul pic sont des estimations apparentes. Une analyse Williamson–Hall multi-pics reste préférable.")}</div>
                   </Section>
 
@@ -5494,7 +5499,7 @@ export default function App() {
               <>
                 {activeMode === "raman" && <Section title="Base Raman locale" defaultOpen={true}>
                   <Field label="Recherche nom / formule / éléments" targetId="raman-database-search">
-                    <input type="text" value={ramanDatabaseQuery} aria-label={tr("Rechercher dans la base Raman")} placeholder="ex. hydroxyapatite, Ca, P, O" onChange={(event) => setRamanDatabaseQuery(event.target.value)} />
+                    <input type="text" value={ramanDatabaseQuery} aria-label={tr("Rechercher dans la base Raman")} placeholder={tr("ex. hydroxyapatite, Ca, P, O")} onChange={(event) => setRamanDatabaseQuery(event.target.value)} />
                   </Field>
                   <Field label="Éléments" hint="Filtre les résultats par composition chimique">
                     <div className="inline-actions">
@@ -5504,9 +5509,9 @@ export default function App() {
                       })}
                     </div>
                   </Field>
-                  {ramanDatabaseStatus === "loading" ? <div className="callout">Chargement de la base Raman…</div>
-                    : ramanDatabaseStatus === "error" ? <div className="callout">La base Raman locale n’a pas pu être chargée. Rechargez la page pour réessayer.</div>
-                      : ramanDatabaseMatches.length ? <div className="library-list">{ramanDatabaseMatches.map((entry) => <div key={`${entry.name}-${entry.formula || entry.metadata?.RRUFFID || entry.metadata?.NAMES || entry.metadata?.CIF_FORMULA || "entry"}`} className="library-row"><span><strong>{entry.name}</strong><small>{entry.formula || entry.metadata?.RRUFFID || entry.sourceKind || "base locale"}</small></span><Button variant="secondary" onClick={() => addLibraryPhase(entry, activeMode)}>Ajouter</Button></div>)}</div> : <div className="callout">{tr("Aucune correspondance trouvée. Essayez un nom, une formule, ou des symboles d’éléments.")}</div>}
+                  {ramanDatabaseStatus === "loading" ? <div className="callout">{tr("Chargement de la base Raman…")}</div>
+                    : ramanDatabaseStatus === "error" ? <div className="callout">{tr("La base Raman locale n’a pas pu être chargée. Rechargez la page pour réessayer.")}</div>
+                      : ramanDatabaseMatches.length ? <div className="library-list">{ramanDatabaseMatches.map((entry) => <div key={`${entry.name}-${entry.formula || entry.metadata?.RRUFFID || entry.metadata?.NAMES || entry.metadata?.CIF_FORMULA || "entry"}`} className="library-row"><span><strong>{entry.name}</strong><small>{entry.formula || entry.metadata?.RRUFFID || entry.sourceKind || tr("base locale")}</small></span><Button variant="secondary" onClick={() => addLibraryPhase(entry, activeMode)}>Ajouter</Button></div>)}</div> : <div className="callout">{tr("Aucune correspondance trouvée. Essayez un nom, une formule, ou des symboles d’éléments.")}</div>}
                 </Section>}
                 <Section title="Annotations de phases">
                   <Toggle label="Afficher les annotations" checked={S.showAnnotations} onChange={setPhaseAnnotationsVisible} description="Si aucune phase visible n’est sélectionnée, leur activation est restaurée automatiquement." />
@@ -5528,8 +5533,8 @@ export default function App() {
                         <Toggle label={`— Valeurs des pics (${S.mode === "drx" ? "2θ" : "cm⁻¹"})`} checked={Boolean(phase.overlayShowValues)} onChange={(value) => updatePhase(phase.id, "overlayShowValues", value)} />
                         {!S.phaseOverlayFullHeight && <SliderField label="— Hauteur propre à la phase" value={Number.isFinite(Number(phase.overlayScale)) && phase.overlayScale !== null && phase.overlayScale !== undefined ? Number(phase.overlayScale) : (S.phaseOverlayScale ?? 0.85)} min={0.05} max={3} step={0.05} onChange={(value) => updatePhase(phase.id, "overlayScale", value)} />}
                         {phase.overlayScale !== null && phase.overlayScale !== undefined && <div className="inline-actions"><Button variant="secondary" icon="reset" onClick={() => updatePhase(phase.id, "overlayScale", null)}>Revenir à la hauteur globale</Button></div>}
-                        {(phase.overlayPeakScales?.length || 0) > 0 && <div className="inline-actions"><Button variant="secondary" icon="reset" onClick={() => updatePhase(phase.id, "overlayPeakScales", [])}>Réinitialiser les {phase.overlayPeakScales.length} hauteur(s) individuelle(s)</Button></div>}
-                        {(phase.overlayValueExceptions?.length || 0) > 0 && <div className="inline-actions"><Button variant="secondary" icon="reset" onClick={() => updatePhase(phase.id, "overlayValueExceptions", [])}>Réinitialiser les {phase.overlayValueExceptions.length} exception(s)</Button></div>}
+                        {(phase.overlayPeakScales?.length || 0) > 0 && <div className="inline-actions"><Button variant="secondary" icon="reset" onClick={() => updatePhase(phase.id, "overlayPeakScales", [])}>{tr("Réinitialiser les")} {phase.overlayPeakScales.length} {tr("hauteur(s) individuelle(s)")}</Button></div>}
+                        {(phase.overlayValueExceptions?.length || 0) > 0 && <div className="inline-actions"><Button variant="secondary" icon="reset" onClick={() => updatePhase(phase.id, "overlayValueExceptions", [])}>{tr("Réinitialiser les")} {phase.overlayValueExceptions.length} {tr("exception(s)")}</Button></div>}
                       </>}
                     </div>
                   )) : <div className="callout">{tr("Importer d’abord des phases de référence.")}</div>}
@@ -5594,11 +5599,11 @@ export default function App() {
                   <Field label="Fond de la figure"><div className="color-field"><input type="color" value={S.pageBackground} onChange={(event) => patchSettings("pageBackground", event.target.value)} /><code>{S.pageBackground}</code></div></Field>
                   <Toggle label="Fond transparent à l’export" checked={S.transparentExport} onChange={(value) => patchSettings("transparentExport", value)} description="Le PDF utilise toujours un fond opaque ; le TIFF conserve le canal alpha." />
                   <TextField label="Nom du fichier" value={S.fileName} onChange={(value) => patchSettings("fileName", value.replace(/[\\/:*?"<>|]/g, "_"))} />
-                  <div className="export-summary"><span>PNG : {Math.round(W * S.pngScale)} × {Math.round(H * S.pngScale)} px</span><span>PDF / TIFF : {S.exportDpi} dpi</span><span>SVG : vectoriel éditable</span></div>
+                  <div className="export-summary"><span>PNG : {Math.round(W * S.pngScale)} × {Math.round(H * S.pngScale)} px</span><span>PDF / TIFF : {S.exportDpi} dpi</span><span>{tr("SVG : vectoriel éditable")}</span></div>
                 </Section>
                 <Section title="Prévisualiser et exporter">
                   <div className="inline-actions"><Button variant="primary" icon="preview" disabled={isExporting} onClick={() => openExportPreview("png")}>Ouvrir la prévisualisation</Button><Button variant="secondary" icon="duplicate" disabled={isExporting} onClick={copyPngToClipboard}>Copier PNG</Button></div>
-                  <div className="callout">La prévisualisation utilise le même SVG normalisé que les fichiers PNG, TIFF, SVG et PDF. Le zoom de l’éditeur n’affecte pas le résultat.</div>
+                  <div className="callout">{tr("La prévisualisation utilise le même SVG normalisé que les fichiers PNG, TIFF, SVG et PDF. Le zoom de l’éditeur n’affecte pas le résultat.")}</div>
                 </Section>
                 <Section title="Données et projet" defaultOpen={false}>
                   <div className="export-grid"><Button variant="secondary" icon="csv" onClick={exportProcessedCsv}>CSV traité</Button><Button variant="secondary" icon="csv" onClick={exportDetectedPeaksCsv}>CSV pics</Button>{supportsZones && <Button variant="secondary" icon="csv" onClick={exportZonesCsv}>CSV zones</Button>}<Button variant="secondary" icon="save" onClick={saveSessionFile}>Session JSON</Button></div>
@@ -5618,20 +5623,20 @@ export default function App() {
       {isExporting && <div className="export-overlay"><div className="export-orbit"><Icon name="download" size={20} /></div><strong>{tr("Génération de la figure")}</strong><span>{tr("Préparation du fichier haute résolution…")}</span></div>}
       {exportPreview.open && <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeExportPreview(); }}>
         <section className="export-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="export-preview-title">
-          <header className="export-preview-dialog__header"><div><strong id="export-preview-title">Prévisualisation de l’export</strong><span>Rendu normalisé · indépendant du zoom de l’éditeur</span></div><IconButton icon="close" title="Fermer" onClick={closeExportPreview} /></header>
+          <header className="export-preview-dialog__header"><div><strong id="export-preview-title">{tr("Prévisualisation de l’export")}</strong><span>{tr("Rendu normalisé · indépendant du zoom de l’éditeur")}</span></div><IconButton icon="close" title="Fermer" onClick={closeExportPreview} /></header>
           <div className="export-preview-dialog__body">
             <div className="export-preview-stage" style={{ background: S.transparentExport ? "repeating-conic-gradient(#e9edf2 0 25%, #ffffff 0 50%) 50% / 18px 18px" : S.pageBackground }}>
-              <img src={svgDataUrl(exportPreview.serialized)} alt="Prévisualisation exacte de la figure exportée" />
+              <img src={svgDataUrl(exportPreview.serialized)} alt={tr("Prévisualisation exacte de la figure exportée")} />
             </div>
             <aside className="export-preview-controls">
-              <label><span>Format</span><select value={exportPreview.format} onChange={(event) => setExportPreview((current) => ({ ...current, format: event.target.value }))}><option value="png">PNG</option><option value="tiff">TIFF</option><option value="svg">SVG</option><option value="pdf">PDF</option></select></label>
-              <div className="export-summary"><span>Figure : {Math.round(W)} × {Math.round(H)} unités</span>{exportPreview.format === "png" && <span>PNG : {Math.round(W * S.pngScale)} × {Math.round(H * S.pngScale)} px</span>}{["tiff", "pdf"].includes(exportPreview.format) && <span>Résolution demandée : {S.exportDpi} dpi</span>}<span>Fond : {S.transparentExport && exportPreview.format !== "pdf" ? "transparent" : S.pageBackground}</span><span>Épaisseur des courbes : {S.lineWidth}</span></div>
-              <div className="export-preview-actions"><Button variant="secondary" onClick={closeExportPreview}>Annuler</Button><Button variant="primary" icon="download" disabled={isExporting} onClick={downloadPreviewedFigure}>Exporter {exportPreview.format.toUpperCase()}</Button></div>
+              <label><span>{tr("Format")}</span><select value={exportPreview.format} onChange={(event) => setExportPreview((current) => ({ ...current, format: event.target.value }))}><option value="png">PNG</option><option value="tiff">TIFF</option><option value="svg">SVG</option><option value="pdf">PDF</option></select></label>
+              <div className="export-summary"><span>{tr("Figure :")} {Math.round(W)} × {Math.round(H)} {tr("unités")}</span>{exportPreview.format === "png" && <span>PNG : {Math.round(W * S.pngScale)} × {Math.round(H * S.pngScale)} px</span>}{["tiff", "pdf"].includes(exportPreview.format) && <span>{tr("Résolution demandée :")} {S.exportDpi} dpi</span>}<span>{tr("Fond :")} {S.transparentExport && exportPreview.format !== "pdf" ? tr("transparent") : S.pageBackground}</span><span>{tr("Épaisseur des courbes :")} {S.lineWidth}</span></div>
+              <div className="export-preview-actions"><Button variant="secondary" onClick={closeExportPreview}>Annuler</Button><Button variant="primary" icon="download" disabled={isExporting} onClick={downloadPreviewedFigure}>{tr("Exporter")} {exportPreview.format.toUpperCase()}</Button></div>
             </aside>
           </div>
         </section>
       </div>}
-      {addNoteMode && <div className="mode-banner"><Icon name="note" /><span>Cliquer dans la zone principale de la figure pour placer la note.</span><button type="button" onClick={() => setAddNoteMode(false)}>Annuler</button></div>}
+      {addNoteMode && <div className="mode-banner"><Icon name="note" /><span>{tr("Cliquer dans la zone principale de la figure pour placer la note.")}</span><button type="button" onClick={() => setAddNoteMode(false)}>{tr("Annuler")}</button></div>}
     </div>
   );
 }
