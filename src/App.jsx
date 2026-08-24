@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 101103)
-Total output lines: 5619
-
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useHistoryState from "./useHistoryState";
 import { translate, translateMessage, defaultAxisLabels, STOCK_AXIS_LABELS } from "./i18n.js";
@@ -1924,7 +1921,3034 @@ export default function App() {
           cifData: reference.cif || null,
         };
         candidate.subtitle = defaultPhaseSubtitle(candidate);
-        c…51103 tokens truncated…
+        const rruffId = candidate.metadata?.RRUFFID;
+        const duplicateIndex = rruffId ? bucket.findIndex((phase) => phase.metadata?.RRUFFID === rruffId) : -1;
+        if (duplicateIndex >= 0) {
+          const previous = bucket[duplicateIndex];
+          const candidateProcessed = /processed/i.test(candidate.metadata?.FILETYPE || "");
+          const previousProcessed = /processed/i.test(previous.metadata?.FILETYPE || "");
+          bucket[duplicateIndex] = candidateProcessed || !previousProcessed
+            ? { ...candidate, id: previous.id, color: previous.color, files: [...previous.files, file.name] }
+            : { ...previous, files: [...previous.files, file.name] };
+        } else bucket.push(candidate);
+      } catch {
+        warnings.push(`${file.name}: lecture impossible`);
+      }
+    }
+
+    const importedModes = MODES.filter((mode) => additionsByMode[mode].length);
+    if (importedModes.length) {
+      const primaryMode = importedModes.length === 1 ? importedModes[0] : activeMode;
+      history.set((current) => {
+        let next = current;
+        for (const mode of importedModes) {
+          next = updateWorkspaceProject(next, mode, (currentWorkspace) => ({
+            ...currentWorkspace,
+            phases: [...currentWorkspace.phases, ...additionsByMode[mode]],
+          }));
+        }
+        return { ...next, activeMode: primaryMode };
+      });
+      setLeftTab("phases");
+      { const selectedId = additionsByMode[primaryMode][0]?.id || additionsByMode[importedModes[0]][0].id; setSelection([{ type: "phase", id: selectedId }]); selectionAnchorRef.current = { type: "phase", id: selectedId }; }
+      const summary = importedModes.map((mode) => `${additionsByMode[mode].length} ${tr("vers")} ${tr(modeLabel(mode))}`).join(" · ");
+      setMessage(`Phases importées : ${summary}${warnings.length ? ` · ${warnings.join(" · ")}` : ""}`);
+    } else if (warnings.length) setMessage(warnings.join(" · "));
+  }, [activeMode, history, project.workspaces]);
+
+  const appendPhaseFile = async (files) => {
+    const targetId = appendTargetRef.current;
+    if (!targetId || !files.length) return;
+    const file = files[0];
+    const reference = await readPhaseFile(file);
+    if (!reference.peaks.length) {
+      setMessage(`Aucun pic valide dans ${file.name}.`);
+      return;
+    }
+    history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
+      ...currentWorkspace,
+      phases: currentWorkspace.phases.map((phase) => phase.id === targetId
+        ? {
+          ...phase,
+          peaks: mergeDedupPeaks(phase.peaks, reference.peaks),
+          files: [...phase.files, file.name],
+          metadata: { ...(phase.metadata || {}), ...(reference.metadata || {}) },
+        }
+        : phase),
+    })));
+    setMessage(`Fiche ${file.name} fusionnée.`);
+  };
+
+  const createManualPhase = () => {
+    const name = manualPhase.name.trim();
+    const peaks = parseManualPeaks(manualPhase.peaks);
+    if (!name) {
+      setMessage("Saisir le nom de la phase.");
+      return;
+    }
+    if (!peaks.length) {
+      setMessage("Saisir au moins une position de pic valide.");
+      return;
+    }
+    const phase = {
+      id: newId("phase"),
+      name,
+      abbrev: manualPhase.abbrev.trim() || name.slice(0, 3),
+      color: manualPhase.color,
+      peaks,
+      files: ["saisie manuelle"],
+      visible: true,
+      inAnnot: true,
+      inPanel: true,
+      sourceKind: "manual",
+      metadata: {},
+      subtitle: "saisie manuelle",
+      showSubtitle: true,
+    };
+    history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
+      ...currentWorkspace,
+      phases: [...currentWorkspace.phases, phase],
+    })));
+    setManualPhase({ name: "", abbrev: "", peaks: "", color: PHASE_COLORS[(phases.length + 1) % PHASE_COLORS.length] });
+    setSelection([{ type: "phase", id: phase.id }]); selectionAnchorRef.current = { type: "phase", id: phase.id };
+    setRightTab("inspector");
+    setMessage(`Phase « ${name} » ajoutée avec ${peaks.length} pic(s).`);
+  };
+
+  const recalculateRamanPhase = (phase) => {
+    if (!phase?.referenceSpectrum?.x?.length) {
+      setMessage("Cette phase ne contient pas de spectre Raman source.");
+      return;
+    }
+    const peaks = extractRamanReferencePeaks(
+      phase.referenceSpectrum.x,
+      phase.referenceSpectrum.y,
+      phase.ramanOptions || {},
+    );
+    if (!peaks.length) {
+      setMessage("Aucun pic détecté avec ces paramètres.");
+      return;
+    }
+    updatePhase(phase.id, "peaks", peaks);
+    setMessage(`${peaks.length} pics Raman recalculés pour « ${phase.name} ».`);
+  };
+
+  const createZone = () => {
+    const name = zoneDraft.name.trim();
+    const xmin = Number(zoneDraft.xmin);
+    const xmax = Number(zoneDraft.xmax);
+    if (!name || !Number.isFinite(xmin) || !Number.isFinite(xmax) || xmax <= xmin) {
+      setMessage("La zone nécessite un nom et des limites X valides.");
+      return;
+    }
+    const zone = {
+      id: newId("zone"),
+      name, xmin, xmax,
+      color: zoneDraft.color,
+      opacity: Number(zoneDraft.opacity) || 0.12,
+      visible: true,
+      showLabel: true,
+    };
+    history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
+      ...currentWorkspace,
+      zones: [...currentWorkspace.zones, zone],
+    })));
+    setZoneDraft((current) => ({ ...current, name: "" }));
+    setSelection([{ type: "zone", id: zone.id }]); selectionAnchorRef.current = { type: "zone", id: zone.id };
+    setRightTab("inspector");
+    setMessage(`Zone « ${name} » ajoutée à l’espace ${tr(modeLabel(activeMode))}.`);
+  };
+
+  const toggleRamanAveragePattern = (id, checked) => {
+    setRamanAverageSelection((current) => checked
+      ? (current.includes(id) ? current : [...current, id])
+      : current.filter((value) => value !== id));
+  };
+
+  const createRamanAverage = () => {
+    const selected = patterns.filter((pattern) => ramanAverageSelection.includes(pattern.id) && !pattern.isAverage);
+    if (selected.length < 2) {
+      setMessage("Sélectionner au moins deux acquisitions.");
+      return;
+    }
+    try {
+      const averaged = averagePatterns(selected, {
+        label: ramanAverageLabel || `${tr("Moyenne")} ${tr(modeLabel(activeMode))} · ${selected.length} ${tr("acquisitions")}`,
+        method: S.ramanAverageMethod,
+        normalizeMode: S.ramanAverageNormalize,
+      });
+      history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
+        ...currentWorkspace,
+        patterns: [
+          ...currentWorkspace.patterns.map((pattern) => (
+            S.ramanAverageHideSources && ramanAverageSelection.includes(pattern.id)
+              ? { ...pattern, visible: false }
+              : pattern
+          )),
+          averaged,
+        ],
+      })));
+      setRamanAverageSelection([]);
+      setRamanAverageLabel("");
+      setSelection([{ type: "pattern", id: averaged.id }]); selectionAnchorRef.current = { type: "pattern", id: averaged.id };
+      setRightTab("inspector");
+      setMessage(`Patron moyen créé à partir de ${selected.length} acquisitions.`);
+    } catch (error) {
+      setMessage(error.message || "Impossible de calculer la moyenne.");
+    }
+  };
+
+  const setMode = (mode) => {
+    const resolvedMode = resolveMode(mode);
+    if (resolvedMode === activeMode) return;
+    history.set((current) => ({ ...current, activeMode: resolvedMode }), { replace: true });
+    setSelection([]); selectionAnchorRef.current = null;
+    setTextTarget(null);
+    setCursor(null);
+    if (!MODES_WITH_ZONES.includes(resolvedMode) && leftTab === "zones") setLeftTab("patterns");
+    setMessage(`Espace ${tr(modeLabel(resolvedMode))} actif. Les données des autres espaces restent conservées.`);
+  };
+
+  const removeItems = useCallback((items) => {
+    if (!items?.length) return;
+    const ids = { pattern: new Set(), phase: new Set(), note: new Set(), zone: new Set() };
+    items.forEach((item) => ids[item.type]?.add(item.id));
+    const lockedCount = patterns.filter((item) => ids.pattern.has(item.id) && item.locked).length;
+    history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
+      ...currentWorkspace,
+      patterns: currentWorkspace.patterns.filter((item) => !ids.pattern.has(item.id) || item.locked),
+      phases: currentWorkspace.phases.filter((item) => !ids.phase.has(item.id)),
+      notes: currentWorkspace.notes.filter((item) => !ids.note.has(item.id)),
+      zones: currentWorkspace.zones.filter((item) => !ids.zone.has(item.id)),
+    })));
+    clearSelection();
+    if (lockedCount) setMessage(`${lockedCount} patron(s) verrouillé(s) conservé(s).`);
+  }, [activeMode, clearSelection, history, patterns]);
+
+  const removeSelection = useCallback(() => removeItems(selection), [removeItems, selection]);
+
+  const setSelectedVisibility = useCallback((visible) => {
+    if (!selection.length) return;
+    const ids = { pattern: selectedByType.pattern, phase: selectedByType.phase, note: selectedByType.note, zone: selectedByType.zone };
+    history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
+      ...currentWorkspace,
+      patterns: currentWorkspace.patterns.map((item) => ids.pattern.has(item.id) && !item.locked ? { ...item, visible } : item),
+      phases: currentWorkspace.phases.map((item) => ids.phase.has(item.id) ? { ...item, visible } : item),
+      notes: currentWorkspace.notes.map((item) => ids.note.has(item.id) ? { ...item, visible } : item),
+      zones: currentWorkspace.zones.map((item) => ids.zone.has(item.id) ? { ...item, visible } : item),
+    })));
+  }, [activeMode, history, selectedByType, selection.length]);
+
+  const duplicateSelection = useCallback(() => {
+    if (!selection.length) return;
+    const cloneItem = (item, type, nameKey) => {
+      const id = newId(type);
+      return {
+        ...item,
+        id,
+        [nameKey]: `${item[nameKey] || type} — copie`,
+        x: Array.isArray(item.x) ? item.x.slice() : item.x,
+        y: Array.isArray(item.y) ? item.y.slice() : item.y,
+        stdY: Array.isArray(item.stdY) ? item.stdY.slice() : item.stdY,
+        peaks: Array.isArray(item.peaks) ? item.peaks.map((peak) => [...peak]) : item.peaks,
+        files: Array.isArray(item.files) ? item.files.slice() : item.files,
+      };
+    };
+    const patternClones = patterns.filter((item) => selectedByType.pattern.has(item.id)).map((item) => ({ ...cloneItem(item, "pattern", "label"), locked: false }));
+    const phaseClones = phases.filter((item) => selectedByType.phase.has(item.id)).map((item) => cloneItem(item, "phase", "name"));
+    const noteClones = notes.filter((item) => selectedByType.note.has(item.id)).map((item) => cloneItem(item, "note", "text"));
+    const zoneClones = zones.filter((item) => selectedByType.zone.has(item.id)).map((item) => cloneItem(item, "zone", "name"));
+    const clonedSelection = [
+      ...patternClones.map((item) => ({ type: "pattern", id: item.id })),
+      ...phaseClones.map((item) => ({ type: "phase", id: item.id })),
+      ...zoneClones.map((item) => ({ type: "zone", id: item.id })),
+      ...noteClones.map((item) => ({ type: "note", id: item.id })),
+    ];
+    history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
+      ...currentWorkspace,
+      patterns: [...currentWorkspace.patterns, ...patternClones],
+      phases: [...currentWorkspace.phases, ...phaseClones],
+      notes: [...currentWorkspace.notes, ...noteClones],
+      zones: [...currentWorkspace.zones, ...zoneClones],
+    })));
+    if (clonedSelection.length) {
+      setSelection(clonedSelection);
+      selectionAnchorRef.current = clonedSelection[clonedSelection.length - 1];
+      setRightTab("inspector");
+      setMessage(`${clonedSelection.length} élément(s) dupliqué(s).`);
+    }
+  }, [activeMode, history, notes, patterns, phases, selectedByType, selection.length, zones]);
+
+  const moveSelectionToWorkspace = useCallback((targetMode) => {
+    const destination = resolveMode(targetMode);
+    if (destination === activeMode) return;
+    const movable = selection.filter((item) => item.type === "pattern" || item.type === "phase");
+    if (!movable.length) return;
+    history.set((current) => {
+      const source = current.workspaces?.[activeMode] || createWorkspace(activeMode);
+      const target = current.workspaces?.[destination] || createWorkspace(destination);
+      const patternIds = new Set(movable.filter((item) => item.type === "pattern").map((item) => item.id));
+      const phaseIds = new Set(movable.filter((item) => item.type === "phase").map((item) => item.id));
+      const movedPatterns = source.patterns.filter((item) => patternIds.has(item.id) && !item.locked);
+      movedPatterns.forEach((item) => patternIds.add(item.id));
+      source.patterns.filter((item) => item.locked).forEach((item) => patternIds.delete(item.id));
+      const movedPhases = source.phases.filter((item) => phaseIds.has(item.id));
+      return {
+        ...current,
+        workspaces: {
+          ...current.workspaces,
+          [activeMode]: {
+            ...source,
+            patterns: source.patterns.filter((item) => !patternIds.has(item.id)),
+            phases: source.phases.filter((item) => !phaseIds.has(item.id)),
+          },
+          [destination]: {
+            ...target,
+            patterns: [...target.patterns, ...movedPatterns],
+            phases: [...target.phases, ...movedPhases],
+          },
+        },
+      };
+    });
+    clearSelection();
+    setMessage(`${movable.length} élément(s) déplacé(s) vers ${destination.toUpperCase()}.`);
+  }, [activeMode, clearSelection, history, selection]);
+
+  const resetSelectedPatternTransforms = useCallback(() => {
+    if (!selectedByType.pattern.size) return;
+    history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
+      ...currentWorkspace,
+      patterns: currentWorkspace.patterns.map((item) => selectedByType.pattern.has(item.id) && !item.locked ? { ...item, yscale: 1, xoffset: 0, alignmentShift: 0 } : item),
+    })));
+  }, [activeMode, history, selectedByType.pattern]);
+
+  const setSelectedLock = useCallback((locked) => {
+    if (!selectedByType.pattern.size) return;
+    history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
+      ...currentWorkspace,
+      patterns: currentWorkspace.patterns.map((item) => selectedByType.pattern.has(item.id) ? { ...item, locked } : item),
+    })));
+    setMessage(`${selectedByType.pattern.size} patron(s) ${locked ? "verrouillé(s)" : "déverrouillé(s)"}.`);
+  }, [activeMode, history, selectedByType.pattern]);
+
+  const applyBatchRename = useCallback(() => {
+    if (!selectedByType.pattern.size) return;
+    let regex = null;
+    if (batchRename.mode === "regex") {
+      try { regex = new RegExp(batchRename.find, "g"); }
+      catch { setMessage("Expression régulière invalide."); return; }
+    }
+    history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
+      ...currentWorkspace,
+      patterns: currentWorkspace.patterns.map((item) => {
+        if (!selectedByType.pattern.has(item.id) || item.locked) return item;
+        let label = String(item.label || "");
+        if (batchRename.mode === "prefix") label = `${batchRename.value}${label}`;
+        else if (batchRename.mode === "suffix") label = `${label}${batchRename.value}`;
+        else label = label.replace(regex, batchRename.replace);
+        return { ...item, label };
+      }),
+    })));
+    setMessage(`Renommage appliqué à ${selectedByType.pattern.size} patron(s) non verrouillé(s).`);
+  }, [activeMode, batchRename, history, selectedByType.pattern]);
+
+  const applyBatchGroup = useCallback(() => {
+    if (!selectedByType.pattern.size) return;
+    const name = batchGroup.name.trim() || batchGroup.value.trim();
+    history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
+      ...currentWorkspace,
+      patterns: currentWorkspace.patterns.map((item) => selectedByType.pattern.has(item.id) && !item.locked ? {
+        ...item,
+        groupType: batchGroup.type,
+        groupName: name,
+        groupValue: batchGroup.value.trim(),
+      } : item),
+    })));
+    setMessage(`Groupe « ${name || batchGroup.type} » appliqué.`);
+  }, [activeMode, batchGroup, history, selectedByType.pattern]);
+
+  const extractSelectedOrder = useCallback(() => {
+    if (!selectedByType.pattern.size) return;
+    history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
+      ...currentWorkspace,
+      patterns: currentWorkspace.patterns.map((item) => selectedByType.pattern.has(item.id) && !item.locked
+        ? { ...item, orderValue: extractOrderValue(item.fileName || item.label) }
+        : item),
+    })));
+    setMessage("Valeurs d’ordre extraites depuis les noms de fichiers.");
+  }, [activeMode, history, selectedByType.pattern]);
+
+  const sortPatterns = useCallback(() => {
+    if (patternSort.key === "manual") return;
+    const direction = patternSort.direction === "desc" ? -1 : 1;
+    const valueOf = (item) => {
+      if (patternSort.key === "filename") return String(item.fileName || item.label || "").toLocaleLowerCase("fr");
+      if (patternSort.key === "date") return Number(item.fileMetadata?.lastModified || item.importedAt || 0);
+      if (patternSort.key === "numeric") return Number.isFinite(Number(item.orderValue)) ? Number(item.orderValue) : Number.POSITIVE_INFINITY;
+      if (patternSort.key === "group") return String(item.groupName || "").toLocaleLowerCase("fr");
+      return String(item.label || "").toLocaleLowerCase("fr");
+    };
+    history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
+      ...currentWorkspace,
+      patterns: (() => {
+        const unlocked = currentWorkspace.patterns
+          .filter((item) => !item.locked)
+          .map((item, index) => ({ item, index }))
+          .sort((a, b) => {
+            const av = valueOf(a.item); const bv = valueOf(b.item);
+            if (typeof av === "number" && typeof bv === "number") return ((av - bv) || (a.index - b.index)) * direction;
+            return (String(av).localeCompare(String(bv), "fr", { numeric: true }) || (a.index - b.index)) * direction;
+          })
+          .map(({ item }) => item);
+        let cursorIndex = 0;
+        return currentWorkspace.patterns.map((item) => item.locked ? item : unlocked[cursorIndex++]);
+      })(),
+    })));
+    setMessage("Patrons triés.");
+  }, [activeMode, history, patternSort]);
+
+  const saveSessionFile = useCallback(() => {
+    const payload = JSON.stringify({ ...project, version: 17 }, null, 2);
+    const safeName = String(project.name || S.fileName || "make_figure_project").replace(/[\/:*?"<>|]/g, "_");
+    downloadBlob(payload, "application/json", `${safeName}_session.json`);
+    setMessage("Session JSON exportée.");
+  }, [project, S.fileName]);
+
+  const loadSessionFile = async (files) => {
+    if (!files.length) return;
+    try {
+      const parsed = validateProject(JSON.parse(await files[0].text()));
+      const imported = duplicateProject(parsed, parsed.name || "Projet importé");
+      history.replace(imported);
+      clearSelection();
+      setZoom(1);
+      await saveStoredProject(imported);
+      await refreshProjectIndex();
+      writeLocalSetting("make-figure-active-project", imported.id);
+      setMessage(`Projet « ${imported.name} » importé dans la bibliothèque locale.`);
+    } catch (error) {
+      setMessage(`Session invalide : ${error.message}`);
+    }
+  };
+
+  const createNewProject = async () => {
+    const defaultName = `${tr("Projet")} ${projectIndex.length + 1}`;
+    const name = window.prompt(tr("Nom du nouveau projet"), defaultName);
+    if (name === null) return;
+    const next = createEmptyProject(activeMode, { name: name.trim() || defaultName });
+    history.replace(next);
+    clearSelection();
+    setZoom(1);
+    setLeftTab("patterns");
+    setComposerTab("appearance");
+    setRightTab("compose");
+    await saveStoredProject(next);
+    await refreshProjectIndex();
+    writeLocalSetting("make-figure-active-project", next.id);
+    setProjectMenuOpen(false);
+    setMessage(`Projet « ${next.name} » créé.`);
+  };
+
+  const switchProject = async (id) => {
+    if (!id || id === project.id) { setProjectMenuOpen(false); return; }
+    try {
+      await saveStoredProject(project);
+      const next = await loadStoredProject(id);
+      if (!next) throw new Error(tr("Projet introuvable"));
+      history.replace(next);
+      clearSelection();
+      setZoom(1);
+      setCursor(null);
+      writeLocalSetting("make-figure-active-project", next.id);
+      setProjectMenuOpen(false);
+      setMessage(`Projet « ${next.name} » ouvert.`);
+    } catch (error) {
+      setMessage(`Ouverture impossible : ${error.message}`);
+    }
+  };
+
+  const renameCurrentProject = async () => {
+    const name = window.prompt(tr("Nouveau nom du projet"), project.name || tr("Projet sans titre"));
+    if (name === null || !name.trim()) return;
+    history.set((current) => ({ ...current, name: name.trim(), updatedAt: Date.now() }), { replace: true });
+    setProjectMenuOpen(false);
+    setMessage(`Projet renommé « ${name.trim()} ».`);
+  };
+
+  const duplicateCurrentProject = async () => {
+    const copy = duplicateProject(project);
+    history.replace(copy);
+    clearSelection();
+    await saveStoredProject(copy);
+    await refreshProjectIndex();
+    writeLocalSetting("make-figure-active-project", copy.id);
+    setProjectMenuOpen(false);
+    setMessage(`Copie créée : « ${copy.name} ».`);
+  };
+
+  const deleteCurrentProject = async () => {
+    if (!window.confirm(`${tr("Supprimer définitivement le projet local")} « ${project.name} » ?`)) return;
+    await deleteStoredProject(project.id);
+    const remaining = await refreshProjectIndex();
+    const loaded = remaining.length ? await loadStoredProject(remaining[0].id) : null;
+    const next = loaded || createEmptyProject("drx", { name: "Nouveau projet" });
+    if (!loaded) await saveStoredProject(next);
+    history.replace(next);
+    clearSelection();
+    setZoom(1);
+    writeLocalSetting("make-figure-active-project", next.id);
+    setProjectMenuOpen(false);
+    setMessage("Projet supprimé de la bibliothèque locale.");
+  };
+
+  const resetLayout = useCallback(() => {
+    setLeftWidth(310);
+    setRightWidth(390);
+    setLeftCollapsed(false);
+    setRightCollapsed(true);
+    setUiDensity("standard");
+    setMessage("Disposition de l’interface réinitialisée.");
+  }, []);
+
+  const reorder = (type, draggedId, targetId) => {
+    if (!draggedId || draggedId === targetId) return;
+    const key = type === "pattern" ? "patterns" : "phases";
+    history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => {
+      const list = currentWorkspace[key].slice();
+      const from = list.findIndex((item) => item.id === draggedId);
+      const to = list.findIndex((item) => item.id === targetId);
+      if (from < 0 || to < 0) return currentWorkspace;
+      const [item] = list.splice(from, 1);
+      list.splice(to, 0, item);
+      return { ...currentWorkspace, [key]: list };
+    }));
+  };
+
+  const handleDataDragStart = (event, type, id) => {
+    draggedRef.current = { type, id };
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", id);
+  };
+
+  const handleDataDrop = (event, type, targetId) => {
+    event.preventDefault();
+    const dragged = draggedRef.current;
+    if (dragged?.type === type) reorder(type, dragged.id, targetId);
+    draggedRef.current = null;
+  };
+
+  const handleFileDrop = async (event) => {
+    event.preventDefault();
+    setDropActive(false);
+    const files = [...event.dataTransfer.files];
+    if (!files.length) return;
+    const phaseFiles = [];
+    const patternFiles = [];
+    for (const file of files) {
+      if (/\.(dif|cif)$/i.test(file.name)) {
+        phaseFiles.push(file);
+        continue;
+      }
+      if (/\.(txt|csv|dat)$/i.test(file.name)) {
+        try {
+          const prefix = (await file.text()).slice(0, 6000);
+          if (/##RRUFFID=|##FILETYPE=Raman/i.test(prefix)) {
+            phaseFiles.push(file);
+            continue;
+          }
+        } catch { /* imported as an experimental pattern below */ }
+      }
+      patternFiles.push(file);
+    }
+    if (patternFiles.length) await importPatterns(patternFiles);
+    if (phaseFiles.length) await importPhases(phaseFiles);
+  };
+
+  const selectedVisibleIndex = processed.findIndex((pattern) => pattern.id === activePattern?.id);
+
+  const applyPreset = (presetKey) => {
+    const preset = PRESETS[presetKey];
+    if (!preset) return;
+    history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
+      ...currentWorkspace,
+      settings: { ...currentWorkspace.settings, ...preset },
+    })));
+    setMessage(`Preset « ${preset.label} » appliqué.`);
+  };
+
+  const exportProcessedCsv = () => {
+    if (!processed.length) {
+      setMessage("Aucun patron visible à exporter.");
+      return;
+    }
+    downloadBlob(`\ufeff${processedPatternsToCsv(processed)}`, "text/csv;charset=utf-8", `${S.fileName || "figure"}_processed.csv`);
+    setMessage("Données traitées exportées en CSV.");
+  };
+
+  const exportDetectedPeaksCsv = () => {
+    const peakCount = processed.reduce((sum, pattern) => sum + (pattern.detectedPeaks?.length || 0), 0);
+    if (!peakCount) {
+      setMessage("Aucun pic détecté avec les seuils actuels.");
+      return;
+    }
+    downloadBlob(`\ufeff${detectedPeaksToCsv(processed)}`, "text/csv;charset=utf-8", `${S.fileName || "figure"}_peaks.csv`);
+    setMessage(`${peakCount} pic(s) exporté(s) en CSV.`);
+  };
+
+  const exportZonesCsv = () => {
+    if (!zones.length) {
+      setMessage("Aucune zone à exporter.");
+      return;
+    }
+    const escape = (value) => `"${String(value ?? "").replaceAll('"', '""')}"`;
+    const rows = ["name,xmin_cm-1,xmax_cm-1,color,opacity,visible"];
+    zones.forEach((zone) => rows.push([
+      escape(zone.name),
+      Number(zone.xmin),
+      Number(zone.xmax),
+      escape(zone.color),
+      Number(zone.opacity ?? 0.12),
+      zone.visible !== false,
+    ].join(",")));
+    downloadBlob(`\ufeff${rows.join("\n")}`, "text/csv;charset=utf-8", `${S.fileName || "figure"}_${activeMode}_zones.csv`);
+    setMessage(`${zones.length} zone(s) exportée(s) en CSV.`);
+  };
+
+  const previewVisiblePatternAlignment = () => {
+    const visible = patterns.filter((pattern) => pattern.visible);
+    if (visible.length < 2) {
+      setMessage("L’alignement de série nécessite au moins deux patrons visibles.");
+      return;
+    }
+    const referenceId = S.alignmentReferenceId || activePattern?.id || visible[0].id;
+    const reference = visible.find((pattern) => pattern.id === referenceId) || visible[0];
+    const hasRequestedMin = S.alignmentXMin !== null && S.alignmentXMin !== "" && Number.isFinite(Number(S.alignmentXMin));
+    const hasRequestedMax = S.alignmentXMax !== null && S.alignmentXMax !== "" && Number.isFinite(Number(S.alignmentXMax));
+    const rangeMin = hasRequestedMin ? Number(S.alignmentXMin) : S.xmin;
+    const rangeMax = hasRequestedMax && Number(S.alignmentXMax) > rangeMin ? Number(S.alignmentXMax) : S.xmax;
+    const alignmentSettings = { ...S, xmin: rangeMin, xmax: rangeMax };
+    const results = visible.map((pattern) => {
+      if (pattern.id === reference.id) return { id: pattern.id, label: pattern.label, shift: 0, score: 1, reference: true, locked: Boolean(pattern.locked) };
+      const result = estimateCorrelationShift(reference, pattern, alignmentSettings);
+      return { id: pattern.id, label: pattern.label, shift: Number(result.shift) || 0, score: result.score, reference: false, locked: Boolean(pattern.locked) };
+    });
+    setAlignmentPreview({ referenceId: reference.id, referenceLabel: reference.label, xmin: rangeMin, xmax: rangeMax, results });
+    setMessage(`Prévisualisation calculée sur ${rangeMin.toFixed(activeMode === "drx" ? 3 : 1)}–${rangeMax.toFixed(activeMode === "drx" ? 3 : 1)} pour ${results.length - 1} patron(s).`);
+  };
+
+  const applyAlignmentPreview = () => {
+    if (!alignmentPreview?.results?.length) {
+      setMessage("Calculer d’abord une prévisualisation d’alignement.");
+      return;
+    }
+    const byId = new Map(alignmentPreview.results.map((result) => [result.id, result]));
+    history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
+      ...currentWorkspace,
+      patterns: currentWorkspace.patterns.map((pattern) => {
+        const result = byId.get(pattern.id);
+        if (!result || result.reference || result.locked) return pattern;
+        return {
+          ...pattern,
+          xoffset: (Number(pattern.xoffset) || 0) + result.shift,
+          alignmentScore: result.score,
+          alignmentShift: (Number(pattern.alignmentShift) || 0) + result.shift,
+          alignmentReference: alignmentPreview.referenceId,
+        };
+      }),
+      settings: { ...currentWorkspace.settings, alignmentReferenceId: alignmentPreview.referenceId },
+    })));
+    const applied = alignmentPreview.results.filter((result) => !result.reference && !result.locked).length;
+    setAlignmentPreview(null);
+    setMessage(`Alignement de série appliqué à ${applied} patron(s).`);
+  };
+
+  const removeAutomaticAlignment = () => {
+    history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
+      ...currentWorkspace,
+      patterns: currentWorkspace.patterns.map((pattern) => pattern.locked ? pattern : ({ ...pattern, xoffset: (Number(pattern.xoffset) || 0) - (Number(pattern.alignmentShift) || 0), alignmentShift: 0, alignmentScore: undefined, alignmentReference: undefined })),
+    })));
+    setAlignmentPreview(null);
+    setMessage("Alignements automatiques retirés ; les décalages manuels sont conservés.");
+  };
+
+  const insetEnabled = S.figureLayoutMode === "single" && S.showInset;
+  const insetPlacementMode = S.insetPlacementMode || "overlay";
+  const insetDockRight = insetEnabled && insetPlacementMode === "dock-right";
+  const insetDockTop = insetEnabled && insetPlacementMode === "dock-top";
+  const insetDockRightWidth = insetDockRight ? Math.max(190, S.figWidth * clamp(Number(S.insetWidthPct) || 34, 15, 70) / 100 + 22) : 0;
+  const insetDockTopHeight = insetDockTop ? Math.max(145, Math.min(420, S.figWidth * 0.32 * clamp(Number(S.insetHeightPct) || 34, 15, 70) / 100 + 26)) : 0;
+  const previewRightMargin = dragPreview?.type === "rightMargin" ? dragPreview.margin : S.rightMargin;
+  const M = { left: S.figureLayoutMode === "single" ? (S.showYAxisTicks ? 82 : 62) : 22, right: S.figureLayoutMode === "single" ? previewRightMargin : 22, top: (S.title ? 48 : 22) + insetDockTopHeight, gap: 10, axisHeight: S.figureLayoutMode === "single" ? 50 : 10 };
+  const curveMinimum = processed.length
+    ? Math.min(...processed.map((pattern) => pattern.stackOffset + pattern.displayMinimum))
+    : 0;
+  const curveMaximum = processed.length
+    ? Math.max(...processed.map((pattern) => pattern.stackOffset + pattern.displayMaximum))
+    : 1;
+  const curvePadding = Math.max(0.12, (curveMaximum - curveMinimum) * 0.06);
+  const annotationBase = curveMaximum + S.annotGap;
+  const hasAnnotations = S.figureLayoutMode === "single" && S.showAnnotations && phases.some((phase) => phase.visible && phase.inAnnot);
+  const automaticYMinimum = Math.min(-0.15, curveMinimum - curvePadding);
+  const automaticYMaximum = hasAnnotations
+    ? annotationBase + S.tickScale + 0.65
+    : Math.max(curveMaximum + curvePadding, automaticYMinimum + 1.2);
+  const yMinimum = Number.isFinite(S.viewYMin) ? S.viewYMin : automaticYMinimum;
+  const yMaximum = Number.isFinite(S.viewYMax) && S.viewYMax > yMinimum ? S.viewYMax : automaticYMaximum;
+  const mainHeight = Math.max(270, (yMaximum - yMinimum) * S.pxPerUnit);
+  const panelPhases = phases.filter((phase) => phase.visible && phase.inPanel);
+  const panelHeight = S.figureLayoutMode === "single" && S.showPdfPanel && panelPhases.length ? S.pdfPanelH : 0;
+  const W = S.figWidth + insetDockRightWidth;
+  const H = M.top + mainHeight + (panelHeight ? M.gap + panelHeight : 0) + M.axisHeight;
+  const displayZoom = comparisonView
+    ? clamp(Math.min(zoom, (workspaceSize.width - 110) / Math.max(1, W * 2), (workspaceSize.height - 90) / Math.max(1, H)), 0.2, 3)
+    : zoom;
+  const plotWidth = Math.max(120, S.figWidth - M.left - M.right);
+  const panelTop = M.top + mainHeight + M.gap;
+  const rowHeight = panelPhases.length ? panelHeight / panelPhases.length : 0;
+
+  const drxAxisMode = activeMode === "drx" ? (S.xAxisMode || "2theta") : "native";
+  const wavelength = Number(S.wavelength) || 1.5406;
+  const figureFont = S.fontFamily || "Arial, Helvetica, sans-serif";
+  const axisCoordinate = useCallback((x) => drxAxisMode === "native" ? Number(x) : convertDrxX(x, drxAxisMode, wavelength), [drxAxisMode, wavelength]);
+  const primaryAxisWindow = useMemo(() => activeMode === "drx"
+    ? drxAxisWindowFromTwoTheta(viewXMin, viewXMax, drxAxisMode, wavelength)
+    : { minimum: viewXMin, maximum: viewXMax }, [activeMode, drxAxisMode, viewXMax, viewXMin, wavelength]);
+  const primaryAxisUnit = activeMode === "drx"
+    ? (drxAxisMode === "d" ? "Å" : drxAxisMode === "q" ? "Å⁻¹" : "°")
+    : "cm⁻¹";
+  const primaryAxisStep = activeMode === "drx" && ["d", "q"].includes(drxAxisMode) ? 0.01 : (activeMode === "drx" ? 0.1 : 1);
+  const commitPrimaryAxisBound = useCallback((bound, value) => {
+    const nextMinimum = bound === "minimum" ? Number(value) : primaryAxisWindow.minimum;
+    const nextMaximum = bound === "maximum" ? Number(value) : primaryAxisWindow.maximum;
+    if (!(Number.isFinite(nextMinimum) && Number.isFinite(nextMaximum) && nextMaximum > nextMinimum)) {
+      setMessage("La valeur minimale doit rester inférieure à la valeur maximale.");
+      return false;
+    }
+    const nativeWindow = activeMode === "drx"
+      ? drxAxisWindowToTwoTheta(nextMinimum, nextMaximum, drxAxisMode, wavelength)
+      : { xmin: nextMinimum, xmax: nextMaximum };
+    if (!nativeWindow || !(nativeWindow.xmax > nativeWindow.xmin)) {
+      setMessage("Cette plage n’est pas compatible avec l’unité sélectionnée.");
+      return false;
+    }
+    patchSettingsValues({ xmin: nativeWindow.xmin, xmax: nativeWindow.xmax, viewYMin: null, viewYMax: null });
+    return true;
+  }, [activeMode, drxAxisMode, patchSettingsValues, primaryAxisWindow.maximum, primaryAxisWindow.minimum, wavelength]);
+  const insetAxisWindow = useMemo(() => activeMode === "drx"
+    ? drxAxisWindowFromTwoTheta(Number(S.insetXMin), Number(S.insetXMax), drxAxisMode, wavelength)
+    : { minimum: Number(S.insetXMin), maximum: Number(S.insetXMax) }, [S.insetXMax, S.insetXMin, activeMode, drxAxisMode, wavelength]);
+  const commitInsetAxisBound = useCallback((bound, value) => {
+    const nextMinimum = bound === "minimum" ? Number(value) : insetAxisWindow.minimum;
+    const nextMaximum = bound === "maximum" ? Number(value) : insetAxisWindow.maximum;
+    if (!(Number.isFinite(nextMinimum) && Number.isFinite(nextMaximum) && nextMaximum > nextMinimum)) {
+      setMessage("La plage de l’encart est invalide.");
+      return false;
+    }
+    const nativeWindow = activeMode === "drx"
+      ? drxAxisWindowToTwoTheta(nextMinimum, nextMaximum, drxAxisMode, wavelength)
+      : { xmin: nextMinimum, xmax: nextMaximum };
+    if (!nativeWindow || !(nativeWindow.xmax > nativeWindow.xmin)) return false;
+    patchSettingsValues({ insetXMin: nativeWindow.xmin, insetXMax: nativeWindow.xmax });
+    return true;
+  }, [activeMode, drxAxisMode, insetAxisWindow.maximum, insetAxisWindow.minimum, patchSettingsValues, wavelength]);
+  // La coupure vaut pour les trois espaces ; en DRX elle suppose l'axe 2θ,
+  // les axes d et Q n'étant pas linéaires en 2θ.
+  const breakActive = (activeMode !== "drx" || drxAxisMode === "2theta") && S.brokenAxisEnabled && Number(S.brokenAxisEnd) > Number(S.brokenAxisStart) && Number(S.brokenAxisStart) > viewXMin && Number(S.brokenAxisEnd) < viewXMax;
+  // Axe X décroissant : miroir horizontal autour du centre de la zone tracée.
+  // Appliqué en dernier, il vaut pour la courbe, les graduations, le curseur,
+  // les annotations et l’export.
+  const mirrorPx = useCallback(
+    (px) => (S.reverseXAxis ? 2 * M.left + plotWidth - px : px),
+    [M.left, S.reverseXAxis, plotWidth],
+  );
+  const xToPx = useCallback((x) => {
+    if (breakActive) {
+      const start = Number(S.brokenAxisStart); const end = Number(S.brokenAxisEnd); const gap = Math.max(8, Number(S.brokenAxisGapPx) || 18);
+      const leftSpan = start - viewXMin; const rightSpan = viewXMax - end; const usable = Math.max(1, plotWidth - gap); const total = Math.max(1e-12, leftSpan + rightSpan);
+      const leftWidth = usable * leftSpan / total;
+      if (x <= start) return mirrorPx(M.left + ((x - viewXMin) / Math.max(1e-12, leftSpan)) * leftWidth);
+      if (x >= end) return mirrorPx(M.left + leftWidth + gap + ((x - end) / Math.max(1e-12, rightSpan)) * (usable - leftWidth));
+      return mirrorPx(M.left + leftWidth + gap / 2);
+    }
+    const current = axisCoordinate(x);
+    return mirrorPx(M.left + ((current - primaryAxisWindow.minimum) / Math.max(1e-12, primaryAxisWindow.maximum - primaryAxisWindow.minimum)) * plotWidth);
+  }, [M.left, S.brokenAxisEnd, S.brokenAxisGapPx, S.brokenAxisStart, axisCoordinate, breakActive, mirrorPx, plotWidth, primaryAxisWindow.maximum, primaryAxisWindow.minimum, viewXMax, viewXMin]);
+  const pxToDataX = useCallback((px) => {
+    const bounded = mirrorPx(clamp(Number(px), M.left, M.left + plotWidth));
+    if (breakActive) {
+      const start = Number(S.brokenAxisStart);
+      const end = Number(S.brokenAxisEnd);
+      const gap = Math.max(8, Number(S.brokenAxisGapPx) || 18);
+      const leftSpan = start - viewXMin;
+      const rightSpan = viewXMax - end;
+      const usable = Math.max(1, plotWidth - gap);
+      const total = Math.max(1e-12, leftSpan + rightSpan);
+      const leftWidth = usable * leftSpan / total;
+      const local = bounded - M.left;
+      if (local <= leftWidth) return viewXMin + (local / Math.max(1e-12, leftWidth)) * leftSpan;
+      if (local >= leftWidth + gap) return end + ((local - leftWidth - gap) / Math.max(1e-12, usable - leftWidth)) * rightSpan;
+      return local < leftWidth + gap / 2 ? start : end;
+    }
+    const fraction = (bounded - M.left) / Math.max(1e-12, plotWidth);
+    const coordinate = primaryAxisWindow.minimum + fraction * (primaryAxisWindow.maximum - primaryAxisWindow.minimum);
+    if (activeMode !== "drx" || drxAxisMode === "native" || drxAxisMode === "2theta") return coordinate;
+    return invertDrxX(coordinate, drxAxisMode, wavelength);
+  }, [M.left, S.brokenAxisEnd, S.brokenAxisGapPx, S.brokenAxisStart, activeMode, breakActive, drxAxisMode, mirrorPx, plotWidth, primaryAxisWindow.maximum, primaryAxisWindow.minimum, viewXMax, viewXMin, wavelength]);
+  const yToPx = useCallback((y) => M.top + mainHeight - ((y - yMinimum) / (yMaximum - yMinimum)) * mainHeight, [M.top, mainHeight, yMinimum, yMaximum]);
+
+  /**
+   * Ordonnée en pixels du sommet des courbes au voisinage d'une abscisse :
+   * maximum du signal affiché (empilement compris) dans une fenêtre centrée
+   * sur x. Renvoie null si aucune courbe visible ne couvre cette abscisse.
+   * Sert à poser les valeurs des pics de référence au-dessus du pic mesuré
+   * plutôt qu'au-dessus du bâtonnet.
+   */
+  const curveTopPxNear = useCallback((x, halfWindow, invert = false) => {
+    let best = null;
+    for (const pattern of processed) {
+      const sourceX = pattern.sourceX;
+      const values = pattern.displayY;
+      if (!sourceX?.length || !values?.length) continue;
+      if (x < sourceX[0] - halfWindow || x > sourceX[sourceX.length - 1] + halfWindow) continue;
+      const offset = pattern.stackOffset || 0;
+      // Recherche dichotomique de la fenêtre, les abscisses étant croissantes.
+      let low = 0;
+      let high = sourceX.length - 1;
+      while (low < high) {
+        const middle = (low + high) >> 1;
+        if (sourceX[middle] < x - halfWindow) low = middle + 1; else high = middle;
+      }
+      // En transmittance la bande est un minimum : on cherche l'extremum du
+      // bon côté, et l'on retient le point le plus bas plutôt que le plus haut.
+      let extremum = null;
+      for (let index = low; index < sourceX.length && sourceX[index] <= x + halfWindow; index += 1) {
+        const value = values[index];
+        if (!Number.isFinite(value)) continue;
+        if (extremum === null || (invert ? value < extremum : value > extremum)) extremum = value;
+      }
+      if (extremum === null) continue;
+      const py = yToPx(extremum + offset);
+      if (best === null || (invert ? py > best : py < best)) best = py;
+    }
+    return best;
+  }, [processed, yToPx]);
+  const xTickObjects = useMemo(() => {
+    if (activeMode !== "drx" || drxAxisMode === "2theta") return computeTicks(viewXMin, viewXMax, S.xTickStep).filter((tick) => !breakActive || tick <= Number(S.brokenAxisStart) || tick >= Number(S.brokenAxisEnd)).map((tick) => ({ x: tick, axisValue: tick, label: String(tick) }));
+    return computeTicks(primaryAxisWindow.minimum, primaryAxisWindow.maximum, S.xTickStep)
+      .map((value) => ({ x: invertDrxX(value, drxAxisMode, wavelength), axisValue: value, label: value.toFixed(2) }))
+      .filter((tick) => Number.isFinite(tick.x) && tick.x >= viewXMin && tick.x <= viewXMax)
+      .sort((left, right) => left.axisValue - right.axisValue);
+  }, [S.brokenAxisEnd, S.brokenAxisStart, S.xTickStep, activeMode, breakActive, drxAxisMode, primaryAxisWindow.maximum, primaryAxisWindow.minimum, viewXMax, viewXMin, wavelength]);
+  const buildCurvePath = useCallback((xs, ys, offset = 0) => {
+    let path = ""; let drawing = false;
+    for (let index = 0; index < xs.length; index += 1) {
+      const x = xs[index];
+      if (breakActive && x > Number(S.brokenAxisStart) && x < Number(S.brokenAxisEnd)) { drawing = false; continue; }
+      path += `${drawing ? "L" : "M"}${xToPx(x).toFixed(2)},${yToPx(ys[index] + offset).toFixed(2)}`;
+      drawing = true;
+    }
+    return path;
+  }, [S.brokenAxisEnd, S.brokenAxisStart, breakActive, xToPx, yToPx]);
+  const labelYForPattern = useCallback((pattern) => (
+    S.layoutMode === "overlay" && visibleCount > 1
+      ? curveMaximum - (pattern.stackIndex / (visibleCount - 1)) * Math.max(curveMaximum - curveMinimum, 0.8)
+      : pattern.stackOffset + (pattern.displayMinimum + pattern.displayMaximum) * 0.5
+  ), [S.layoutMode, curveMaximum, curveMinimum, visibleCount]);
+
+  const activeProcessedPattern = useMemo(
+    () => processed.find((pattern) => pattern.id === activePattern?.id) || processed[0] || null,
+    [activePattern?.id, processed],
+  );
+
+  const applyRadiationPreset = useCallback((presetKey) => {
+    const preset = RADIATION_PRESETS[presetKey] || RADIATION_PRESETS.custom;
+    history.set((current) => updateWorkspaceProject(current, "drx", (currentWorkspace) => ({
+      ...currentWorkspace,
+      settings: {
+        ...currentWorkspace.settings,
+        radiationPreset: presetKey,
+        wavelength: preset.wavelength,
+        ka2Wavelength: preset.ka2Wavelength,
+        ka2Ratio: preset.ka2Ratio,
+        xlabel: `2θ (°, ${preset.label}, λ = ${preset.wavelength} Å)`,
+      },
+      phases: currentWorkspace.phases.map((phase) => phase.cifData ? {
+        ...phase,
+        peaks: calculateCifPattern(phase.cifData, { wavelength: preset.wavelength, xmin: 3, xmax: 120, maxIndex: 12 }).map(([x, intensity]) => [x, intensity]),
+      } : phase),
+    })));
+    setMessage(`Rayonnement ${preset.label} appliqué ; les phases CIF ont été recalculées.`);
+  }, [history]);
+
+  const recalculateCifPhases = useCallback(() => {
+    let count = 0;
+    history.set((current) => updateWorkspaceProject(current, "drx", (currentWorkspace) => ({
+      ...currentWorkspace,
+      phases: currentWorkspace.phases.map((phase) => {
+        if (!phase.cifData) return phase;
+        count += 1;
+        return { ...phase, peaks: calculateCifPattern(phase.cifData, { wavelength: Number(currentWorkspace.settings.wavelength) || 1.5406, xmin: 3, xmax: 120, maxIndex: 12 }).map(([x, intensity]) => [x, intensity]) };
+      }),
+    })));
+    setMessage(count ? `${count} phase(s) CIF recalculée(s).` : "Aucune phase CIF dans le projet.");
+  }, [history]);
+
+  const applyZeroShift = useCallback(() => {
+    const phase = phases.find((item) => item.id === S.zeroShiftReferencePhaseId) || phases.find((item) => item.visible);
+    const targets = selectedByType.pattern.size
+      ? patterns.filter((item) => selectedByType.pattern.has(item.id) && !item.locked)
+      : patterns.filter((item) => item.visible && !item.locked);
+    if (!phase || !targets.length) {
+      setMessage("Sélectionner une phase de référence et au moins un patron déverrouillé.");
+      return;
+    }
+    const results = new Map(targets.map((pattern) => [pattern.id, estimateZeroShiftFromPhase(pattern, phase, S)]));
+    const valid = [...results.entries()].filter(([, result]) => result.matches.length >= 2 && Number.isFinite(result.shift));
+    if (!valid.length) {
+      setMessage("Correction zéro impossible : moins de deux correspondances fiables par patron.");
+      return;
+    }
+    history.set((current) => updateWorkspaceProject(current, "drx", (currentWorkspace) => ({
+      ...currentWorkspace,
+      patterns: currentWorkspace.patterns.map((pattern) => {
+        const result = results.get(pattern.id);
+        if (!result || result.matches.length < 2 || pattern.locked) return pattern;
+        return { ...pattern, xoffset: (Number(pattern.xoffset) || 0) + result.shift, zeroShiftApplied: (Number(pattern.zeroShiftApplied) || 0) + result.shift, zeroShiftMatches: result.matches.length, zeroShiftScore: result.score };
+      }),
+      settings: { ...currentWorkspace.settings, zeroShiftReferencePhaseId: phase.id },
+    })));
+    const mean = valid.reduce((sum, [, result]) => sum + result.shift, 0) / valid.length;
+    setMessage(`Décalage zéro corrigé sur ${valid.length} patron(s) · correction moyenne ${mean >= 0 ? "+" : ""}${mean.toFixed(4)}°.`);
+  }, [S, history, patterns, phases, selectedByType.pattern]);
+
+  const removeZeroShift = useCallback(() => {
+    history.set((current) => updateWorkspaceProject(current, "drx", (currentWorkspace) => ({
+      ...currentWorkspace,
+      patterns: currentWorkspace.patterns.map((pattern) => pattern.locked ? pattern : ({ ...pattern, xoffset: (Number(pattern.xoffset) || 0) - (Number(pattern.zeroShiftApplied) || 0), zeroShiftApplied: 0, zeroShiftMatches: undefined, zeroShiftScore: undefined })),
+    })));
+    setMessage("Corrections automatiques de décalage zéro retirées.");
+  }, [history]);
+
+  /** Déconvolution multi-pics du patron sélectionné sur la fenêtre indiquée. */
+  const runMultiFit = useCallback(() => {
+    if (!activeProcessedPattern) {
+      setMessage("Sélectionner d'abord un patron.");
+      return;
+    }
+    const centers = parseManualPeaks(multiFitDraft.centers).map(([position]) => position);
+    if (centers.length < 1) {
+      setMessage("Indiquer au moins un centre initial (ex. « 950; 962; 1005 »).");
+      return;
+    }
+    const spread = Math.max(...centers) - Math.min(...centers);
+    const margin = Math.max(spread * 0.3, activeMode === "drx" ? 0.5 : 20);
+    const xmin = Number.isFinite(Number(multiFitDraft.xmin)) && multiFitDraft.xmin !== "" ? Number(multiFitDraft.xmin) : Math.min(...centers) - margin;
+    const xmax = Number.isFinite(Number(multiFitDraft.xmax)) && multiFitDraft.xmax !== "" ? Number(multiFitDraft.xmax) : Math.max(...centers) + margin;
+    const result = fitMultiPeaks(activeProcessedPattern.sourceX, activeProcessedPattern.processedY, { xmin, xmax, centers, model: multiFitDraft.model });
+    if (!result) {
+      setMessage("Ajustement impossible : fenêtre trop étroite ou données insuffisantes.");
+      return;
+    }
+    setMultiFitResult({ patternId: activeProcessedPattern.id, ...result });
+    setMessage(`Ajustement de ${result.components.length} pic(s) : R² = ${result.r2.toFixed(4)}, η = ${result.eta}.`);
+  }, [activeMode, activeProcessedPattern, multiFitDraft]);
+
+  const exportMultiFitCsv = useCallback(() => {
+    if (!multiFitResult) return;
+    downloadBlob(`\ufeff${multiPeakFitToCsv(multiFitResult)}`, "text/csv;charset=utf-8", `${S.fileName || "figure"}_multifit.csv`);
+    setMessage("Résultats de l'ajustement multi-pics exportés.");
+  }, [S.fileName, multiFitResult]);
+
+  // Aires des zones nommées pour chaque patron visible (Raman / IR).
+  const zoneAreaRows = useMemo(() => supportsZones && zones.length && processed.length
+    ? computeZoneAreas(processed, zones, zoneSignal)
+    : [], [supportsZones, zones, processed, zoneSignal]);
+
+  const exportZoneAreasCsv = useCallback(() => {
+    if (!zoneAreaRows.length) return;
+    const zoneA = zones.find((zone) => zone.id === zoneRatio.a);
+    const zoneB = zones.find((zone) => zone.id === zoneRatio.b);
+    const ratio = zoneA && zoneB ? { zoneA: zoneA.id, zoneB: zoneB.id, label: `${zoneA.name}/${zoneB.name}` } : null;
+    downloadBlob(`\ufeff${zoneAreasToCsv(zoneAreaRows, zones, ratio)}`, "text/csv;charset=utf-8", `${S.fileName || "figure"}_aires_zones.csv`);
+    setMessage("Aires des zones exportées.");
+  }, [S.fileName, zoneAreaRows, zoneRatio.a, zoneRatio.b, zones]);
+
+  const runPeakFit = useCallback(() => {
+    if (!activeProcessedPattern) {
+      setMessage("Sélectionner un patron DRX visible.");
+      return;
+    }
+    const result = fitDrxPeak(activeProcessedPattern, S, { center: S.peakFitCenter, window: S.peakFitWindow, model: S.peakFitModel });
+    setPeakFitResult(result ? { patternId: activeProcessedPattern.id, ...result } : null);
+    setMessage(result ? `Pic ajusté à ${result.center.toFixed(4)}° · R² ${result.r2.toFixed(4)}.` : "Ajustement impossible : fenêtre insuffisante ou pic absent.");
+  }, [S, activeProcessedPattern]);
+
+  const fitDetectedPeak = useCallback((peak) => {
+    if (!activeProcessedPattern || !peak) return;
+    const center = Number(peak.x);
+    const result = fitDrxPeak(activeProcessedPattern, S, { center, window: S.peakFitWindow, model: S.peakFitModel });
+    patchSettings("peakFitCenter", center);
+    setPeakFitResult(result ? { patternId: activeProcessedPattern.id, ...result } : null);
+    setMessage(result ? `Pic ajusté à ${result.center.toFixed(4)}° · R² ${result.r2.toFixed(4)}.` : "Ajustement impossible autour de ce maximum.");
+  }, [S, activeProcessedPattern, patchSettings]);
+
+  const removePeakFit = useCallback(() => {
+    setPeakFitResult(null);
+    setMessage("Ajustement de pic retiré.");
+  }, []);
+
+  const addDetectedPeakToTracking = useCallback((peak, index) => {
+    if (!peak) return;
+    const label = `${activeProcessedPattern?.label || "Pic"}/pic ${index + 1}`;
+    const entry = `${label}:${Number(peak.x).toFixed(activeMode === "drx" ? 4 : 1)}`;
+    const current = String(S.trackingTargets || "").trim();
+    patchSettings("trackingTargets", current ? `${current}; ${entry}` : entry);
+    setMessage(`Pic à ${Number(peak.x).toFixed(activeMode === "drx" ? 4 : 1)} ajouté au suivi de série.`);
+  }, [S.trackingTargets, activeMode, activeProcessedPattern, patchSettings]);
+
+  const populateTrackingFromPhase = useCallback(() => {
+    const phase = activePhase || phases.find((item) => item.visible);
+    if (!phase?.peaks?.length) { setMessage("Sélectionner une phase contenant des pics."); return; }
+    const strongest = [...phase.peaks].sort((a, b) => b[1] - a[1]).slice(0, 8).sort((a, b) => a[0] - b[0]);
+    const text = strongest.map(([x], index) => `${phase.name}/pic ${index + 1}:${Number(x).toFixed(3)}`).join("; ");
+    patchSettings("trackingTargets", text);
+    setMessage(`${strongest.length} pics de « ${phase.name} » ajoutés au suivi de série.`);
+  }, [activePhase, phases, patchSettings]);
+
+  const exportTrackingCsv = useCallback(() => {
+    const targets = parseTrackingTargets(S.trackingTargets);
+    if (!targets.length || !processed.length) {
+      setMessage("Définir au moins une position de suivi et charger des patrons visibles.");
+      return;
+    }
+    const rows = trackDrxSeries(processed, targets, { window: S.trackingWindow, signal: S.trackingSignal });
+    downloadBlob(`\ufeff${trackingRowsToCsv(rows)}`, "text/csv;charset=utf-8", `${S.fileName || "figure"}_series_tracking.csv`);
+    setMessage(`${rows.length} mesure(s) de série exportée(s).`);
+  }, [S, processed]);
+
+  const saveSelectedPhasesToLibrary = useCallback(() => {
+    const selected = selectedByType.phase.size ? phases.filter((phase) => selectedByType.phase.has(phase.id)) : phases.filter((phase) => phase.visible);
+    if (!selected.length) { setMessage("Sélectionner au moins une phase."); return; }
+    setPhaseLibrary((current) => {
+      const map = new Map(current.map((phase) => [phase.libraryKey || `${phase.name}:${phase.metadata?.RRUFFID || phase.metadata?.CIF_FORMULA || "manual"}`, phase]));
+      selected.forEach((phase) => {
+        const libraryKey = `${phase.name}:${phase.metadata?.RRUFFID || phase.metadata?.CIF_FORMULA || phase.files?.[0] || "manual"}`;
+        map.set(libraryKey, { ...phase, id: undefined, libraryKey, savedAt: Date.now() });
+      });
+      return [...map.values()];
+    });
+    setMessage(`${selected.length} phase(s) enregistrée(s) dans la bibliothèque locale.`);
+  }, [phases, selectedByType.phase]);
+
+  const addLibraryPhase = useCallback((entry, mode = activeMode) => {
+    const targetMode = resolveMode(mode);
+    const normalizedPeaks = Array.isArray(entry?.peaks)
+      ? entry.peaks.map((peak) => [Number(peak?.[0]) || 0, Number(peak?.[1]) || 0]).filter((peak) => Number.isFinite(peak[0]) && Number.isFinite(peak[1]))
+      : [];
+    const phase = {
+      ...entry,
+      id: newId("phase"),
+      name: String(entry?.name || "Phase sans nom"),
+      abbrev: String(entry?.abbrev || entry?.name || "PH").slice(0, 3),
+      color: entry?.color || PHASE_COLORS[(phases.length + 1) % PHASE_COLORS.length],
+      peaks: normalizedPeaks,
+      files: [...(entry?.files || []), "bibliothèque locale"],
+      visible: entry?.visible !== false,
+      inAnnot: entry?.inAnnot !== false,
+      inPanel: entry?.inPanel !== false,
+      sourceKind: entry?.sourceKind || "raman-database",
+      metadata: entry?.metadata || {},
+      subtitle: phaseSubtitle({ ...entry, subtitle: entry?.subtitle || defaultPhaseSubtitle(entry) }),
+      showSubtitle: entry?.showSubtitle !== false,
+      libraryKey: undefined,
+      savedAt: undefined,
+    };
+    history.set((current) => updateWorkspaceProject(current, targetMode, (currentWorkspace) => ({ ...currentWorkspace, phases: [...currentWorkspace.phases, phase] })));
+    setMessage(`Phase « ${phase.name} » ajoutée dans l’espace ${tr(modeLabel(targetMode))}.`);
+  }, [activeMode, history, phases.length]);
+
+  const applyJournalPreset = useCallback((key) => {
+    const preset = JOURNAL_PRESETS[key];
+    if (!preset) return;
+    history.set((current) => ({
+      ...current,
+      version: 18,
+      workspaces: applySettingsToAllWorkspaces(current.workspaces, preset),
+    }));
+    setMessage(`Gabarit « ${preset.label} » appliqué à tous les espaces.`);
+  }, [history]);
+
+  const saveStyleTemplate = useCallback(() => {
+    const name = templateName.trim();
+    if (!name) { setMessage("Saisir un nom de style."); return; }
+    const keys = ["figWidth", "axisFontSize", "axisFontBold", "tickFontSize", "tickFontBold", "titleFontSize", "titleFontBold", "panelTitleFontSize", "panelTitleFontBold", "panelAxisFontSize", "panelAxisFontBold", "lineWidth", "showFill", "fillAlpha", "cmap", "cmapMin", "cmapMax", "cmapReverse", "useCustomColors", "pageBackground", "rightMargin", "showPatternLabels", "patternLabelSize", "patternLabelBold", "peakLabelSize", "peakLabelBold", "pdfStickW", "annotFontSize", "annotFontBold", "abbrevKeyFontSize", "abbrevKeyFontBold", "zoneLabelFontSize", "zoneLabelFontBold", "referenceRowFontSize", "referenceRowFontBold", "referenceSubtitleFontSize", "referenceSubtitleFontBold", "insetLabelFontSize", "insetLabelFontBold", "insetRangeFontSize", "insetRangeFontBold", "phaseOverlayValueSize", "phaseOverlayValueBold", "overlayLegendFontSize", "overlayLegendFontBold", "curveLegendFontSize", "curveLegendFontBold", "phaseLegendFontSize", "phaseLegendFontBold", "figureLayoutMode", "gridColumns", "panelGap", "panelLettering", "sharedPatternLegend"];
+    const settings = Object.fromEntries(keys.map((key) => [key, S[key]]));
+    setStyleTemplates((current) => [...current.filter((entry) => entry.name !== name), { id: newId("style"), name, settings, savedAt: Date.now() }]);
+    setTemplateName("");
+    setMessage(`Style « ${name} » enregistré localement.`);
+  }, [S, templateName]);
+
+  const applyStyleTemplate = useCallback((entry) => {
+    history.set((current) => ({
+      ...current,
+      workspaces: applySettingsToAllWorkspaces(current.workspaces, entry.settings),
+    }));
+    setMessage(`Style « ${entry.name} » appliqué à tous les espaces.`);
+  }, [history]);
+
+
+  const annotationData = useMemo(() => {
+    if (!S.showAnnotations) return { ticks: [], labels: [] };
+    const ticks = [];
+    phases.forEach((phase) => {
+      if (!phase.visible || !phase.inAnnot) return;
+      phase.peaks.forEach(([x, intensity]) => {
+        if (x >= viewXMin && x <= viewXMax && (!breakActive || x <= Number(S.brokenAxisStart) || x >= Number(S.brokenAxisEnd)) && intensity >= S.tickMinI) {
+          ticks.push({
+            x,
+            intensity,
+            abbreviation: phase.abbrev,
+            color: phase.color,
+            phaseId: phase.id,
+            dashed: isPhaseDashed(phase, "annotation"),
+            labelOffsetX: Number(phase.labelOffsetX) || 0,
+            labelOffsetY: Number(phase.labelOffsetY) || 0,
+          });
+        }
+      });
+    });
+    const pool = ticks.filter((tick) => tick.intensity >= S.labelMinI).sort((a, b) => b.intensity - a.intensity);
+    const labels = [];
+    pool.forEach((tick) => {
+      if (labels.every((placed) => Math.abs(tick.x - placed.x) >= S.labelMinSep)) labels.push(tick);
+    });
+    labels.sort((a, b) => a.x - b.x);
+    return { ticks, labels };
+  }, [S.brokenAxisEnd, S.brokenAxisStart, S.labelMinI, S.labelMinSep, S.showAnnotations, S.tickMinI, breakActive, phases, viewXMax, viewXMin]);
+
+  const serializeSvg = ({ transparent = S.transparentExport } = {}) => {
+    if (!svgRef.current) return null;
+    return serializeSvgForExport(svgRef.current, {
+      width: W,
+      height: H,
+      transparent,
+      background: S.pageBackground,
+    });
+  };
+
+  const downloadSvg = () => {
+    const serialized = serializeSvg();
+    if (!serialized) return;
+    downloadBlob(serialized, "image/svg+xml;charset=utf-8", `${S.fileName || "figure"}.svg`);
+  };
+
+  const rasterizeSvg = async (requestedScale, transparent = S.transparentExport) => {
+    const serialized = serializeSvg({ transparent });
+    if (!serialized) throw new Error("Figure SVG indisponible.");
+    const scale = exportScaleLimits(W, H, requestedScale);
+    const image = new Image();
+    await new Promise((resolve, reject) => {
+      image.onload = resolve;
+      image.onerror = () => reject(new Error("Échec du rendu SVG."));
+      image.src = svgDataUrl(serialized);
+    });
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(W * scale));
+    canvas.height = Math.max(1, Math.round(H * scale));
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    if (!context) throw new Error("Canvas 2D indisponible.");
+    if (!transparent) {
+      context.fillStyle = S.pageBackground;
+      context.fillRect(0, 0, canvas.width, canvas.height);
+    }
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    return { canvas, context, scale };
+  };
+
+  const downloadPng = async () => {
+    try {
+      setIsExporting(true);
+      const { canvas } = await rasterizeSvg(S.pngScale, S.transparentExport);
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+      if (!blob) throw new Error("Encodage PNG impossible.");
+      downloadBlob(blob, "image/png", `${S.fileName || "figure"}.png`);
+      setMessage("Figure PNG exportée.");
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const downloadTiff = async () => {
+    try {
+      setIsExporting(true);
+      const requestedScale = Math.max(1, S.exportDpi / 96);
+      const { canvas, context, scale } = await rasterizeSvg(requestedScale, S.transparentExport);
+      const effectiveDpi = Math.round(scale * 96);
+      const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+      const tiff = encodeTiffRgba(imageData, canvas.width, canvas.height, effectiveDpi);
+      downloadBlob(tiff, "image/tiff", `${S.fileName || "figure"}.tiff`);
+      setMessage(`Figure TIFF exportée à ${effectiveDpi} dpi${effectiveDpi < S.exportDpi ? " — résolution limitée par la taille du canvas" : ""}.`);
+    } catch (error) {
+      setMessage(`Échec TIFF : ${error.message}`);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const downloadPdf = async () => {
+    try {
+      setIsExporting(true);
+      // Export vectoriel : traits et textes restent éditables et nets à
+      // toute échelle. Repli sur l'ancien pipeline raster en cas d'échec.
+      const serialized = serializeSvg({ transparent: false });
+      if (!serialized) throw new Error("Figure SVG indisponible.");
+      const pdf = svgToVectorPdf(serialized, W, H);
+      downloadBlob(pdf, "application/pdf", `${S.fileName || "figure"}.pdf`);
+      setMessage("Figure PDF vectorielle exportée.");
+    } catch (vectorError) {
+      try {
+        const requestedScale = Math.max(1, S.exportDpi / 96);
+        const { canvas, scale } = await rasterizeSvg(requestedScale, false);
+        const effectiveDpi = Math.round(scale * 96);
+        const jpegBlob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.97));
+        if (!jpegBlob) throw new Error("Encodage JPEG intermédiaire impossible.");
+        const jpegBytes = new Uint8Array(await jpegBlob.arrayBuffer());
+        const pdf = buildPdfFromJpeg(jpegBytes, canvas.width, canvas.height, effectiveDpi);
+        downloadBlob(pdf, "application/pdf", `${S.fileName || "figure"}.pdf`);
+        setMessage(`PDF raster exporté à ${effectiveDpi} dpi (conversion vectorielle indisponible : ${vectorError.message}).`);
+      } catch (error) {
+        setMessage(`Échec PDF : ${error.message}`);
+      }
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const copyPngToClipboard = async () => {
+    try {
+      setIsExporting(true);
+      if (typeof ClipboardItem === "undefined" || !navigator.clipboard?.write) {
+        throw new Error("Copie d'image non prise en charge par ce navigateur.");
+      }
+      const { canvas } = await rasterizeSvg(S.pngScale, false);
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+      if (!blob) throw new Error("Encodage PNG impossible.");
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      setMessage("Figure copiée dans le presse-papier.");
+    } catch (error) {
+      setMessage(`Échec de la copie : ${error.message}`);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const openExportPreview = (format = "png") => {
+    const serialized = serializeSvg();
+    if (!serialized) {
+      setMessage("Figure SVG indisponible.");
+      return;
+    }
+    setExportPreview({ open: true, format, serialized });
+  };
+
+  const closeExportPreview = () => setExportPreview((current) => ({ ...current, open: false }));
+
+  const downloadPreviewedFigure = async () => {
+    const format = exportPreview.format;
+    if (format === "svg") downloadSvg();
+    else if (format === "pdf") await downloadPdf();
+    else if (format === "tiff") await downloadTiff();
+    else await downloadPng();
+  };
+
+  const fitToWorkspace = useCallback(() => {
+    const element = workspaceRef.current;
+    if (!element) return;
+    const availableWidth = element.clientWidth - 90;
+    const availableHeight = element.clientHeight - 90;
+    setZoom(clamp(Math.min(availableWidth / W, availableHeight / H), 0.2, 2));
+    requestAnimationFrame(() => {
+      element.scrollTo({ left: 0, top: 0, behavior: "smooth" });
+    });
+  }, [W, H]);
+
+  useEffect(() => {
+    let secondFrame = null;
+    const firstFrame = requestAnimationFrame(() => {
+      secondFrame = requestAnimationFrame(() => fitToWorkspace());
+    });
+    return () => {
+      cancelAnimationFrame(firstFrame);
+      if (secondFrame) cancelAnimationFrame(secondFrame);
+    };
+  }, [rightCollapsed]); // Recalage uniquement lors de l’ouverture/fermeture du panneau.
+
+  const svgPoint = useCallback((event) => {
+    if (!svgRef.current) return null;
+    const rect = svgRef.current.getBoundingClientRect();
+    const svgX = ((event.clientX - rect.left) / rect.width) * W;
+    const svgY = ((event.clientY - rect.top) / rect.height) * H;
+    const insidePlot = svgX >= M.left && svgX <= M.left + plotWidth && svgY >= M.top && svgY <= M.top + mainHeight;
+    const dataX = pxToDataX(svgX);
+    const dataY = yMaximum - ((svgY - M.top) / mainHeight) * (yMaximum - yMinimum);
+    return { svgX, svgY, dataX, dataY, insidePlot };
+  }, [H, M.left, M.top, W, mainHeight, plotWidth, pxToDataX, yMaximum, yMinimum]);
+
+  const snapX = useCallback((value) => {
+    if (!snapToPeak || !processed.length) return value;
+    const tolerance = ((S.xmax - S.xmin) / Math.max(1, plotWidth)) * 14;
+    const candidates = activeProcessedPattern ? [activeProcessedPattern] : processed;
+    let best = null;
+    candidates.forEach((pattern) => {
+      (pattern.detectedPeaks || []).forEach((peak) => {
+        const x = Number(peak.displayX ?? peak.x);
+        const distance = Math.abs(x - value);
+        if (!best || distance < best.distance) best = { x, distance };
+      });
+      if (!(pattern.detectedPeaks || []).length) {
+        const nearest = nearestValue(pattern, value);
+        if (nearest) {
+          const distance = Math.abs(nearest.x - value);
+          if (!best || distance < best.distance) best = { x: nearest.x, distance };
+        }
+      }
+    });
+    return best && best.distance <= tolerance ? best.x : value;
+  }, [S.xmax, S.xmin, activeProcessedPattern, plotWidth, processed, snapToPeak]);
+
+  const commitCanvasReorder = useCallback((patternId, svgY) => {
+    const dragged = processed.find((pattern) => pattern.id === patternId);
+    if (!dragged) return;
+    let target = dragged;
+    let distance = Infinity;
+    processed.forEach((pattern) => {
+      const candidate = Math.abs(yToPx(labelYForPattern(pattern)) - svgY);
+      if (candidate < distance) { distance = candidate; target = pattern; }
+    });
+    if (target.id === dragged.id) return;
+    history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => {
+      const source = currentWorkspace.patterns;
+      const from = source.findIndex((item) => item.id === patternId);
+      const to = source.findIndex((item) => item.id === target.id);
+      if (from < 0 || to < 0 || source[from].locked) return currentWorkspace;
+      const next = source.slice();
+      const [item] = next.splice(from, 1);
+      next.splice(to, 0, item);
+      return { ...currentWorkspace, patterns: next };
+    }));
+    setMessage(`Courbe « ${dragged.label} » déplacée dans l’empilement.`);
+  }, [activeMode, history, labelYForPattern, processed, yToPx]);
+
+  const beginCanvasDrag = useCallback((event, type, payload = {}) => {
+    if (!svgRef.current) return;
+    const point = svgPoint(event);
+    if (!point) return;
+    event.stopPropagation();
+    interactionRef.current = { type, pointerId: event.pointerId, start: point, payload, moved: false };
+  }, [svgPoint]);
+
+  const onSvgPointerDown = (event) => {
+    if (tool !== "zoomRect") return;
+    const point = svgPoint(event);
+    if (!point?.insidePlot) return;
+    beginCanvasDrag(event, "zoomRect", {});
+  };
+
+  const onSvgPointerMove = (event) => {
+    const point = svgPoint(event);
+    if (!point) return;
+    const interaction = interactionRef.current;
+    if (interaction) {
+      if (!interaction.moved) {
+        const distance = Math.hypot(point.svgX - interaction.start.svgX, point.svgY - interaction.start.svgY);
+        if (distance < 2.5) return;
+        interaction.moved = true;
+        svgRef.current?.setPointerCapture?.(interaction.pointerId);
+      }
+      event.preventDefault();
+      if (interaction.type === "note") {
+        let x = clamp(point.dataX, S.xmin, S.xmax);
+        let yFrac = clamp(1 - ((point.svgY - M.top) / mainHeight), 0, 1);
+        const guides = [];
+        if (magnetAlign) {
+          const threshold = 6;
+          // Candidats verticaux : X des autres notes visibles, centre et bords du tracé.
+          const candidatesX = notes
+            .filter((note) => note.id !== interaction.payload.id && note.visible !== false)
+            .map((note) => xToPx(safeNoteModel(note, viewXMin, viewXMax).x));
+          candidatesX.push(M.left + plotWidth / 2);
+          const currentPx = xToPx(x);
+          let bestX = null;
+          candidatesX.forEach((candidate) => {
+            const distance = Math.abs(candidate - currentPx);
+            if (distance <= threshold && (!bestX || distance < bestX.distance)) bestX = { candidate, distance };
+          });
+          if (bestX) {
+            x = clamp(pxToDataX(bestX.candidate), S.xmin, S.xmax);
+            guides.push({ axis: "x", px: bestX.candidate });
+          }
+          // Candidats horizontaux : Y des autres notes, centre du tracé.
+          const candidatesY = notes
+            .filter((note) => note.id !== interaction.payload.id && note.visible !== false)
+            .map((note) => M.top + mainHeight * (1 - safeNoteModel(note, viewXMin, viewXMax).yFrac));
+          candidatesY.push(M.top + mainHeight / 2);
+          const currentPy = M.top + mainHeight * (1 - yFrac);
+          let bestY = null;
+          candidatesY.forEach((candidate) => {
+            const distance = Math.abs(candidate - currentPy);
+            if (distance <= threshold && (!bestY || distance < bestY.distance)) bestY = { candidate, distance };
+          });
+          if (bestY) {
+            yFrac = clamp(1 - ((bestY.candidate - M.top) / mainHeight), 0, 1);
+            guides.push({ axis: "y", px: bestY.candidate });
+          }
+        }
+        setDragPreview({ type: "note", id: interaction.payload.id, x, yFrac, fontSize: interaction.payload.fontSize, guides });
+      } else if (interaction.type === "noteResize") {
+        setDragPreview({ type: "noteResize", id: interaction.payload.id, fontSize: clamp(interaction.payload.fontSize + (point.svgX - interaction.start.svgX) / 4, 5, 60) });
+      } else if (interaction.type === "patternLabel") {
+        let dx = interaction.payload.dx + (point.svgX - interaction.start.svgX);
+        let dy = interaction.payload.dy + (point.svgY - interaction.start.svgY);
+        const guides = [];
+        if (magnetAlign) {
+          const threshold = 6;
+          const defaultLabelX = M.left + plotWidth + 10;
+          // Alignement horizontal : retour à la colonne par défaut des étiquettes.
+          if (Math.abs(dx) <= threshold) {
+            dx = 0;
+            guides.push({ axis: "x", px: defaultLabelX });
+          }
+          // Alignement vertical : ligne de base d'une autre étiquette de courbe.
+          const dragged = processed.find((pattern) => pattern.id === interaction.payload.id);
+          if (dragged) {
+            const currentY = yToPx(labelYForPattern(dragged)) + dy;
+            let bestY = null;
+            processed.forEach((other) => {
+              if (other.id === dragged.id) return;
+              const candidate = yToPx(labelYForPattern(other)) + (Number(other.labelDy) || 0);
+              const distance = Math.abs(candidate - currentY);
+              if (distance <= threshold && (!bestY || distance < bestY.distance)) bestY = { candidate, distance };
+            });
+            if (bestY) {
+              dy += bestY.candidate - currentY;
+              guides.push({ axis: "y", px: bestY.candidate });
+            }
+          }
+        }
+        setDragPreview({ type: "patternLabel", id: interaction.payload.id, dx, dy, fontSize: interaction.payload.fontSize, guides });
+      } else if (interaction.type === "patternLabelResize") {
+        setDragPreview({ type: "patternLabelResize", id: interaction.payload.id, fontSize: clamp(interaction.payload.fontSize + (point.svgX - interaction.start.svgX) / 4, 6, 42) });
+      } else if (interaction.type === "phaseLegendMove") {
+        setDragPreview({ type: "phaseLegendMove", x: interaction.payload.x + (point.svgX - interaction.start.svgX), y: interaction.payload.y + (point.svgY - interaction.start.svgY), width: interaction.payload.width });
+      } else if (interaction.type === "annotationTickScale") {
+        const dataY = yMinimum + ((M.top + mainHeight - point.svgY) / mainHeight) * (yMaximum - yMinimum);
+        const unit = Math.max(1e-6, Number(interaction.payload.intensity) / 100);
+        setDragPreview({ type: "annotationTickScale", scale: clamp((dataY - annotationBase) / unit, 0.05, 3) });
+      } else if (interaction.type === "overlayValueMove") {
+        let dx = interaction.payload.dx + (point.svgX - interaction.start.svgX);
+        let dy = interaction.payload.dy + (point.svgY - interaction.start.svgY);
+        let snapped = null;
+        // Accrochage : près de l'ancrage courant (bâtonnet ou pic selon le mode),
+        // le décalage s'annule ; près de la cible alternative, la valeur s'y colle.
+        if (Math.hypot(dx, dy) < 12) { dx = 0; dy = 0; snapped = "anchor"; }
+        else if (Number.isFinite(interaction.payload.altY)) {
+          const targetDy = interaction.payload.altY - interaction.payload.stickY;
+          if (Math.abs(targetDy) > 4 && Math.hypot(dx, dy - targetDy) < 12) { dx = 0; dy = targetDy; snapped = "alt"; }
+        }
+        setDragPreview({ type: "overlayValueMove", phaseId: interaction.payload.phaseId, x: interaction.payload.x, dx, dy, snapped, stickX: interaction.payload.stickX, stickY: interaction.payload.stickY });
+      } else if (interaction.type === "phaseOverlayPeakScale") {
+        // En transmittance les bâtonnets pendent depuis le haut du cadre : la
+        // longueur se compte depuis M.top et non depuis la ligne de base.
+        const dataY = interaction.payload.invert
+          ? ((point.svgY - M.top) / mainHeight) * (yMaximum - yMinimum)
+          : yMinimum + ((M.top + mainHeight - point.svgY) / mainHeight) * (yMaximum - yMinimum);
+        const unit = Math.max(1e-6, Number(interaction.payload.unit));
+        setDragPreview({ type: "phaseOverlayPeakScale", id: interaction.payload.id, x: interaction.payload.x, scale: clamp(dataY / unit, 0.005, 50) });
+      } else if (interaction.type === "phaseOverlayScale") {
+        const dataY = yMinimum + ((M.top + mainHeight - point.svgY) / mainHeight) * (yMaximum - yMinimum);
+        const unit = Math.max(1e-6, Number(interaction.payload.unit));
+        setDragPreview({ type: "phaseOverlayScale", id: interaction.payload.id, scale: clamp(dataY / unit, 0.005, 50) });
+      } else if (interaction.type === "noteAnchorMove") {
+        const snappedX = snapX(clamp(point.dataX, viewXMin, viewXMax));
+        const yFrac = clamp(1 - ((point.svgY - M.top) / mainHeight), 0, 1);
+        setDragPreview({ type: "noteAnchorMove", id: interaction.payload.id, x: Math.round(snappedX * 10000) / 10000, yFrac: Math.round(yFrac * 1000) / 1000 });
+      } else if (interaction.type === "noteVlineTop" || interaction.type === "noteVlineBottom") {
+        const frac = clamp(1 - ((point.svgY - M.top) / mainHeight), 0, 1);
+        setDragPreview({ type: interaction.type, id: interaction.payload.id, frac: Math.round(frac * 1000) / 1000 });
+      } else if (interaction.type === "overlayLegendMove") {
+        setDragPreview({ type: "overlayLegendMove", x: interaction.payload.x + (point.svgX - interaction.start.svgX), y: interaction.payload.y + (point.svgY - interaction.start.svgY) });
+      } else if (interaction.type === "curveLegendMove") {
+        setDragPreview({ type: "curveLegendMove", x: interaction.payload.x + (point.svgX - interaction.start.svgX), y: interaction.payload.y + (point.svgY - interaction.start.svgY) });
+      } else if (interaction.type === "zoomRect") {
+        setDragPreview({ type: "zoomRect", x1: interaction.start.svgX, x2: point.svgX });
+      } else if (interaction.type === "phaseLegendResize") {
+        setDragPreview({ type: "phaseLegendResize", x: interaction.payload.x, y: interaction.payload.y, width: clamp(interaction.payload.width + (point.svgX - interaction.start.svgX), 140, Math.max(160, plotWidth - 10)) });
+      } else if (interaction.type === "insetMove") {
+        const widthFrac = clamp(Number(interaction.payload.widthPct) || 34, 15, 70) / 100;
+        const heightFrac = clamp(Number(interaction.payload.heightPct) || 34, 15, 70) / 100;
+        setDragPreview({
+          type: "insetMove",
+          xFrac: clamp(interaction.payload.xFrac + (point.svgX - interaction.start.svgX) / Math.max(1, plotWidth), 0, Math.max(0, 1 - widthFrac)),
+          yFrac: clamp(interaction.payload.yFrac + (point.svgY - interaction.start.svgY) / Math.max(1, mainHeight), 0, Math.max(0, 1 - heightFrac)),
+          widthPct: interaction.payload.widthPct,
+          heightPct: interaction.payload.heightPct,
+        });
+      } else if (interaction.type === "insetResize") {
+        const widthPct = clamp(interaction.payload.widthPct + ((point.svgX - interaction.start.svgX) / Math.max(1, plotWidth)) * 100, 15, 70);
+        const heightPct = clamp(interaction.payload.heightPct + ((point.svgY - interaction.start.svgY) / Math.max(1, mainHeight)) * 100, 15, 70);
+        setDragPreview({ type: "insetResize", xFrac: interaction.payload.xFrac, yFrac: interaction.payload.yFrac, widthPct, heightPct });
+      } else if (interaction.type === "xAxisWindow") {
+        const minimumSpan = Math.max((fullXRange.maximum - fullXRange.minimum) * 0.002, activeMode === "drx" ? 0.02 : 1);
+        const { xmin, xmax } = computeAxisWindowDrag({
+          mode: interaction.payload.mode,
+          startMin: interaction.payload.xmin,
+          startMax: interaction.payload.xmax,
+          // Sur un axe inversé, un glissement vers la droite fait décroître X.
+          deltaPx: (point.svgX - interaction.start.svgX) * (S.reverseXAxis ? -1 : 1),
+          plotWidth: interaction.payload.plotWidth || plotWidth,
+          dataMin: fullXRange.minimum,
+          dataMax: fullXRange.maximum,
+          minimumSpan,
+        });
+        setDragPreview({ type: "xAxisWindow", mode: interaction.payload.mode, xmin, xmax });
+      } else if (interaction.type === "phaseLabel") {
+        setDragPreview({
+          type: "phaseLabel",
+          id: interaction.payload.id,
+          xOffset: interaction.payload.xOffset + (point.dataX - interaction.start.dataX),
+          yOffset: interaction.payload.yOffset + (point.dataY - interaction.start.dataY),
+        });
+      } else if (interaction.type === "zoneBoundary") {
+        const zone = zones.find((item) => item.id === interaction.payload.id);
+        if (zone) {
+          const x = clamp(point.dataX, S.xmin, S.xmax);
+          setDragPreview({
+            type: "zoneBoundary",
+            id: zone.id,
+            edge: interaction.payload.edge,
+            x: interaction.payload.edge === "min" ? Math.min(x, Number(zone.xmax) - 1e-9) : Math.max(x, Number(zone.xmin) + 1e-9),
+          });
+        }
+      } else if (interaction.type === "curveOrder") {
+        setDragPreview({ type: "curveOrder", id: interaction.payload.id, svgY: point.svgY });
+      } else if (interaction.type === "rightMargin") {
+        const maximum = Math.max(50, S.figWidth - M.left - 120);
+        const margin = clamp(interaction.payload.margin - (point.svgX - interaction.start.svgX), 50, Math.min(400, maximum));
+        setDragPreview({ type: "rightMargin", margin: Math.round(margin) });
+      }
+      return;
+    }
+    if (!point.insidePlot) {
+      setCursor(null);
+      return;
+    }
+    const dataX = snapToPeak ? snapX(point.dataX) : point.dataX;
+    const nearest = activeProcessedPattern ? nearestValue(activeProcessedPattern, dataX) : null;
+    setCursor({ dataX, svgX: xToPx(dataX), svgY: point.svgY, nearest, snapped: Math.abs(dataX - point.dataX) > 1e-10 });
+  };
+
+  const finishSvgInteraction = (event) => {
+    const interaction = interactionRef.current;
+    if (!interaction) return;
+    if (!interaction.moved) {
+      try { svgRef.current?.releasePointerCapture?.(interaction.pointerId); } catch { /* capture already released */ }
+      interactionRef.current = null;
+      setDragPreview(null);
+      return;
+    }
+    const point = svgPoint(event) || interaction.start;
+    if (dragPreview?.type === "note") {
+      history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
+        ...currentWorkspace,
+        notes: currentWorkspace.notes.map((note) => note.id === dragPreview.id ? { ...note, x: dragPreview.x, yFrac: dragPreview.yFrac } : note),
+      })));
+    } else if (dragPreview?.type === "noteResize") {
+      updateNote(dragPreview.id, "fontSize", dragPreview.fontSize);
+    } else if (dragPreview?.type === "patternLabel") {
+      history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
+        ...currentWorkspace,
+        patterns: currentWorkspace.patterns.map((pattern) => pattern.id === dragPreview.id ? { ...pattern, labelDx: dragPreview.dx, labelDy: dragPreview.dy } : pattern),
+      })));
+    } else if (dragPreview?.type === "patternLabelResize") {
+      updatePattern(dragPreview.id, "labelFontSize", dragPreview.fontSize);
+    } else if (dragPreview?.type === "phaseLabel") {
+      history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
+        ...currentWorkspace,
+        phases: currentWorkspace.phases.map((phase) => phase.id === dragPreview.id ? { ...phase, labelOffsetX: dragPreview.xOffset, labelOffsetY: dragPreview.yOffset } : phase),
+      })));
+    } else if (dragPreview?.type === "zoneBoundary") {
+      updateZone(dragPreview.id, dragPreview.edge === "min" ? "xmin" : "xmax", dragPreview.x);
+    } else if (dragPreview?.type === "curveOrder") {
+      commitCanvasReorder(dragPreview.id, dragPreview.svgY ?? point.svgY);
+    } else if (dragPreview?.type === "annotationTickScale") {
+      patchSettings("tickScale", Math.round(dragPreview.scale * 1000) / 1000);
+    } else if (dragPreview?.type === "overlayValueMove") {
+      setOverlayValueOffset(dragPreview.phaseId, dragPreview.x, dragPreview.dx, dragPreview.dy);
+    } else if (dragPreview?.type === "phaseOverlayPeakScale") {
+      setPhaseOverlayPeakScale(dragPreview.id, dragPreview.x, Math.round(dragPreview.scale * 10000) / 10000);
+    } else if (dragPreview?.type === "phaseOverlayScale") {
+      updatePhase(dragPreview.id, "overlayScale", Math.round(dragPreview.scale * 1000) / 1000);
+    } else if (dragPreview?.type === "noteAnchorMove") {
+      history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
+        ...currentWorkspace,
+        notes: currentWorkspace.notes.map((note) => note.id === dragPreview.id ? { ...note, anchorX: dragPreview.x, anchorYFrac: dragPreview.yFrac } : note),
+      })));
+    } else if (dragPreview?.type === "noteVlineTop" || dragPreview?.type === "noteVlineBottom") {
+      updateNote(dragPreview.id, dragPreview.type === "noteVlineTop" ? "vlineTopFrac" : "vlineBottomFrac", dragPreview.frac);
+    } else if (dragPreview?.type === "overlayLegendMove") {
+      history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
+        ...currentWorkspace,
+        settings: { ...currentWorkspace.settings, overlayLegendX: dragPreview.x, overlayLegendY: dragPreview.y },
+      })));
+    } else if (dragPreview?.type === "curveLegendMove") {
+      history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
+        ...currentWorkspace,
+        settings: { ...currentWorkspace.settings, curveLegendX: dragPreview.x, curveLegendY: dragPreview.y },
+      })));
+    } else if (dragPreview?.type === "zoomRect") {
+      const first = pxToDataX(Math.min(dragPreview.x1, dragPreview.x2));
+      const second = pxToDataX(Math.max(dragPreview.x1, dragPreview.x2));
+      const xmin = Math.min(first, second);
+      const xmax = Math.max(first, second);
+      const minimumSpan = Math.max((fullXRange.maximum - fullXRange.minimum) * 0.002, activeMode === "drx" ? 0.02 : 1);
+      if (xmax - xmin >= minimumSpan) {
+        history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
+          ...currentWorkspace,
+          settings: { ...currentWorkspace.settings, xmin, xmax, viewYMin: null, viewYMax: null },
+        })));
+        setMessage(`Zoom sur ${xmin.toFixed(activeMode === "drx" ? 2 : 0)}–${xmax.toFixed(activeMode === "drx" ? 2 : 0)}.`);
+      }
+    } else if (["phaseLegendMove", "phaseLegendResize"].includes(dragPreview?.type)) {
+      history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
+        ...currentWorkspace,
+        settings: { ...currentWorkspace.settings, phaseLegendX: dragPreview.x, phaseLegendY: dragPreview.y, phaseLegendWidth: dragPreview.width },
+      })));
+    } else if (["insetMove", "insetResize"].includes(dragPreview?.type)) {
+      history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
+        ...currentWorkspace,
+        settings: { ...currentWorkspace.settings, insetXFrac: dragPreview.xFrac, insetYFrac: dragPreview.yFrac, insetWidthPct: dragPreview.widthPct, insetHeightPct: dragPreview.heightPct },
+      })));
+    } else if (dragPreview?.type === "xAxisWindow") {
+      history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
+        ...currentWorkspace,
+        settings: { ...currentWorkspace.settings, xmin: dragPreview.xmin, xmax: dragPreview.xmax, viewYMin: null, viewYMax: null },
+      })));
+    } else if (dragPreview?.type === "rightMargin") {
+      patchSettings("rightMargin", dragPreview.margin);
+      setMessage(`Marge droite : ${dragPreview.margin} px.`);
+    }
+    try { svgRef.current?.releasePointerCapture?.(interaction.pointerId); } catch { /* capture already released */ }
+    interactionRef.current = null;
+    suppressClickRef.current = true;
+    setDragPreview(null);
+  };
+
+  const resetDataZoom = useCallback(() => {
+    history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
+      ...currentWorkspace,
+      settings: { ...currentWorkspace.settings, xmin: fullXRange.minimum, xmax: fullXRange.maximum, viewYMin: null, viewYMax: null },
+    })));
+    setMessage("Plage X réinitialisée sur l’étendue des données visibles.");
+  }, [activeMode, fullXRange.maximum, fullXRange.minimum, history]);
+
+  // ── Édition interactive des pics ─────────────────────────────────────────
+  const peakEditTolerance = activeMode === "drx" ? 0.05 : 2;
+
+  const addUserPeak = useCallback((patternId, x) => {
+    history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
+      ...currentWorkspace,
+      patterns: currentWorkspace.patterns.map((pattern) => {
+        if (pattern.id !== patternId) return pattern;
+        const existing = Array.isArray(pattern.userPeaks) ? pattern.userPeaks : [];
+        if (existing.some((value) => Math.abs(value - x) < peakEditTolerance / 2)) return pattern;
+        // Un ajout à une position exclue lève d'abord l'exclusion.
+        const excluded = (Array.isArray(pattern.excludedPeaks) ? pattern.excludedPeaks : []).filter((value) => Math.abs(value - x) >= peakEditTolerance);
+        return { ...pattern, userPeaks: [...existing, x].sort((a, b) => a - b), excludedPeaks: excluded };
+      }),
+    })));
+    setMessage(`Pic ajouté à ${x.toFixed(activeMode === "drx" ? 3 : 1)}.`);
+  }, [activeMode, history, peakEditTolerance]);
+
+  const removePeak = useCallback((patternId, peak) => {
+    history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
+      ...currentWorkspace,
+      patterns: currentWorkspace.patterns.map((pattern) => {
+        if (pattern.id !== patternId) return pattern;
+        if (peak.manual) {
+          const userPeaks = (Array.isArray(pattern.userPeaks) ? pattern.userPeaks : []).filter((value) => Math.abs(value - peak.x) >= peakEditTolerance / 2);
+          return { ...pattern, userPeaks };
+        }
+        const excluded = Array.isArray(pattern.excludedPeaks) ? pattern.excludedPeaks : [];
+        if (excluded.some((value) => Math.abs(value - peak.x) < peakEditTolerance / 2)) return pattern;
+        return { ...pattern, excludedPeaks: [...excluded, peak.x].sort((a, b) => a - b) };
+      }),
+    })));
+    setMessage(`Pic à ${Number(peak.x).toFixed(activeMode === "drx" ? 3 : 1)} retiré.`);
+  }, [activeMode, history, peakEditTolerance]);
+
+  /**
+   * Applique une nouvelle liste de pics à une phase en remappant les réglages
+   * par pic (hauteurs individuelles, exceptions de valeurs, décalages) sur la
+   * position la plus proche de la nouvelle liste. Sans cela, l'arrondi de
+   * l'éditeur manuel décale les positions et perd tous les réglages.
+   */
+  const applyPhasePeaks = useCallback((phaseId, peaks) => {
+    const remapTolerance = activeMode === "drx" ? 0.02 : 2;
+    history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
+      ...currentWorkspace,
+      phases: currentWorkspace.phases.map((phase) => {
+        if (phase.id !== phaseId) return phase;
+        const nearest = (x) => {
+          let best = null;
+          for (const [position] of peaks) {
+            const distance = Math.abs(position - x);
+            if (distance < remapTolerance && (!best || distance < best.distance)) best = { position, distance };
+          }
+          return best?.position;
+        };
+        const seen = new Set();
+        const remapObjects = (list) => (list || []).map((item) => {
+          const next = nearest(Number(item.x));
+          if (next === undefined || seen.has(`o${next}`)) return null;
+          seen.add(`o${next}`);
+          return { ...item, x: next };
+        }).filter(Boolean);
+        const remapValues = (list) => (list || []).map((value) => {
+          const next = nearest(Number(value));
+          if (next === undefined || seen.has(`v${next}`)) return null;
+          seen.add(`v${next}`);
+          return next;
+        }).filter((value) => value !== null);
+        return {
+          ...phase,
+          peaks,
+          overlayPeakScales: remapObjects(phase.overlayPeakScales),
+          overlayValueOffsets: remapObjects(phase.overlayValueOffsets),
+          overlayValueExceptions: remapValues(phase.overlayValueExceptions),
+        };
+      }),
+    })));
+  }, [activeMode, history]);
+
+  /** Enregistre le décalage libre d'une valeur de pic ; nul, il est retiré. */
+  const setOverlayValueOffset = useCallback((phaseId, x, dx, dy) => {
+    history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
+      ...currentWorkspace,
+      phases: currentWorkspace.phases.map((phase) => {
+        if (phase.id !== phaseId) return phase;
+        const tolerance = activeMode === "drx" ? 0.005 : 0.5;
+        const entries = (phase.overlayValueOffsets || []).filter((item) => Math.abs(Number(item.x) - x) >= tolerance);
+        if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return { ...phase, overlayValueOffsets: entries };
+        return { ...phase, overlayValueOffsets: [...entries, { x, dx: Math.round(dx * 10) / 10, dy: Math.round(dy * 10) / 10 }].sort((a, b) => a.x - b.x) };
+      }),
+    })));
+  }, [activeMode, history]);
+
+  // Tolérance d'appariement des réglages par pic (hauteurs, exceptions,
+  // décalages de valeurs) : les positions issues de l'éditeur manuel sont
+  // arrondies à 2 décimales, une égalité stricte perdrait les réglages.
+  const overlayTolerance = activeMode === "drx" ? 0.005 : 0.5;
+
+  /**
+   * Fixe la hauteur d'un bâtonnet superposé individuellement. La valeur est
+   * stockée par position dans overlayPeakScales ; les bâtonnets sans entrée
+   * suivent la hauteur de la phase.
+   */
+  const setPhaseOverlayPeakScale = useCallback((phaseId, x, scale) => {
+    history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
+      ...currentWorkspace,
+      phases: currentWorkspace.phases.map((phase) => {
+        if (phase.id !== phaseId) return phase;
+        const entries = (phase.overlayPeakScales || []).filter((item) => Math.abs(Number(item.x) - x) >= overlayTolerance);
+        return { ...phase, overlayPeakScales: [...entries, { x, scale }].sort((a, b) => a.x - b.x) };
+      }),
+    })));
+  }, [activeMode, history]);
+
+  /** Rend un bâtonnet à la hauteur commune de sa phase. */
+  const resetPhaseOverlayPeakScale = useCallback((phaseId, x) => {
+    history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
+      ...currentWorkspace,
+      phases: currentWorkspace.phases.map((phase) => phase.id === phaseId
+        ? { ...phase, overlayPeakScales: (phase.overlayPeakScales || []).filter((item) => Math.abs(Number(item.x) - x) >= overlayTolerance) }
+        : phase),
+    })));
+    setMessage("Bâtonnet rendu à la hauteur de sa phase.");
+  }, [activeMode, history]);
+
+  /**
+   * Inverse l'affichage de la valeur d'un bâtonnet de référence superposé.
+   * Les positions listées dans overlayValueExceptions sont dans l'état opposé
+   * au réglage global de la phase (overlayShowValues).
+   */
+  const togglePhaseOverlayValue = useCallback((phaseId, x) => {
+    history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
+      ...currentWorkspace,
+      phases: currentWorkspace.phases.map((phase) => {
+        if (phase.id !== phaseId) return phase;
+        const exceptions = Array.isArray(phase.overlayValueExceptions) ? phase.overlayValueExceptions : [];
+        const exists = exceptions.some((value) => Math.abs(value - x) < overlayTolerance);
+        return {
+          ...phase,
+          overlayValueExceptions: exists
+            ? exceptions.filter((value) => Math.abs(value - x) >= overlayTolerance)
+            : [...exceptions, x],
+        };
+      }),
+    })));
+  }, [activeMode, history]);
+
+  const resetPeakEdits = useCallback((patternId) => {
+    history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
+      ...currentWorkspace,
+      patterns: currentWorkspace.patterns.map((pattern) => pattern.id === patternId ? { ...pattern, userPeaks: [], excludedPeaks: [] } : pattern),
+    })));
+    setMessage("Ajouts et retraits manuels de pics réinitialisés.");
+  }, [activeMode, history]);
+
+  /** Recherche le maximum local du signal traité autour d'une position cliquée. */
+  const snapToLocalMax = useCallback((pattern, dataX) => {
+    const sourceX = pattern.sourceX || [];
+    const y = pattern.processedY || [];
+    if (!sourceX.length) return dataX;
+    const window = Math.max(peakEditTolerance * 3, ((S.xmax - S.xmin) / Math.max(1, plotWidth)) * 10);
+    let bestIndex = -1;
+    for (let i = 0; i < sourceX.length; i += 1) {
+      if (Math.abs(sourceX[i] - dataX) > window) continue;
+      if (bestIndex < 0 || y[i] > y[bestIndex]) bestIndex = i;
+    }
+    return bestIndex >= 0 ? sourceX[bestIndex] : dataX;
+  }, [S.xmax, S.xmin, peakEditTolerance, plotWidth]);
+
+  /** Charge un jeu de démonstration synthétique dans l'espace actif. */
+  const loadSampleData = useCallback(() => {
+    const sample = makeSampleData(activeMode);
+    const patternsToAdd = sample.patterns.map((entry, index) => ({
+      id: newId("pattern"),
+      label: entry.label,
+      fileName: `exemple_${activeMode}_${index + 1}`,
+      x: entry.x,
+      y: entry.y,
+      visible: true,
+      color: "#111111",
+      yscale: 1,
+      xoffset: 0,
+      locked: false,
+      userNotes: tr("Données synthétiques de démonstration."),
+      orderValue: "",
+      groupType: "",
+      groupName: "",
+      groupValue: "",
+      importedAt: Date.now(),
+      ...(entry.irQuantity ? { irQuantity: entry.irQuantity } : {}),
+    }));
+    const phasesToAdd = sample.phases.map((entry, index) => ({
+      id: newId("phase"),
+      name: entry.name,
+      abbrev: entry.abbrev,
+      color: PHASE_COLORS[index % PHASE_COLORS.length],
+      peaks: entry.peaks,
+      visible: true,
+      inAnnot: true,
+      inPanel: activeMode === "drx",
+      files: ["exemple"],
+      sourceKind: "manual",
+      labelOffsetX: 0,
+      labelOffsetY: 0,
+    }));
+    const zonesToAdd = (sample.zones || []).map((entry) => ({ id: newId("zone"), visible: true, ...entry }));
+    history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
+      ...currentWorkspace,
+      patterns: [...currentWorkspace.patterns, ...patternsToAdd],
+      phases: [...currentWorkspace.phases, ...phasesToAdd],
+      zones: MODES_WITH_ZONES.includes(activeMode) ? [...(currentWorkspace.zones || []), ...zonesToAdd] : currentWorkspace.zones,
+    })));
+    setLeftTab("patterns");
+    setMessage(`Jeu d'exemple ${tr(modeLabel(activeMode))} chargé : ${patternsToAdd.length} patron(s), ${phasesToAdd.length} phase(s). Données synthétiques, à des fins de découverte uniquement.`);
+  }, [activeMode, history]);
+
+  const onSvgClick = (event) => {
+    if (suppressClickRef.current) { suppressClickRef.current = false; return; }
+    const point = svgPoint(event);
+    if (!point?.insidePlot || interactionRef.current) return;
+    if (tool === "peaks") {
+      if (!processed.length) return;
+      // Patron cible : le plus proche verticalement de la position cliquée.
+      let target = null;
+      let bestDistance = Infinity;
+      processed.forEach((pattern) => {
+        const localX = point.dataX - (pattern.waterfallShift || 0);
+        const value = interpolateSeriesLocal(pattern.sourceX, pattern.displayY, localX);
+        if (value === null) return;
+        const distance = Math.abs(value + pattern.stackOffset - point.dataY);
+        if (distance < bestDistance) { bestDistance = distance; target = { pattern, localX }; }
+      });
+      if (!target) return;
+      addUserPeak(target.pattern.id, snapToLocalMax(target.pattern, target.localX));
+      return;
+    }
+    if (!addNoteMode) return;
+    const note = {
+      id: newId("note"),
+      x: Math.round(point.dataX * 1000) / 1000,
+      yFrac: clamp(Math.round((1 - ((point.svgY - M.top) / mainHeight)) * 1000) / 1000, 0, 1),
+      text: "Annotation",
+      color: "#2d333b",
+      fontSize: 10,
+      bold: false,
+      rotation: 0,
+      vline: false,
+      vlineTopFrac: 1,
+      vlineBottomFrac: 0,
+      anchorLine: false,
+      anchorX: null,
+      anchorYFrac: 0.5,
+      visible: true,
+    };
+    history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({ ...currentWorkspace, notes: [...currentWorkspace.notes, note] })));
+    setSelection([{ type: "note", id: note.id }]); selectionAnchorRef.current = { type: "note", id: note.id };
+    setLeftTab("notes");
+    setRightTab("inspector");
+    setAddNoteMode(false);
+  };
+
+  const startPan = (event) => {
+    const workspace = workspaceRef.current;
+    if (!workspace || !(tool === "hand" || event.button === 1)) return;
+    event.preventDefault();
+    panRef.current = { x: event.clientX, y: event.clientY, left: workspace.scrollLeft, top: workspace.scrollTop };
+    workspace.setPointerCapture?.(event.pointerId);
+  };
+
+  const movePan = (event) => {
+    const workspace = workspaceRef.current;
+    const start = panRef.current;
+    if (!workspace || !start) return;
+    workspace.scrollLeft = start.left - (event.clientX - start.x);
+    workspace.scrollTop = start.top - (event.clientY - start.y);
+  };
+
+  const stopPan = () => { panRef.current = null; };
+
+  const workspaceWheel = (event) => {
+    if (!(event.ctrlKey || event.metaKey)) return;
+    event.preventDefault();
+    const direction = event.deltaY < 0 ? 1.1 : 0.9;
+    setZoom((value) => clamp(value * direction, 0.2, 3));
+  };
+
+  useEffect(() => {
+    const keydown = (event) => {
+      const target = event.target;
+      const typing = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
+      if (event.key === "Escape" && exportPreview.open) {
+        event.preventDefault();
+        closeExportPreview();
+      } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        if (event.shiftKey) history.redo(); else history.undo();
+      } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "y") {
+        event.preventDefault();
+        history.redo();
+      } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        saveSessionFile();
+      } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "o") {
+        event.preventDefault();
+        sessionInputRef.current?.click();
+      } else if (!typing && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
+        event.preventDefault();
+        selectAllCurrentTab();
+      } else if (!typing && (event.key === "Delete" || event.key === "Backspace")) {
+        event.preventDefault();
+        removeSelection();
+      } else if (!typing && !event.ctrlKey && !event.metaKey && !event.altKey && ["v", "h", "p", "z", "n"].includes(event.key.toLowerCase())) {
+        const key = event.key.toLowerCase();
+        if (key === "v") setTool("cursor");
+        else if (key === "h") setTool("hand");
+        else if (key === "p") setTool((value) => value === "peaks" ? "cursor" : "peaks");
+        else if (key === "z") setTool((value) => value === "zoomRect" ? "cursor" : "zoomRect");
+        else if (key === "n") { setAddNoteMode((value) => !value); setTool("cursor"); }
+      } else if (event.key === "Escape") {
+        if (interactionRef.current) {
+          try { svgRef.current?.releasePointerCapture?.(interactionRef.current.pointerId); } catch { /* no-op */ }
+          interactionRef.current = null;
+          setDragPreview(null);
+        }
+        setAddNoteMode(false);
+        setTool("cursor");
+        setDropActive(false);
+        setTextTarget(null);
+        clearSelection();
+        setProjectMenuOpen(false);
+      } else if (!typing && event.code === "Space") {
+        event.preventDefault();
+        setTool("hand");
+      }
+    };
+    const keyup = (event) => {
+      if (event.code === "Space" && tool === "hand") setTool("cursor");
+    };
+    window.addEventListener("keydown", keydown);
+    window.addEventListener("keyup", keyup);
+    return () => {
+      window.removeEventListener("keydown", keydown);
+      window.removeEventListener("keyup", keyup);
+    };
+  }, [clearSelection, exportPreview.open, history, removeSelection, saveSessionFile, selectAllCurrentTab, tool]);
+
+  const renderPatternProperties = () => selectionCount > 1 ? (
+    <>
+      <Section title="Sélection multiple" badge={selectionCount}>
+        <div className="selection-summary">
+          {selectedByType.pattern.size > 0 && <span><Icon name="waveform" size={12} /><strong>{selectedByType.pattern.size}</strong> {tr("patron(s)")}</span>}
+          {selectedByType.phase.size > 0 && <span><Icon name="phase" size={12} /><strong>{selectedByType.phase.size}</strong> {tr("phase(s)")}</span>}
+          {selectedByType.zone.size > 0 && <span><Icon name="zone" size={12} /><strong>{selectedByType.zone.size}</strong> {tr("zone(s)")}</span>}
+          {selectedByType.note.size > 0 && <span><Icon name="note" size={12} /><strong>{selectedByType.note.size}</strong> {tr("note(s)")}</span>}
+        </div>
+        <div className="bulk-inspector-grid">
+          <Button variant="secondary" icon="eye" onClick={() => setSelectedVisibility(true)}>Afficher</Button>
+          <Button variant="secondary" icon="eyeOff" onClick={() => setSelectedVisibility(false)}>Masquer</Button>
+          <Button variant="secondary" icon="duplicate" onClick={duplicateSelection}>Dupliquer</Button>
+          <Button variant="secondary" icon="trash" onClick={removeSelection}>Supprimer</Button>
+        </div>
+      </Section>
+      {selectedByType.pattern.size > 0 && (
+        <Section title="Patrons sélectionnés">
+          <div className="callout">{`${tr("Les actions suivantes s’appliquent aux")} ${selectedByType.pattern.size} ${tr("patrons sélectionnés.")}`}</div>
+          <div className="inline-actions"><Button variant="secondary" icon="reset" onClick={resetSelectedPatternTransforms}>Réinitialiser Y et Δx</Button><Button variant="secondary" icon="lock" onClick={() => setSelectedLock(true)}>Verrouiller</Button><Button variant="secondary" icon="unlock" onClick={() => setSelectedLock(false)}>Déverrouiller</Button></div>
+          <SelectField label="Déplacer vers" value={activeMode} onChange={moveSelectionToWorkspace} options={workspaceOptions} />
+        </Section>
+      )}
+      {selectedByType.pattern.size > 0 && (
+        <Section title="Renommage par lot" defaultOpen={false}>
+          <SelectField label="Méthode" value={batchRename.mode} onChange={(mode) => setBatchRename((current) => ({ ...current, mode }))} options={[["prefix", "Ajouter un préfixe"], ["suffix", "Ajouter un suffixe"], ["regex", "Remplacement par expression régulière"]]} />
+          {batchRename.mode === "regex" ? <><TextField label="Expression" value={batchRename.find} onChange={(find) => setBatchRename((current) => ({ ...current, find }))} /><TextField label="Remplacement" value={batchRename.replace} onChange={(replace) => setBatchRename((current) => ({ ...current, replace }))} /></> : <TextField label={batchRename.mode === "prefix" ? "Préfixe" : "Suffixe"} value={batchRename.value} onChange={(value) => setBatchRename((current) => ({ ...current, value }))} />}
+          <div className="inline-actions"><Button variant="primary" onClick={applyBatchRename}>Appliquer le renommage</Button></div>
+        </Section>
+      )}
+      {selectedByType.pattern.size > 0 && (
+        <Section title="Groupement et ordre" defaultOpen={false}>
+          <SelectField label="Type de groupe" value={batchGroup.type} onChange={(type) => setBatchGroup((current) => ({ ...current, type }))} options={[["sample", "Échantillon"], ["time", "Temps"], ["temperature", "Température"], ["treatment", "Traitement"]]} />
+          <TextField label="Nom du groupe" value={batchGroup.name} onChange={(name) => setBatchGroup((current) => ({ ...current, name }))} />
+          <TextField label="Valeur / unité" value={batchGroup.value} onChange={(value) => setBatchGroup((current) => ({ ...current, value }))} />
+          <div className="inline-actions"><Button variant="primary" icon="group" onClick={applyBatchGroup}>Appliquer le groupe</Button><Button variant="secondary" icon="sort" onClick={extractSelectedOrder}>Extraire l’ordre des fichiers</Button></div>
+        </Section>
+      )}
+      {selectedByType.phase.size > 0 && (
+        <Section title="Phases sélectionnées">
+          <Field label="Appliquer une couleur"><div className="color-field"><input type="color" defaultValue="#cc0000" onChange={(event) => { const color = event.target.value; history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({ ...currentWorkspace, phases: currentWorkspace.phases.map((item) => selectedByType.phase.has(item.id) ? { ...item, color } : item) }))); }} /><code>{selectedByType.phase.size} {tr("phase(s)")}</code></div></Field>
+          <div className="inline-actions"><Button variant="secondary" onClick={() => history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({ ...currentWorkspace, phases: currentWorkspace.phases.map((item) => selectedByType.phase.has(item.id) ? { ...item, inAnnot: true, inPanel: true } : item) })))}>Activer annotations et panneau</Button></div>
+          <SelectField label="Déplacer vers" value={activeMode} onChange={moveSelectionToWorkspace} options={workspaceOptions} />
+        </Section>
+      )}
+      <Section title="Raccourcis" defaultOpen={false}><div className="shortcut-list"><span><kbd>Ctrl/Cmd</kbd> {tr("Ajouter ou retirer")}</span><span><kbd>Shift</kbd> {tr("Sélectionner une plage")}</span><span><kbd>Ctrl/Cmd+A</kbd> {tr("Tout sélectionner dans l’onglet")}</span><span><kbd>{tr("Suppr.")}</kbd> {tr("Supprimer la sélection")}</span></div></Section>
+    </>
+  ) : activePattern ? (
+    <>
+      <Section title="Patron sélectionné" targetId="pattern-inspector">
+        <TextField targetId="pattern-name" label="Nom" value={activePattern.label} onChange={(value) => updatePattern(activePattern.id, "label", value)} />
+        <SelectField label="Espace de travail" value={activeMode} onChange={(value) => moveItemToWorkspace("pattern", activePattern.id, value)} options={workspaceOptions} />
+        <div className="two-columns">
+          <NumberField label="Facteur Y" value={activePattern.yscale} step={0.05} onChange={(value) => updatePattern(activePattern.id, "yscale", value)} />
+          <NumberField label="Décalage X" value={activePattern.xoffset} step={0.01} onChange={(value) => updatePattern(activePattern.id, "xoffset", value)} />
+        </div>
+        <NumberField label="Décalage Y" hint="Ajustement vertical manuel, ajouté à l'empilement automatique." value={activePattern.yoffset || 0} step={0.05} onChange={(value) => updatePattern(activePattern.id, "yoffset", value)} />
+        <Field label="Couleur manuelle">
+          <div className="color-field">
+            <input type="color" value={activePattern.color} onChange={(event) => updatePattern(activePattern.id, "color", event.target.value)} />
+            <code>{activePattern.color}</code>
+          </div>
+        </Field>
+        <Toggle label="Visible" checked={activePattern.visible} onChange={(value) => updatePattern(activePattern.id, "visible", value)} />
+        <Section title="Étiquette de courbe" defaultOpen={false} targetId="pattern-label-options">
+          <Toggle label="Afficher cette étiquette" checked={activePattern.showLabel !== false} onChange={(value) => updatePattern(activePattern.id, "showLabel", value)} />
+          <div className="two-columns"><NumberField label="Décalage horizontal" value={activePattern.labelDx || 0} step={2} suffix="px" onChange={(value) => updatePattern(activePattern.id, "labelDx", value)} /><NumberField label="Décalage vertical" value={activePattern.labelDy || 0} step={2} suffix="px" onChange={(value) => updatePattern(activePattern.id, "labelDy", value)} /></div>
+          <NumberField label="Taille individuelle" value={activePattern.labelFontSize || S.patternLabelSize} min={6} max={42} step={0.5} suffix="pt" onChange={(value) => updatePattern(activePattern.id, "labelFontSize", value)} />
+          <Toggle label="Gras individuel" checked={activePattern.labelBold ?? S.patternLabelBold} onChange={(value) => updatePattern(activePattern.id, "labelBold", value)} />
+          <div className="inline-actions"><Button variant="secondary" icon="reset" onClick={() => history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({ ...currentWorkspace, patterns: currentWorkspace.patterns.map((pattern) => pattern.id === activePattern.id ? { ...pattern, labelDx: 0, labelDy: 0, labelFontSize: null, labelBold: undefined } : pattern) })))}>Réinitialiser l’étiquette</Button></div>
+        </Section>
+        <Toggle label="Verrouiller le patron" checked={Boolean(activePattern.locked)} onChange={(value) => updatePattern(activePattern.id, "locked", value)} description="Protège le nom, la courbe, les transformations et la suppression. L’étiquette de courbe reste modifiable." />
+        <TextAreaField label="Notes du patron" value={activePattern.userNotes || ""} onChange={(value) => updatePattern(activePattern.id, "userNotes", value)} rows={4} placeholder="Observations expérimentales, préparation, anomalie…" />
+        <div className="two-columns">
+          <SelectField label="Type de groupe" value={activePattern.groupType || ""} onChange={(value) => updatePattern(activePattern.id, "groupType", value)} options={[["", "Aucun"], ["sample", "Échantillon"], ["time", "Temps"], ["temperature", "Température"], ["treatment", "Traitement"]]} />
+          <NumberField label="Valeur d’ordre" value={activePattern.orderValue ?? ""} step={0.1} onChange={(value) => updatePattern(activePattern.id, "orderValue", value)} />
+        </div>
+        <TextField label="Nom du groupe" value={activePattern.groupName || ""} onChange={(value) => updatePattern(activePattern.id, "groupName", value)} />
+        <div className="info-box">
+          <span>{activePattern.fileName}</span>
+          <span>{activePattern.x.length.toLocaleString(uiLocale())} {tr("points")}</span>
+          <span>{tr("Plage :")} {Number(activePattern.x[0]).toLocaleString(uiLocale())} — {Number(activePattern.x.at(-1)).toLocaleString(uiLocale())}</span>
+          {activePattern.fileMetadata && <span>{tr("Fichier :")} {formatBytes(activePattern.fileMetadata.size)}{activePattern.fileMetadata.lastModified ? ` · ${new Date(activePattern.fileMetadata.lastModified).toLocaleString(uiLocale())}` : ""}</span>}
+          <span>{tr("Traitement")} : {tr(activePattern.processingOverrides?.enabled ? "individuel" : "réglages globaux")} · {tr("lissage")} {activePattern.processingOverrides?.smoothW ?? S.smoothW} · {tr("fond")} {activePattern.processingOverrides?.baselineMode ?? S.baselineMode} · {tr("normalisation")} {activePattern.processingOverrides?.normalizeMode ?? S.normalizeMode}</span>
+          {activePattern.isAverage && <span>{tr("Patron dérivé :")} {activePattern.replicateCount} {tr("acquisitions")} · {tr(activePattern.averageMethod === "median" ? "médiane" : "moyenne")}</span>}
+          {activePattern.isAverage && <span>{tr("Pré-normalisation :")} {activePattern.averageNormalizeMode || "none"}</span>}
+          {activePattern.isAverage && <span>{tr("Sources :")} {(activePattern.sourceFiles || []).join(", ")}</span>}
+          {selectedVisibleIndex >= 0 && <span>{tr("Position visible :")} {selectedVisibleIndex + 1}/{visibleCount}</span>}
+          {Number.isFinite(activePattern.alignmentScore) && <span>{tr("Corrélation d’alignement :")} {activePattern.alignmentScore.toFixed(4)}</span>}
+          {Number.isFinite(activePattern.alignmentShift) && activePattern.alignmentShift !== 0 && <span>{tr("Décalage automatique cumulé :")} {activePattern.alignmentShift.toFixed(4)}</span>}
+        </div>
+        <div className="inline-actions"><Button variant="secondary" icon="duplicate" onClick={duplicateSelection}>Dupliquer pour une variante</Button><Button variant="secondary" icon="sort" onClick={() => updatePattern(activePattern.id, "orderValue", extractOrderValue(activePattern.fileName || activePattern.label))}>Extraire l’ordre</Button></div>
+      </Section>
+      <Section title="Traitement individuel" defaultOpen={Boolean(activePattern.processingOverrides?.enabled)}>
+        <Toggle label="Remplacer les réglages globaux" checked={Boolean(activePattern.processingOverrides?.enabled)} onChange={(enabled) => updatePattern(activePattern.id, "processingOverrides", enabled ? { enabled: true, smoothW: S.smoothW, clipPct: S.clipPct, baselineMode: S.baselineMode, normalizeMode: S.normalizeMode, showDetectedPeaks: S.showDetectedPeaks, peakMinHeight: S.peakMinHeight, peakMinProminence: S.peakMinProminence, peakMinDistance: S.peakMinDistance, peakLookaround: S.peakLookaround } : { enabled: false })} />
+        {activePattern.processingOverrides?.enabled && <>
+          <SliderField label="Lissage" value={activePattern.processingOverrides.smoothW ?? S.smoothW} min={1} max={51} step={1} onChange={(value) => updatePattern(activePattern.id, "processingOverrides", { ...activePattern.processingOverrides, smoothW: Math.round(value) })} />
+          <SliderField label="Écrêtage" value={activePattern.processingOverrides.clipPct ?? S.clipPct} min={90} max={100} step={0.1} suffix="%" onChange={(value) => updatePattern(activePattern.id, "processingOverrides", { ...activePattern.processingOverrides, clipPct: value })} />
+          <SelectField label="Ligne de base" value={activePattern.processingOverrides.baselineMode ?? S.baselineMode} onChange={(value) => updatePattern(activePattern.id, "processingOverrides", { ...activePattern.processingOverrides, baselineMode: value })} options={BASELINE_OPTIONS} />
+          <SelectField label="Normalisation" value={activePattern.processingOverrides.normalizeMode ?? S.normalizeMode} onChange={(value) => updatePattern(activePattern.id, "processingOverrides", { ...activePattern.processingOverrides, normalizeMode: value })} options={NORMALIZATION_OPTIONS} />
+          <Field label="Détection de pics (ce patron)" hint="Ces seuils remplacent les réglages globaux du module « Repérage des pics expérimentaux » pour ce patron uniquement.">
+            <Toggle label="Marqueurs de pics" checked={activePattern.processingOverrides.showDetectedPeaks ?? S.showDetectedPeaks} onChange={(value) => updatePattern(activePattern.id, "processingOverrides", { ...activePattern.processingOverrides, showDetectedPeaks: value })} />
+          </Field>
+          <SliderField label="Hauteur minimale" value={activePattern.processingOverrides.peakMinHeight ?? S.peakMinHeight} min={0} max={100} step={1} suffix="%" onChange={(value) => updatePattern(activePattern.id, "processingOverrides", { ...activePattern.processingOverrides, peakMinHeight: value })} />
+          <SliderField label="Proéminence minimale" value={activePattern.processingOverrides.peakMinProminence ?? S.peakMinProminence} min={0} max={100} step={0.5} suffix="%" onChange={(value) => updatePattern(activePattern.id, "processingOverrides", { ...activePattern.processingOverrides, peakMinProminence: value })} />
+          <NumberField label="Distance minimale X" value={activePattern.processingOverrides.peakMinDistance ?? S.peakMinDistance} min={0} step={S.mode === "drx" ? 0.05 : 1} onChange={(value) => updatePattern(activePattern.id, "processingOverrides", { ...activePattern.processingOverrides, peakMinDistance: value })} />
+          <SliderField label="Fenêtre de proéminence" value={activePattern.processingOverrides.peakLookaround ?? S.peakLookaround} min={2} max={250} step={1} suffix="pts" onChange={(value) => updatePattern(activePattern.id, "processingOverrides", { ...activePattern.processingOverrides, peakLookaround: Math.round(value) })} />
+        </>}
+      </Section>
+    </>
+  ) : activePhase ? (
+    <>
+      <Section title="Phase sélectionnée" targetId="phase-inspector">
+        <TextField targetId="phase-name" label="Nom affiché" value={activePhase.name} onChange={(value) => updatePhase(activePhase.id, "name", value)} />
+        <TextField label="Abréviation" value={activePhase.abbrev} onChange={(value) => updatePhase(activePhase.id, "abbrev", value)} />
+        <TextField label="Sous-titre de ligne" value={phaseSubtitle(activePhase)} onChange={(value) => updatePhase(activePhase.id, "subtitle", value)} />
+        <Toggle label="Afficher le sous-titre" checked={activePhase.showSubtitle !== false} onChange={(value) => updatePhase(activePhase.id, "showSubtitle", value)} />
+        <SelectField label="Espace de travail" value={activeMode} onChange={(value) => moveItemToWorkspace("phase", activePhase.id, value)} options={workspaceOptions} />
+        <Field label="Couleur">
+          <div className="color-field">
+            <input type="color" value={activePhase.color} onChange={(event) => updatePhase(activePhase.id, "color", event.target.value)} />
+            <code>{activePhase.color}</code>
+          </div>
+        </Field>
+        <Toggle label="Visible" checked={activePhase.visible} onChange={(value) => updatePhase(activePhase.id, "visible", value)} />
+        <Toggle label="Annotations supérieures" checked={activePhase.inAnnot} onChange={(value) => updatePhase(activePhase.id, "inAnnot", value)} />
+        <Toggle label="Annotations en pointillés" checked={isPhaseDashed(activePhase, "annotation")} onChange={(value) => updatePhase(activePhase.id, "annotationDashed", value)} description="Affecte uniquement les traits des annotations placées au-dessus de la figure." />
+        <div className="two-columns"><NumberField label="Taille des annotations" value={activePhase.labelFontSize || S.annotFontSize} min={5} max={30} step={0.5} suffix="pt" onChange={(value) => updatePhase(activePhase.id, "labelFontSize", value)} /><Toggle label="Annotations en gras" checked={activePhase.labelBold ?? S.annotFontBold} onChange={(value) => updatePhase(activePhase.id, "labelBold", value)} /></div>
+        <Toggle label="Panneau de références" checked={activePhase.inPanel} onChange={(value) => updatePhase(activePhase.id, "inPanel", value)} />
+        <Toggle label="Panneau en pointillés" checked={isPhaseDashed(activePhase, "panel")} onChange={(value) => updatePhase(activePhase.id, "panelDashed", value)} description="Affecte uniquement les bâtonnets du panneau de références." />
+        <Toggle label="Superposer sur la figure" checked={Boolean(activePhase.inOverlay)} onChange={(value) => updatePhase(activePhase.id, "inOverlay", value)} />
+        <Toggle label="Références sur la figure en pointillés" checked={isPhaseDashed(activePhase, "overlay")} onChange={(value) => updatePhase(activePhase.id, "overlayDashed", value)} description="Affecte les bâtonnets et leur échantillon de légende sur la figure." />
+        <div className="two-columns"><NumberField label="Décalage label X" value={activePhase.labelOffsetX || 0} step={S.mode === "drx" ? 0.05 : 1} onChange={(value) => updatePhase(activePhase.id, "labelOffsetX", value)} /><NumberField label="Décalage label Y" value={activePhase.labelOffsetY || 0} step={0.05} onChange={(value) => updatePhase(activePhase.id, "labelOffsetY", value)} /></div>
+        <div className="inline-actions"><Button variant="secondary" icon="reset" onClick={() => { updatePhase(activePhase.id, "labelOffsetX", 0); updatePhase(activePhase.id, "labelOffsetY", 0); }}>Réinitialiser la position des labels</Button></div>
+        <div className="info-box">
+          <span>{activePhase.peaks.length} {tr("pics")}</span>
+          <span>{activePhase.files.join(", ")}</span>
+          {activePhase.metadata?.RRUFFID && <span>{tr("RRUFF :")} {activePhase.metadata.RRUFFID}</span>}
+          {activePhase.metadata?.["RAMAN WAVELENGTH"] && <span>{tr("Laser :")} {activePhase.metadata["RAMAN WAVELENGTH"]} nm</span>}
+          {activePhase.metadata?.["IDEAL CHEMISTRY"] && <span>{activePhase.metadata["IDEAL CHEMISTRY"]}</span>}
+        </div>
+      </Section>
+      {activePhase.sourceKind === "raman-spectrum" && activePhase.referenceSpectrum && (
+        <Section title="Extraction des pics Raman">
+          <SliderField label="Lissage" value={activePhase.ramanOptions?.smoothWindow ?? 7} min={1} max={31} step={2} suffix="pts" onChange={(value) => updatePhase(activePhase.id, "ramanOptions", { ...(activePhase.ramanOptions || {}), smoothWindow: Math.round(value) })} />
+          <SliderField label="Proéminence minimale" value={activePhase.ramanOptions?.minProminencePct ?? 1} min={0.1} max={10} step={0.1} suffix="%" onChange={(value) => updatePhase(activePhase.id, "ramanOptions", { ...(activePhase.ramanOptions || {}), minProminencePct: value })} />
+          <SliderField label="Hauteur minimale" value={activePhase.ramanOptions?.minHeightPct ?? 1} min={0} max={10} step={0.1} suffix="%" onChange={(value) => updatePhase(activePhase.id, "ramanOptions", { ...(activePhase.ramanOptions || {}), minHeightPct: value })} />
+          <NumberField label="Distance minimale" value={activePhase.ramanOptions?.minDistance ?? 5} min={0} step={0.5} suffix="cm⁻¹" onChange={(value) => updatePhase(activePhase.id, "ramanOptions", { ...(activePhase.ramanOptions || {}), minDistance: value })} />
+          <SliderField label="Nombre maximal" value={activePhase.ramanOptions?.maxCount ?? 30} min={3} max={80} step={1} onChange={(value) => updatePhase(activePhase.id, "ramanOptions", { ...(activePhase.ramanOptions || {}), maxCount: Math.round(value) })} />
+          <div className="inline-actions"><Button variant="primary" onClick={() => recalculateRamanPhase(activePhase)}>Recalculer les pics</Button></div>
+          <div className="callout">{tr("Les fichiers Raman RRUFF sont lus comme des spectres continus. Seuls les maxima répondant à ces critères sont transformés en bâtonnets de référence.")}</div>
+        </Section>
+      )}
+      <Section title="Édition manuelle des pics" defaultOpen={activePhase.sourceKind === "manual"}>
+        <PhasePeaksEditor phase={activePhase} onApply={(peaks) => applyPhasePeaks(activePhase.id, peaks)} />
+      </Section>
+    </>
+  ) : activeZone ? (
+    <Section title="Zone sélectionnée" targetId="zone-inspector">
+      <TextField targetId="zone-name" label="Nom" value={activeZone.name} onChange={(value) => updateZone(activeZone.id, "name", value)} />
+      <div className="two-columns">
+        <NumberField label="X min" value={activeZone.xmin} step={1} suffix="cm⁻¹" onChange={(value) => updateZone(activeZone.id, "xmin", value)} />
+        <NumberField label="X max" value={activeZone.xmax} step={1} suffix="cm⁻¹" onChange={(value) => updateZone(activeZone.id, "xmax", value)} />
+      </div>
+      <Field label="Couleur"><div className="color-field"><input type="color" value={activeZone.color} onChange={(event) => updateZone(activeZone.id, "color", event.target.value)} /><code>{activeZone.color}</code></div></Field>
+      <SliderField label="Opacité" value={activeZone.opacity ?? 0.12} min={0.02} max={0.5} step={0.01} onChange={(value) => updateZone(activeZone.id, "opacity", value)} />
+      <Toggle label="Visible" checked={activeZone.visible} onChange={(value) => updateZone(activeZone.id, "visible", value)} />
+      <Toggle label="Afficher le nom" checked={activeZone.showLabel !== false} onChange={(value) => updateZone(activeZone.id, "showLabel", value)} />
+      <NumberField label="Taille du nom" value={activeZone.labelFontSize || S.zoneLabelFontSize} min={5} max={30} step={0.5} suffix="pt" onChange={(value) => updateZone(activeZone.id, "labelFontSize", value)} />
+      <Toggle label="Nom en gras" checked={activeZone.labelFontBold ?? S.zoneLabelFontBold} onChange={(value) => updateZone(activeZone.id, "labelFontBold", value)} />
+    </Section>
+  ) : activeNote ? (
+    <Section title="Note sélectionnée" targetId="note-inspector">
+      <TextAreaField targetId="note-text" label="Texte" rows={3} value={String(activeNote.text ?? "Annotation")} onChange={(value) => updateNote(activeNote.id, "text", value)} hint="Un retour à la ligne crée une nouvelle ligne sur la figure." />
+      <div className="two-columns">
+        <NumberField label="Position X" value={finiteNumber(activeNote.x, (S.xmin + S.xmax) / 2)} step={0.05} onChange={(value) => updateNote(activeNote.id, "x", value)} />
+        <NumberField label="Position Y" value={clamp(finiteNumber(activeNote.yFrac, 0.72), 0, 1)} min={0} max={1} step={0.01} onChange={(value) => updateNote(activeNote.id, "yFrac", value)} />
+      </div>
+      <div className="two-columns">
+        <NumberField label="Taille" value={clamp(finiteNumber(activeNote.fontSize, 10), 5, 60)} min={5} max={40} step={0.5} onChange={(value) => updateNote(activeNote.id, "fontSize", value)} />
+        <NumberField label="Rotation" value={clamp(finiteNumber(activeNote.rotation, 0), -180, 180)} min={-180} max={180} step={5} suffix="°" onChange={(value) => updateNote(activeNote.id, "rotation", value)} />
+      </div>
+      <Field label="Couleur"><div className="color-field"><input type="color" value={safeNoteModel(activeNote, S.xmin, S.xmax).color} onChange={(event) => updateNote(activeNote.id, "color", event.target.value)} /><code>{activeNote.color}</code></div></Field>
+      <Toggle label="Texte en gras" checked={Boolean(activeNote.bold)} onChange={(value) => updateNote(activeNote.id, "bold", value)} />
+      <Toggle label="Visible" checked={activeNote.visible !== false} onChange={(value) => updateNote(activeNote.id, "visible", value)} /><Toggle label="Ligne verticale" checked={activeNote.vline} onChange={(value) => updateNote(activeNote.id, "vline", value)} />
+      <Toggle label="Ligne d'accroche" checked={Boolean(activeNote.anchorLine)} onChange={(value) => {
+        // À l'activation, l'extrémité démarre juste sous la note, dans la
+        // fenêtre visible, pour être saisissable immédiatement.
+        history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
+          ...currentWorkspace,
+          notes: currentWorkspace.notes.map((note) => note.id === activeNote.id ? {
+            ...note,
+            anchorLine: value,
+            anchorX: value && (note.anchorX === null || note.anchorX === undefined || note.anchorX < viewXMin || note.anchorX > viewXMax)
+              ? clamp(Number(note.x), viewXMin, viewXMax)
+              : note.anchorX,
+            anchorYFrac: value && !Number.isFinite(Number(note.anchorYFrac)) ? clamp(finiteNumber(note.yFrac, 0.5) - 0.18, 0, 1) : (Number.isFinite(Number(note.anchorYFrac)) ? note.anchorYFrac : 0.5),
+          } : note),
+        })));
+      }} description="Trait de la note vers un point de la figure. Sélectionner la note puis glisser l'extrémité sur le pic visé ; elle s'aimante aux pics détectés." />
+      {activeNote.vline && <div className="two-columns">
+        <SliderField label="Extrémité haute" value={Math.round((activeNote.vlineTopFrac ?? 1) * 100)} min={0} max={100} step={1} suffix="%" onChange={(value) => updateNote(activeNote.id, "vlineTopFrac", clamp(value / 100, 0, 1))} />
+        <SliderField label="Extrémité basse" value={Math.round((activeNote.vlineBottomFrac ?? 0) * 100)} min={0} max={100} step={1} suffix="%" onChange={(value) => updateNote(activeNote.id, "vlineBottomFrac", clamp(value / 100, 0, 1))} />
+      </div>}
+    </Section>
+  ) : (
+    <>
+      <Section title="Projet actif">
+        <TextField label="Nom du projet" value={project.name || ""} onChange={(value) => history.set((current) => ({ ...current, name: value, updatedAt: Date.now() }), { replace: true })} />
+        <TextAreaField label="Description" value={project.description || ""} onChange={(value) => history.set((current) => ({ ...current, description: value, updatedAt: Date.now() }), { replace: true })} rows={3} placeholder={tr("Objet de la série, conditions expérimentales…")} />
+        <div className="project-stats-grid">{MODES.map((mode) => <span key={mode}><strong>{workspaceStats[mode].total}</strong>{tr(modeLabel(mode))}</span>)}<span><strong>{patterns.length + phases.length}</strong>{tr("éléments actifs")}</span><span><strong>{new Date(project.updatedAt || Date.now()).toLocaleDateString(uiLocale())}</strong>{tr("mise à jour")}</span></div>
+        <div className="inline-actions"><Button variant="primary" icon="plus" onClick={createNewProject}>Nouveau projet</Button><Button variant="secondary" icon="duplicate" onClick={duplicateCurrentProject}>Dupliquer</Button></div>
+      </Section>
+      <Section title="Disposition de l’interface">
+        <SelectField label="Densité" value={uiDensity} onChange={setUiDensity} options={[["compact", "Compacte"], ["standard", "Standard"], ["comfortable", "Confortable"]]} />
+        <Toggle label="Panneau de données" checked={!leftCollapsed} onChange={(value) => setLeftCollapsed(!value)} />
+        <Toggle label="Panneau d’outils" checked={!rightCollapsed} onChange={(value) => setRightCollapsed(!value)} />
+        <Toggle label="Réduire les animations" checked={reduceMotion} onChange={setReduceMotion} />
+        <div className="inline-actions"><Button variant="secondary" icon="layout" onClick={resetLayout}>Réinitialiser la disposition</Button></div>
+      </Section>
+      <Section title="Interaction avec la figure" defaultOpen={false}>
+        <Toggle label="Accrochage aux pics" checked={snapToPeak} onChange={setSnapToPeak} />
+        <Toggle label="Navigateur de plage" checked={showNavigator} onChange={setShowNavigator} />
+        <Toggle label="Comparaison brut / traité" checked={comparisonView} onChange={setComparisonView} />
+        <Toggle label="Édition plein écran" checked={editorFullscreen} onChange={setEditorFullscreen} />
+        <div className="callout">{tr("Cliquer un texte ouvre ses contrôles directs. Glisser les étiquettes, notes, légendes et encarts pour les repositionner. Les raccourcis V, H, P, Z et N changent d’outil.")}</div>
+      </Section>
+      <EmptyPanel kind="selection" title="Inspecteur contextuel" body="Sélectionner un ou plusieurs éléments. Ctrl/Cmd ajoute à la sélection ; Shift sélectionne une plage." />
+    </>
+  );
+
+  const workspaceTools = [
+    ["inspector", "Sélection", "cursor"],
+    ["processing", "Traitement", "waveform"],
+    ["references", "Références", "phase"],
+    ["appearance", "Apparence", "layout"],
+    ["export", "Export", "download"],
+  ];
+
+  const workspaceToolActive = (panel) => panel === "references" || panel === "appearance"
+    ? rightTab === "compose" && composerTab === panel
+    : rightTab === panel;
+
+  const openWorkspaceTool = (panel) => {
+    if (workspaceToolActive(panel) && !rightCollapsed) {
+      setRightCollapsed(true);
+      return;
+    }
+    if (panel === "references" || panel === "appearance") {
+      setRightTab("compose");
+      setComposerTab(panel);
+    } else {
+      setRightTab(panel);
+    }
+    setRightCollapsed(false);
+  };
+
+  const workspaceToolTitle = rightTab === "compose"
+    ? (composerTab === "appearance" ? "Apparence de la figure" : "Références et annotations")
+    : ({ inspector: "Propriétés de la sélection", processing: "Traitement des données", export: "Export de la figure" }[rightTab] || "Outils de la figure");
+
+  return (
+    <div className={`app-shell mode-${activeMode} lang-${language} density-${uiDensity} ${reduceMotion ? "reduce-motion" : ""} ${editorFullscreen ? "is-editor-fullscreen" : ""}`}>
+      <header className="topbar masthead">
+        <div className="masthead__edition">
+          <span>{APP_NAME}</span>
+          <span>{project.name || tr("Projet sans titre")}</span>
+          <span className={`autosave-state autosave-state--${autosaveState}`}>
+            <i />
+            {autosaveState === "saving" ? tr("Enregistrement") : autosaveState === "error" ? tr("Autosauvegarde indisponible") : tr("Sauvegardé localement")}
+          </span>
+        </div>
+
+        <div className="masthead__main">
+          <div className="brand">
+            <Logo />
+            <div className="brand__copy">
+              <strong>{APP_NAME}</strong>
+            </div>
+          </div>
+
+          <div className={`mode-switch is-${activeMode}`} role="group" aria-label={tr("Mode d’analyse")}>
+            <span className="mode-switch__indicator" />
+            {[["drx", "DRX", "xray"], ["raman", "Raman", "waveform"], ["ir", "IR", "infrared"]].map(([value, label, icon]) => (
+              <button type="button" key={value} className={activeMode === value ? "is-active" : ""} onClick={() => setMode(value)}>
+                <Icon name={icon} size={13} /><span>{tr(label)}</span><small>{workspaceStats[value].total}</small>
+              </button>
+            ))}
+          </div>
+
+          <div className="masthead__actions">
+            <div className="topbar__group topbar__group--history">
+              <IconButton icon="undo" title="Annuler · Ctrl+Z" disabled={!history.canUndo} onClick={history.undo} />
+              <IconButton icon="redo" title="Rétablir · Ctrl+Shift+Z" disabled={!history.canRedo} onClick={history.redo} />
+            </div>
+            <div className="topbar__group topbar__group--project">
+              <ProjectSwitcher
+                project={project}
+                entries={projectIndex}
+                open={projectMenuOpen}
+                search={projectSearch}
+                setSearch={setProjectSearch}
+                onToggle={() => setProjectMenuOpen((value) => !value)}
+                onSwitch={switchProject}
+                onCreate={createNewProject}
+                onRename={renameCurrentProject}
+                onDuplicate={duplicateCurrentProject}
+                onDelete={deleteCurrentProject}
+                onExport={saveSessionFile}
+                menuRef={projectMenuRef}
+              />
+              <IconButton icon="folder" title="Importer une session JSON · Ctrl+O" onClick={() => sessionInputRef.current?.click()} />
+            </div>
+            <div className="topbar__group topbar__group--export">
+              <button
+                type="button"
+                className="button button--ghost"
+                title={language === "fr" ? "Switch the interface to English" : "Switch the interface to French"}
+                onClick={() => setLanguage((value) => (value === "fr" ? "en" : "fr"))}
+              >{language === "fr" ? "FR" : "EN"}</button>
+              <IconButton icon={reduceMotion ? "motionOff" : "motion"} active={reduceMotion} title={reduceMotion ? "Animations réduites" : "Réduire les animations"} onClick={() => setReduceMotion((value) => !value)} />
+              <Button variant="ghost" icon="bug" title="Ouvrir un rapport de problème sur GitHub" onClick={() => window.open(REPORT_ISSUE_URL, "_blank", "noopener,noreferrer")}>Signaler un problème</Button>
+              <Button variant="primary" icon="preview" disabled={isExporting} onClick={() => openExportPreview("png")}>{isExporting ? "Export…" : "Prévisualiser l’export"}</Button>
+            </div>
+          </div>
+        </div>
+
+        <div className="masthead__ticker" aria-label={tr("Résumé du projet actif")}>
+          <span className="masthead__breaking">{tr(modeLabel(activeMode))}</span>
+          <span><b>{patterns.length}</b> {tr("patrons")}</span>
+          <span><b>{phases.length}</b> {tr("phases")}</span>
+          {supportsZones && <span><b>{zones.length}</b> {tr("zones")}</span>}
+          <span><b>{notes.length}</b> {tr("notes")}</span>
+        </div>
+      </header>
+
+      <main className="workbench core-workspace" style={{ gridTemplateColumns: `${leftCollapsed ? 0 : leftWidth}px minmax(300px, 1fr) ${rightCollapsed ? 0 : rightWidth}px` }}>
+        <aside className={`side-panel side-panel--left ${leftCollapsed ? "is-collapsed" : ""}`} aria-hidden={leftCollapsed}>
+          <div className="panel-titlebar"><div><strong>{tr("Données")} · {tr(modeLabel(activeMode))}</strong><span>{patterns.length + phases.length + notes.length + zones.length} {tr("éléments")}</span></div><IconButton icon="panelLeft" title="Replier le panneau de données" onClick={() => setLeftCollapsed(true)} /></div>
+          <nav className="panel-tabs">
+            {[
+              ["patterns", "Courbes", patterns.length],
+              ["phases", "Références", phases.length],
+              ...(supportsZones ? [["zones", "Zones", zones.length]] : []),
+              ["notes", "Notes", notes.length],
+            ].map(([value, label, count]) => (
+              <button type="button" key={value} className={leftTab === value ? "is-active" : ""} onClick={() => setLeftTab(value)}><Icon name={value === "patterns" ? "waveform" : value === "phases" ? "phase" : value === "zones" ? "zone" : "note"} size={12} />{tr(label)}<span>{count}</span></button>
+            ))}
+          </nav>
+          <BulkActionBar
+            count={selectionCount}
+            onSelectAll={selectAllCurrentTab}
+            onShow={() => setSelectedVisibility(true)}
+            onHide={() => setSelectedVisibility(false)}
+            onDuplicate={duplicateSelection}
+            onLock={selectedByType.pattern.size ? () => setSelectedLock(true) : null}
+            onUnlock={selectedByType.pattern.size ? () => setSelectedLock(false) : null}
+            onDelete={removeSelection}
+            onClear={clearSelection}
+          />
+          {(leftTab !== "patterns" || patterns.length > 0) && <div className="project-filter"><Icon name="cursor" size={12} /><input value={listFilter} aria-label={tr("Filtrer la liste active…")} onChange={(event) => setListFilter(event.target.value)} placeholder={tr("Filtrer la liste active…")} /><kbd>Ctrl+A</kbd></div>}
+          <div className="side-panel__content">
+            {leftTab === "patterns" && (
+              <>
+                <button type="button" className="drop-button" onClick={() => patternInputRef.current?.click()}><span className="drop-button__asset"><Icon name="waveform" /></span><span><strong>{tr("Importer des données")}</strong><small>.xy · .txt · .csv · .dat · .xml OPUS</small></span><Icon name="upload" size={14} /></button>
+                {patterns.length > 0 && <details className="data-tools-disclosure">
+                  <summary><span><Icon name="sort" size={13} />{tr("Organiser et combiner")}</span><small>{tr("Tri, groupes et moyennes")}</small><Icon name="chevronDown" size={13} /></summary>
+                  <div className="data-tools-disclosure__body">
+                  <div className="pattern-organizer">
+                  <div className="pattern-organizer__row">
+                    <label><span><Icon name="sort" size={12} /> {tr("Trier")}</span><select value={patternSort.key} onChange={(event) => setPatternSort((current) => ({ ...current, key: event.target.value }))}><option value="manual">{tr("Ordre manuel")}</option><option value="filename">{tr("Nom du fichier")}</option><option value="date">{tr("Date du fichier")}</option><option value="numeric">{tr("Valeur numérique")}</option><option value="group">{tr("Groupe")}</option></select></label>
+                    <button type="button" className="organizer-direction" aria-label={tr(patternSort.direction === "asc" ? "Ordre croissant" : "Ordre décroissant")} onClick={() => setPatternSort((current) => ({ ...current, direction: current.direction === "asc" ? "desc" : "asc" }))}>{patternSort.direction === "asc" ? "↑" : "↓"}</button>
+                    <Button variant="secondary" disabled={patternSort.key === "manual"} onClick={sortPatterns}>Appliquer</Button>
+                  </div>
+                  <div className="pattern-organizer__row">
+                    <label><span><Icon name="group" size={12} /> {tr("Grouper l’affichage")}</span><select value={groupViewBy} onChange={(event) => setGroupViewBy(event.target.value)}><option value="none">{tr("Aucun")}</option><option value="group">{tr("Tous les groupes")}</option><option value="sample">{tr("Échantillon")}</option><option value="time">{tr("Temps")}</option><option value="temperature">{tr("Température")}</option><option value="treatment">{tr("Traitement")}</option></select></label>
+                  </div>
+                  </div>
+                {supportsAveraging && (
+                  <div className="average-builder">
+                    <div className="average-builder__header">
+                      <div><strong>{tr("Moyenne d’acquisitions")}</strong><span>{ramanAverageSelection.length} {tr("acquisition(s) sélectionnée(s)")}</span></div>
+                      <button type="button" onClick={() => setRamanAverageSelection(patterns.filter((pattern) => pattern.visible && !pattern.isAverage).map((pattern) => pattern.id))}>{tr("Sélectionner visibles")}</button>
+                    </div>
+                    <input type="text" value={ramanAverageLabel} aria-label={tr("Nom du patron moyen")} placeholder={tr("Nom du patron moyen")} onChange={(event) => setRamanAverageLabel(event.target.value)} />
+                    <div className="average-builder__grid">
+                      <label><span>{tr("Agrégation")}</span><select value={S.ramanAverageMethod} onChange={(event) => patchSettings("ramanAverageMethod", event.target.value)}><option value="mean">{tr("Moyenne")}</option><option value="median">{tr("Médiane")}</option></select></label>
+                      <label><span>{tr("Avant moyenne")}</span><select value={S.ramanAverageNormalize} onChange={(event) => patchSettings("ramanAverageNormalize", event.target.value)}><option value="none">{tr("Intensités brutes")}</option><option value="max">{tr("Normaliser au maximum")}</option><option value="area">{tr("Normaliser à l’aire")}</option><option value="minmax">{tr("Min–max")}</option></select></label>
+                    </div>
+                    <Toggle label="Masquer les acquisitions source" checked={S.ramanAverageHideSources} onChange={(value) => patchSettings("ramanAverageHideSources", value)} />
+                    <div className="average-builder__actions">
+                      <Button variant="secondary" onClick={() => setRamanAverageSelection([])}>Effacer</Button>
+                      <Button variant="primary" disabled={ramanAverageSelection.length < 2} onClick={createRamanAverage}>Créer la moyenne</Button>
+                    </div>
+                    <p>{tr("Les acquisitions sont interpolées sur leur plage commune. Les données sources ne sont pas modifiées.")}</p>
+                  </div>
+                )}
+                  </div>
+                </details>}
+                <div className="data-list">
+                  {filteredPatterns.length ? patternGroups.map((group) => (
+                    <section className="pattern-group" key={group.key}>
+                      {group.label && <header className="pattern-group__header"><Icon name="group" size={12} /><strong>{group.label}</strong><span>{group.items.length}</span></header>}
+                      {group.items.map((pattern) => { const index = patterns.findIndex((item) => item.id === pattern.id); return (
+                        <PatternItem
+                          key={pattern.id}
+                          pattern={pattern}
+                          index={index}
+                          color={colorMap.get(pattern.id) || pattern.color}
+                          selected={isSelected("pattern", pattern.id)}
+                          onSelect={(event) => selectItem(event, "pattern", pattern.id)}
+                          onUpdate={(key, value) => updatePattern(pattern.id, key, value)}
+                          onDelete={() => removeItems([{ type: "pattern", id: pattern.id }])}
+                          onDragStart={(event, id) => handleDataDragStart(event, "pattern", id)}
+                          onDrop={(event, id) => handleDataDrop(event, "pattern", id)}
+                          averageSelectable={supportsAveraging && !pattern.isAverage}
+                          averageChecked={ramanAverageSelection.includes(pattern.id)}
+                          onAverageToggle={(checked) => toggleRamanAveragePattern(pattern.id, checked)}
+                        />
+                      ); })}
+                    </section>
+                  )) : <EmptyPanel kind="pattern" title="Aucune donnée" body="Importer des acquisitions ou déposer les fichiers dans l’espace central." />}
+                </div>
+              </>
+            )}
+            {leftTab === "phases" && (
+              <>
+                <button type="button" className="drop-button" onClick={() => phaseInputRef.current?.click()}><span className="drop-button__asset"><Icon name="phase" /></span><span><strong>{tr("Importer des phases")}</strong><small>{tr(activeMode === "drx" ? ".dif ou liste de pics DRX" : activeMode === "ir" ? "Liste de bandes IR (cm⁻¹)" : "RRUFF ou liste de pics Raman")}</small></span><Icon name="upload" size={14} /></button>
+                <details className="data-tools-disclosure">
+                  <summary><span><Icon name="plus" size={13} />{tr("Ajouter manuellement")}</span><small>{tr("Nom et positions des pics")}</small><Icon name="chevronDown" size={13} /></summary>
+                  <div className="data-tools-disclosure__body">
+                <div className="manual-builder">
+                  <div className="manual-builder__header"><strong>{tr("Ajouter une phase manuellement")}</strong><span>{tr("Positions seules ou position:intensité")}</span></div>
+                  <div className="manual-builder__grid">
+                    <input type="text" value={manualPhase.name} aria-label={tr("Nom de la référence")} placeholder={tr("Nom, ex. Vatérite")} onChange={(event) => setManualPhase((current) => ({ ...current, name: event.target.value }))} />
+                    <input type="text" value={manualPhase.abbrev} aria-label={tr("Abréviation de la référence")} placeholder={tr("Abréviation")} onChange={(event) => setManualPhase((current) => ({ ...current, abbrev: event.target.value }))} />
+                  </div>
+                  <textarea rows="4" value={manualPhase.peaks} aria-label={tr("Positions et intensités des pics")} placeholder={tr("107; 280; 713; 750; 1085\nou 107:40; 280:100; 713:65")} onChange={(event) => setManualPhase((current) => ({ ...current, peaks: event.target.value }))} />
+                  <div className="manual-builder__footer">
+                    <input type="color" value={manualPhase.color} aria-label={tr("Couleur de la phase")} onChange={(event) => setManualPhase((current) => ({ ...current, color: event.target.value }))} />
+                    <Button variant="primary" onClick={createManualPhase}>Ajouter la phase</Button>
+                  </div>
+                </div>
+                  </div>
+                </details>
+                <div className="data-list">
+                  {filteredPhases.length ? filteredPhases.map((phase) => (
+                    <PhaseItem
+                      key={phase.id}
+                      phase={phase}
+                      annotationsVisible={S.showAnnotations}
+                      panelVisible={S.showPdfPanel}
+                      selected={isSelected("phase", phase.id)}
+                      onSelect={(event) => selectItem(event, "phase", phase.id)}
+                      onUpdate={(key, value) => updatePhase(phase.id, key, value)}
+                      onDelete={() => removeItems([{ type: "phase", id: phase.id }])}
+                      onAppend={() => { appendTargetRef.current = phase.id; appendPhaseInputRef.current?.click(); }}
+                      onDragStart={(event, id) => handleDataDragStart(event, "phase", id)}
+                      onDrop={(event, id) => handleDataDrop(event, "phase", id)}
+                    />
+                  )) : <EmptyPanel kind="phase" title="Aucune phase" body="Importer des fiches .dif ou des listes de pics texte." />}
+                </div>
+              </>
+            )}
+            {leftTab === "zones" && (
+              <>
+                <div className="manual-builder zone-builder">
+                  <div className="manual-builder__header"><strong>{tr("Ajouter une zone")}</strong><span>{tr("Bandes, vibrations ou domaines d’attribution")}</span></div>
+                  <input type="text" value={zoneDraft.name} aria-label={tr("Nom de la zone")} placeholder={tr("Nom, ex. ν IO — iode")} onChange={(event) => setZoneDraft((current) => ({ ...current, name: event.target.value }))} />
+                  <div className="manual-builder__grid">
+                    <label><span>{tr("X min")}</span><NumericInput value={zoneDraft.xmin} step={1} onCommit={(value) => setZoneDraft((current) => ({ ...current, xmin: value }))} ariaLabel={tr("X min de la zone")} /></label>
+                    <label><span>{tr("X max")}</span><NumericInput value={zoneDraft.xmax} step={1} onCommit={(value) => setZoneDraft((current) => ({ ...current, xmax: value }))} ariaLabel={tr("X max de la zone")} /></label>
+                  </div>
+                  <div className="manual-builder__footer">
+                    <input type="color" value={zoneDraft.color} aria-label={tr("Couleur de la zone")} onChange={(event) => setZoneDraft((current) => ({ ...current, color: event.target.value }))} />
+                    <Button variant="primary" onClick={createZone}>Ajouter la zone</Button>
+                  </div>
+                </div>
+                <div className="data-list">
+                  {filteredZones.length ? filteredZones.map((zone) => (
+                    <ZoneItem
+                      key={zone.id}
+                      zone={zone}
+                      selected={isSelected("zone", zone.id)}
+                      onSelect={(event) => selectItem(event, "zone", zone.id)}
+                      onUpdate={(key, value) => updateZone(zone.id, key, value)}
+                      onDelete={() => removeItems([{ type: "zone", id: zone.id }])}
+                    />
+                  )) : <EmptyPanel kind="zone" title="Aucune zone" body="Ajouter une plage nommée, par exemple une vibration phosphate, un massif carbonate ou une zone attribuée à l’iode." />}
+                </div>
+              </>
+            )}
+            {leftTab === "notes" && (
+              <>
+                <button type="button" className={`drop-button ${addNoteMode ? "is-active" : ""}`} onClick={() => { setAddNoteMode((value) => !value); setTool("cursor"); }}><span className="drop-button__asset"><Icon name="note" /></span><span><strong>{tr(addNoteMode ? "Cliquer sur la figure…" : "Ajouter une note")}</strong><small>{tr("Placement interactif")}</small></span><Icon name="plus" size={14} /></button>
+                <div className="data-list">
+                  {filteredNotes.length ? filteredNotes.map((note) => (
+                    <NoteItem
+                      key={note.id}
+                      note={note}
+                      selected={isSelected("note", note.id)}
+                      onSelect={(event) => selectItem(event, "note", note.id)}
+                      onUpdate={(key, value) => updateNote(note.id, key, value)}
+                      onDelete={() => removeItems([{ type: "note", id: note.id }])}
+                    />
+                  )) : <EmptyPanel kind="note" title="Aucune note" body="Activer le placement puis cliquer dans la zone principale de la figure." />}
+                </div>
+              </>
+            )}
+          </div>
+          {!leftCollapsed && <Resizer side="left" onReset={() => setLeftWidth(310)} onResize={{ currentWidth: () => leftWidth, apply: (value) => setLeftWidth(clamp(value, 250, 560)) }} />}
+        </aside>
+
+        <section key={activeMode} className="canvas-column">
+          <div className="canvas-toolbar">
+            <div className="canvas-toolbar__group canvas-toolbar__group--panels">
+              <IconButton icon="panelLeft" title={leftCollapsed ? "Afficher le panneau de données" : "Masquer le panneau de données"} active={!leftCollapsed} onClick={() => setLeftCollapsed((value) => !value)} />
+              <IconButton icon="layout" title="Réinitialiser la disposition" onClick={resetLayout} />
+            </div>
+            <div className="canvas-toolbar__divider" />
+            <div className="canvas-toolbar__group">
+              <IconButton icon="cursor" title="Sélection · V" active={tool === "cursor"} onClick={() => setTool("cursor")} />
+              <IconButton icon="hand" title="Déplacer la feuille · H ou espace" active={tool === "hand"} onClick={() => setTool("hand")} />
+              <IconButton icon="zoomRect" title="Zoom rectangle sur l’axe X · Z" active={tool === "zoomRect"} onClick={() => setTool((value) => value === "zoomRect" ? "cursor" : "zoomRect")} />
+              <IconButton icon="tag" title="Édition des pics · clic sur une courbe = ajouter, clic sur un marqueur ou sa valeur = retirer" active={tool === "peaks"} onClick={() => setTool((value) => value === "peaks" ? "cursor" : "peaks")} />
+              <IconButton icon="magnet" title="Accrochage aux pics" active={snapToPeak} onClick={() => setSnapToPeak((value) => !value)} />
+              <IconButton icon="ruler" title="Guides d’alignement (magnétisme des labels et notes)" active={magnetAlign} onClick={() => setMagnetAlign((value) => !value)} />
+            </div>
+            <div className="canvas-toolbar__divider" />
+            <div className="canvas-toolbar__group">
+              <IconButton icon="zoomOut" title="Réduire" onClick={() => setZoom((value) => clamp(value / 1.15, 0.2, 3))} />
+              <button type="button" className="zoom-readout" onClick={() => setZoom(1)}>{Math.round(zoom * 100)} %</button>
+              <IconButton icon="zoomIn" title="Agrandir" onClick={() => setZoom((value) => clamp(value * 1.15, 0.2, 3))} />
+              <IconButton icon="fit" title="Ajuster à l’espace" onClick={fitToWorkspace} />
+            </div>
+            <div className="canvas-toolbar__divider" />
+            <div className="canvas-toolbar__group">
+              <IconButton icon="compare" title="Comparer données brutes et traitées" active={comparisonView} onClick={() => setComparisonView((value) => !value)} />
+              <IconButton icon="layout" title="Afficher le navigateur de plage" active={showNavigator} onClick={() => setShowNavigator((value) => !value)} />
+              <IconButton icon={editorFullscreen ? "fullscreenExit" : "fullscreen"} title={editorFullscreen ? "Quitter le mode plein écran" : "Mode édition plein écran"} active={editorFullscreen} onClick={() => setEditorFullscreen((value) => !value)} />
+            </div>
+            <div className="canvas-toolbar__divider" />
+            <div className="canvas-toolbar__spacer" />
+            <nav className="workspace-tool-dock" aria-label={tr("Outils de la figure")}>
+              {workspaceTools.map(([panel, label, icon]) => {
+                const active = workspaceToolActive(panel) && !rightCollapsed;
+                return <button type="button" key={panel} className={active ? "is-active" : ""} aria-pressed={active} title={tr(label)} onClick={() => openWorkspaceTool(panel)}><Icon name={icon} size={14} /><span>{tr(label)}</span>{panel === "inspector" && selectionCount > 0 && <small>{selectionCount}</small>}</button>;
+              })}
+            </nav>
+          </div>
+
+          {showNavigator && visibleCount > 0 && (
+            <RangeNavigator
+              patterns={patterns}
+              fullRange={fullXRange}
+              xmin={viewXMin}
+              xmax={viewXMax}
+              axisMode={activeMode === "drx" ? (S.xAxisMode || "2theta") : "native"}
+              wavelength={Number(S.wavelength) || 1.5406}
+              unitLabel={primaryAxisUnit}
+              reversed={Boolean(S.reverseXAxis)}
+              onPreview={(xmin, xmax, mode) => {
+                if (xmin === null) setDragPreview((current) => current?.type === "rangeNavigator" ? null : current);
+                else setDragPreview({ type: "rangeNavigator", mode, xmin, xmax });
+              }}
+              onCancel={() => setDragPreview((current) => current?.type === "rangeNavigator" ? null : current)}
+              onCommit={(xmin, xmax) => {
+                setDragPreview((current) => current?.type === "rangeNavigator" ? null : current);
+                history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
+                  ...currentWorkspace,
+                  settings: { ...currentWorkspace.settings, xmin, xmax, viewYMin: null, viewYMax: null },
+                })));
+              }}
+            />
+          )}
+
+          <div
+            ref={workspaceRef}
+            className={`workspace ${tool === "hand" ? "is-pannable" : ""} ${dropActive ? "is-drop-active" : ""}`}
+            onDragEnter={(event) => { if (event.dataTransfer.types.includes("Files")) { event.preventDefault(); setDropActive(true); } }}
+            onDragOver={(event) => { if (event.dataTransfer.types.includes("Files")) event.preventDefault(); }}
+            onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDropActive(false); }}
+            onDrop={handleFileDrop}
+            onPointerDown={startPan}
+            onPointerMove={movePan}
+            onPointerUp={stopPan}
+            onPointerCancel={stopPan}
+            onWheel={workspaceWheel}
+          >
+            {dropActive && <div className="drop-overlay"><div className="drop-overlay__asset"><WorkspaceIllustration mode={activeMode} compact /></div><Icon name="upload" size={24} /><strong>{tr("Déposer les fichiers")}</strong><span>{tr(".dif → DRX · RRUFF Raman → Raman · .xml OPUS → IR · autres fichiers → espace actif.")}</span></div>}
+            {!visibleCount ? (
+              <div className="welcome-card">
+                <div className="welcome-card__visual"><WorkspaceIllustration mode={activeMode} /></div>
+                <h1>{tr(activeMode === "drx" ? "Composer une figure de diffraction" : activeMode === "ir" ? "Composer une figure infrarouge" : "Composer une figure Raman")}</h1>
+                <p>{tr("Importer les acquisitions, ajouter les références, appliquer le traitement du signal puis produire une figure scientifique prête à publier.")}</p>
+                <div className="welcome-card__actions">
+                  <Button variant="primary" icon="upload" onClick={() => patternInputRef.current?.click()}>{tr("Importer des patrons")}</Button>
+                  <Button variant="secondary" icon="phase" onClick={() => phaseInputRef.current?.click()}>Ajouter des phases</Button>
+                  <Button variant="secondary" icon="waveform" onClick={loadSampleData}>Jeu d’exemple</Button>
+                </div>
+                <div className="welcome-card__privacy"><Icon name="check" size={12} /> {tr("Traitement exclusivement local dans le navigateur.")}</div>
+              </div>
+            ) : (
+              <div className={`page-stage ${comparisonView ? "is-comparison" : ""}`} style={{ width: comparisonView ? W * displayZoom * 2 + 24 : W * displayZoom, height: H * displayZoom }}>
+                {comparisonView && (
+                  <div className="figure-page figure-page--raw" style={{ width: W * displayZoom, height: H * displayZoom }}>
+                    <RawComparisonPreview data={rawProcessed} colors={colorMap} width={W} height={H} xmin={viewXMin} xmax={viewXMax} />
+                  </div>
+                )}
+                <div className="figure-page" style={{ width: W * displayZoom, height: H * displayZoom }}>
+                  {textTarget && textTargetStyle && <div className="figure-text-toolbar" data-ui-only="true" onPointerDown={(event) => event.stopPropagation()}>
+                    <span title={tr(textTarget.label)}>{truncateLabel(tr(textTarget.label), 22)}</span>
+                    <button type="button" title={tr("Réduire le texte")} onClick={() => updateTextTargetStyle("size", clamp(textTargetStyle.size - 0.5, 5, 60))}>−</button>
+                    <input type="number" min="5" max="60" step="0.5" value={textTargetStyle.size} aria-label={`${tr("Taille")} · ${tr(textTarget.label)}`} onChange={(event) => updateTextTargetStyle("size", clamp(Number(event.target.value), 5, 60))} />
+                    <button type="button" title={tr("Agrandir le texte")} onClick={() => updateTextTargetStyle("size", clamp(textTargetStyle.size + 0.5, 5, 60))}>+</button>
+                    <button type="button" className={textTargetStyle.bold ? "is-active" : ""} aria-pressed={textTargetStyle.bold} title={tr("Gras")} onClick={() => updateTextTargetStyle("bold", !textTargetStyle.bold)}><strong>B</strong></button>
+                    <button type="button" title={tr("Fermer les contrôles de texte")} onClick={() => setTextTarget(null)}>×</button>
+                  </div>}
+                  <svg
+                    ref={svgRef}
+                    viewBox={`0 0 ${W} ${H}`}
+                    width={W * displayZoom}
+                    height={H * displayZoom}
+                    xmlns="http://www.w3.org/2000/svg"
+                    className={`${addNoteMode ? "is-adding-note" : ""} tool-${tool}`}
+                    onPointerDown={onSvgPointerDown}
+                    onPointerMove={onSvgPointerMove}
+                    onPointerUp={finishSvgInteraction}
+                    onPointerCancel={finishSvgInteraction}
+                    onPointerLeave={() => setCursor(null)}
+                    onClick={onSvgClick}
+                  >
+                    <rect data-figure-background x="0" y="0" width={W} height={H} fill={S.pageBackground} />
+
+                    {S.title && <text x={M.left + plotWidth / 2} y={M.top - 17} textAnchor="middle" fontSize={S.titleFontSize} fontWeight={S.titleFontBold ? "700" : "400"} fill="#15191f" fontFamily={figureFont} style={{ cursor: "pointer" }} onClick={(event) => activateTextTarget(event, { kind: "settings", label: "Titre", sizeKey: "titleFontSize", boldKey: "titleFontBold" })} onDoubleClick={(event) => openContextOptions(event, { tab: "appearance", target: "figure-title" })}>{S.title}</text>}
+
+                    {S.figureLayoutMode === "single" && supportsZones && zones.filter((zone) => zone.visible && Number(zone.xmax) > viewXMin && Number(zone.xmin) < viewXMax).map((zone) => {
+                      const previewMin = dragPreview?.type === "zoneBoundary" && dragPreview.id === zone.id && dragPreview.edge === "min" ? dragPreview.x : Number(zone.xmin);
+                      const previewMax = dragPreview?.type === "zoneBoundary" && dragPreview.id === zone.id && dragPreview.edge === "max" ? dragPreview.x : Number(zone.xmax);
+                      const start = Math.max(viewXMin, previewMin);
+                      const end = Math.min(viewXMax, previewMax);
+                      // L’axe pouvant être inversé, on ordonne les bornes en pixels.
+                      const x = Math.min(xToPx(start), xToPx(end));
+                      const width = Math.abs(xToPx(end) - xToPx(start));
+                      // Les poignées suivent les bornes de données, pas leur position
+                      // habituelle à l’écran : sur un axe inversé, xmin est à droite.
+                      const { leftEdge, rightEdge } = zoneBoundaryEdges(xToPx(start), xToPx(end));
+                      const selected = isSelected("zone", zone.id);
+                      return (
+                        <g key={`zone-${zone.id}`} opacity={selected ? 1 : 0.94} onClick={(event) => selectItem(event, "zone", zone.id)} onDoubleClick={(event) => openContextOptions(event, { tab: "inspector", type: "zone", id: zone.id, target: "zone-name" })} style={{ cursor: "pointer" }}>
+                          <rect x={x} y={M.top} width={width} height={mainHeight} fill={zone.color} opacity={zone.opacity ?? 0.12} />
+                          {zone.showLabel !== false && width > 12 && <text x={x + width / 2} y={M.top + 14} textAnchor="middle" fontSize={finiteNumber(zone.labelFontSize, S.zoneLabelFontSize)} fontWeight={(zone.labelFontBold ?? S.zoneLabelFontBold) ? "700" : "400"} fill={zone.color} fontFamily={figureFont} onClick={(event) => activateTextTarget(event, { kind: "zone", id: zone.id, label: `Zone · ${zone.name}`, sizeKey: "labelFontSize", boldKey: "labelFontBold", fallbackSizeKey: "zoneLabelFontSize", fallbackBoldKey: "zoneLabelFontBold" })}>{zone.name}</text>}
+                          {selected && <g data-ui-only="true">
+                            <line x1={x} x2={x} y1={M.top} y2={M.top + mainHeight} stroke={zone.color} strokeWidth="2.2" opacity="0.8" style={{ cursor: "ew-resize" }} onPointerDown={(event) => beginCanvasDrag(event, "zoneBoundary", { id: zone.id, edge: leftEdge })} />
+                            <line x1={x + width} x2={x + width} y1={M.top} y2={M.top + mainHeight} stroke={zone.color} strokeWidth="2.2" opacity="0.8" style={{ cursor: "ew-resize" }} onPointerDown={(event) => beginCanvasDrag(event, "zoneBoundary", { id: zone.id, edge: rightEdge })} />
+                            <rect x={x - 4} y={M.top + mainHeight / 2 - 12} width="8" height="24" rx="4" fill={zone.color} opacity="0.85" style={{ cursor: "ew-resize" }} onPointerDown={(event) => beginCanvasDrag(event, "zoneBoundary", { id: zone.id, edge: leftEdge })} />
+                            <rect x={x + width - 4} y={M.top + mainHeight / 2 - 12} width="8" height="24" rx="4" fill={zone.color} opacity="0.85" style={{ cursor: "ew-resize" }} onPointerDown={(event) => beginCanvasDrag(event, "zoneBoundary", { id: zone.id, edge: rightEdge })} />
+                          </g>}
+                        </g>
+                      );
+                    })}
+
+                    {S.figureLayoutMode === "single" && S.showGrid && xTickObjects.map((tick) => (
+                      <line key={`grid-${tick.x}`} x1={xToPx(tick.x)} x2={xToPx(tick.x)} y1={M.top} y2={M.top + mainHeight + (panelHeight ? M.gap + panelHeight : 0)} stroke="#cfd4da" strokeWidth="0.65" opacity={S.gridOpacity} />
+                    ))}
+
+                    <defs>
+                      <clipPath id="plot-clip">
+                        <rect x={M.left} y={M.top} width={plotWidth} height={mainHeight} />
+                      </clipPath>
+                    </defs>
+
+                    {S.figureLayoutMode === "single" && <g data-ui-only="true" className={`right-margin-resizer ${dragPreview?.type === "rightMargin" ? "is-dragging" : ""}`}>
+                      <rect
+                        x={M.left + plotWidth - 9}
+                        y={M.top}
+                        width="18"
+                        height={mainHeight}
+                        fill="transparent"
+                        style={{ cursor: "ew-resize" }}
+                        onPointerDown={(event) => beginCanvasDrag(event, "rightMargin", { margin: Number(S.rightMargin) || 145 })}
+                        onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); patchSettings("rightMargin", 145); setMessage("Marge droite réinitialisée à 145 px."); }}
+                      />
+                      <line pointerEvents="none" x1={M.left + plotWidth} x2={M.left + plotWidth} y1={M.top} y2={M.top + mainHeight} />
+                      <rect pointerEvents="none" className="right-margin-resizer__grip" x={M.left + plotWidth - 3} y={M.top + mainHeight / 2 - 18} width="6" height="36" rx="3" />
+                      {dragPreview?.type === "rightMargin" && <g className="right-margin-resizer__value" pointerEvents="none">
+                        <rect x={M.left + plotWidth - 47} y={M.top + 8} width="94" height="23" rx="5" />
+                        <text x={M.left + plotWidth} y={M.top + 23} textAnchor="middle">{Math.round(M.right)} px</text>
+                      </g>}
+                    </g>}
+
+                    {S.figureLayoutMode === "single" ? (
+                      processed.map((pattern) => {
+                      if (!pattern.px?.length) return null;
+                      const offset = pattern.stackOffset;
+                      const color = colorMap.get(pattern.id) || "#111111";
+                      const path = buildCurvePath(pattern.px, pattern.py, offset);
+                      const baselineY = yToPx(offset);
+                      const fillPath = `${path}L${xToPx(pattern.px.at(-1)).toFixed(2)},${baselineY.toFixed(2)}L${xToPx(pattern.px[0]).toFixed(2)},${baselineY.toFixed(2)}Z`;
+                      const labelY = labelYForPattern(pattern);
+                      const showPeaks = tool === "peaks" || (pattern.effectiveSettings?.showDetectedPeaks ?? S.showDetectedPeaks);
+                      const labelledPeaks = [...(pattern.detectedPeaks || [])]
+                        .sort((a, b) => (b.prominence ?? 0) - (a.prominence ?? 0))
+                        .slice(0, S.peakMaxLabels)
+                        .sort((a, b) => a.displayX - b.displayX);
+                      return (
+                        <g key={pattern.id} opacity={selectedByType.pattern.size && !isSelected("pattern", pattern.id) ? 0.72 : 1}>
+                          <g clipPath="url(#plot-clip)">
+                            {S.layoutMode === "difference" && <line x1={M.left} x2={M.left + plotWidth} y1={baselineY} y2={baselineY} stroke={color} strokeWidth="0.55" strokeDasharray="3 3" opacity="0.35" />}
+                            {S.showFill && !breakActive && <path d={fillPath} fill={color} opacity={S.fillAlpha * (pattern.curveOpacity ?? 1)} />}
+                            <path d={path} fill="none" stroke={color} strokeWidth={S.lineWidth} opacity={pattern.curveOpacity ?? 1} vectorEffect="non-scaling-stroke" />
+                            {showPeaks && (pattern.detectedPeaks || []).map((peak, peakIndex) => (
+                              <circle
+                                key={`peak-marker-${pattern.id}-${peakIndex}`}
+                                cx={xToPx(peak.displayX)} cy={yToPx(peak.displayY + offset)}
+                                r={tool === "peaks" ? Math.max(S.peakMarkerSize, 4) : S.peakMarkerSize}
+                                fill={peak.manual ? color : S.pageBackground} stroke={color} strokeWidth="1.1" vectorEffect="non-scaling-stroke"
+                                style={tool === "peaks" ? { cursor: "pointer" } : undefined}
+                                onClick={tool === "peaks" ? (event) => { event.stopPropagation(); removePeak(pattern.id, peak); } : undefined}
+                              />
+                            ))}
+                            {showPeaks && S.showPeakLabels && labelledPeaks.map((peak, peakIndex) => {
+                              const x = xToPx(peak.displayX);
+                              const y = yToPx(peak.displayY + offset) - 7 - (peakIndex % 2) * 7;
+                              return <text
+                                key={`peak-label-${pattern.id}-${peakIndex}`}
+                                x={x} y={y} textAnchor="start" fontSize={S.peakLabelSize} fontWeight={S.peakLabelBold ? "700" : "400"} fill={color}
+                                fontFamily={figureFont} transform={`rotate(-90 ${x} ${y})`}
+                                style={tool === "peaks" ? { cursor: "pointer", userSelect: "none" } : undefined}
+                                onClick={(event) => { if (tool === "peaks") { event.stopPropagation(); removePeak(pattern.id, peak); } else activateTextTarget(event, { kind: "settings", label: "Labels de pics", sizeKey: "peakLabelSize", boldKey: "peakLabelBold" }); }}
+                              >{peak.x.toFixed(S.mode === "drx" ? 2 : 0)}</text>;
+                            })}
+                          </g>
+                          {S.showPatternLabels !== false && pattern.showLabel !== false && (() => {
+                            const moving = dragPreview?.type === "patternLabel" && dragPreview.id === pattern.id ? dragPreview : null;
+                            const resizing = dragPreview?.type === "patternLabelResize" && dragPreview.id === pattern.id ? dragPreview : null;
+                            const dx = moving ? moving.dx : Number(pattern.labelDx) || 0;
+                            const dy = moving ? moving.dy : Number(pattern.labelDy) || 0;
+                            const fontSize = resizing ? resizing.fontSize : Number(pattern.labelFontSize) || S.patternLabelSize;
+                            const text = `${pattern.label}${pattern.isDifferenceReference ? " (réf.)" : ""}`;
+                            const labelX = M.left + plotWidth + 10 + dx;
+                            const labelYpx = dragPreview?.type === "curveOrder" && dragPreview.id === pattern.id ? dragPreview.svgY : yToPx(labelY) + dy;
+                            const estimatedWidth = Math.max(30, text.length * fontSize * 0.57);
+                            const selected = isSelected("pattern", pattern.id);
+                            return <g>
+                              <text data-ui-only="true" x={labelX - 12} y={labelYpx} dominantBaseline="middle" fontSize={Math.max(8, fontSize * 0.75)} fill={color} opacity="0.65" style={{ cursor: pattern.locked ? "not-allowed" : "ns-resize", userSelect: "none" }} onPointerDown={(event) => { if (!pattern.locked) beginCanvasDrag(event, "curveOrder", { id: pattern.id }); }}>↕</text>
+                              <text
+                                x={labelX} y={labelYpx} dominantBaseline="middle" fontSize={fontSize}
+                                fontWeight={(pattern.labelBold ?? S.patternLabelBold) ? "700" : "400"} fill={color} fontFamily={figureFont}
+                                style={{ cursor: "move", userSelect: "none" }}
+                                onClick={(event) => { selectItem(event, "pattern", pattern.id); activateTextTarget(event, { kind: "pattern", id: pattern.id, label: `Patron · ${pattern.label}`, sizeKey: "labelFontSize", boldKey: "labelBold", fallbackSizeKey: "patternLabelSize", fallbackBoldKey: "patternLabelBold" }); }}
+                                onDoubleClick={(event) => openContextOptions(event, { tab: "inspector", type: "pattern", id: pattern.id, target: "pattern-name" })}
+                                onPointerDown={(event) => { if (event.detail >= 2) { openContextOptions(event, { tab: "inspector", type: "pattern", id: pattern.id, target: "pattern-name" }); return; } beginCanvasDrag(event, "patternLabel", { id: pattern.id, dx, dy, fontSize }); }}
+                              >{text}</text>
+                              {selected && <g data-ui-only="true">
+                                <rect x={labelX - 4} y={labelYpx - fontSize * 0.72} width={estimatedWidth + 8} height={fontSize * 1.42} fill="none" stroke={color} strokeWidth="0.8" strokeDasharray="3 2" opacity="0.65" pointerEvents="none" />
+                                <rect x={labelX + estimatedWidth + 1} y={labelYpx - 4} width="8" height="8" rx="2" fill={color} stroke="#fff" strokeWidth="1" style={{ cursor: "nwse-resize" }} onPointerDown={(event) => beginCanvasDrag(event, "patternLabelResize", { id: pattern.id, fontSize })} />
+                              </g>}
+                            </g>;
+                          })()}
+                        </g>
+                      );
+                    })
+                    ) : (
+                      <FigureLayoutLayer
+                        mode={S.figureLayoutMode}
+                        processed={processed}
+                        rawProcessed={rawProcessed}
+                        activePatternId={activePattern?.id}
+                        settings={S}
+                        colors={colorMap}
+                        bounds={{ x: M.left, y: M.top, width: plotWidth, height: mainHeight }}
+                        xmin={viewXMin}
+                        xmax={viewXMax}
+                        onTextSelect={activateTextTarget}
+                      />
+                    )}
+
+                    {S.figureLayoutMode === "single" && phases.filter((phase) => phase.visible && phase.inOverlay).map((phase) => (
+                      <g key={`phase-overlay-${phase.id}`} clipPath="url(#plot-clip)">
+                        {(() => {
+                          // Poignée de hauteur : elle agit sur le facteur d'échelle
+                          // propre à la phase, appliqué à tous ses bâtonnets.
+                          const scaleDrag = dragPreview?.type === "phaseOverlayScale" && dragPreview.id === phase.id ? dragPreview : null;
+                          const scale = scaleDrag ? scaleDrag.scale : (Number.isFinite(Number(phase.overlayScale)) && phase.overlayScale !== null && phase.overlayScale !== undefined ? Number(phase.overlayScale) : (Number(S.phaseOverlayScale) || 0.85));
+                          // Hauteur individuelle éventuelle d'un bâtonnet, sinon
+                          // hauteur de la phase.
+                          const peakDrag = dragPreview?.type === "phaseOverlayPeakScale" && dragPreview.id === phase.id ? dragPreview : null;
+                          const peakScaleFor = (x) => {
+                            if (peakDrag && Math.abs(peakDrag.x - x) < 1e-6) return peakDrag.scale;
+                            const entry = (phase.overlayPeakScales || []).find((item) => Math.abs(Number(item.x) - x) < overlayTolerance);
+                            return entry && Number.isFinite(Number(entry.scale)) ? Number(entry.scale) : scale;
+                          };
+                          const reference = Math.max(0.2, curveMaximum);
+                          // En transmittance, la ligne de base est haute et les
+                          // bandes descendent : les bâtonnets partent du haut du
+                          // cadre vers le bas, et les valeurs se lisent sous leur
+                          // extrémité.
+                          const invertSticks = activeMode === "ir" && irQuantity === "transmittance";
+                          const baseY = invertSticks ? M.top : Math.min(M.top + mainHeight, yToPx(0));
+                          const visiblePeaks = phase.peaks.filter(([x]) => x >= viewXMin && x <= viewXMax && !(breakActive && x > Number(S.brokenAxisStart) && x < Number(S.brokenAxisEnd)));
+                          const strongest = visiblePeaks.reduce((best, peak) => !best || peak[1] > best[1] ? peak : best, null);
+                          const valueSize = Number(S.phaseOverlayValueSize) || 8.5;
+                          const overlayDisplay = S.phaseOverlayDisplay === "sticks" || S.phaseOverlayDisplay === "values" ? S.phaseOverlayDisplay : "both";
+                          // Sans bâtonnet, la valeur s'ancre sur le pic mesuré.
+                          const anchorMode = overlayDisplay === "values" ? "peak" : (S.phaseOverlayValueAnchor === "peak" ? "peak" : "stick");
+                          const searchWindow = Number(S.phaseOverlayValueWindow) > 0
+                            ? Number(S.phaseOverlayValueWindow)
+                            : (S.mode === "drx" ? 0.2 : 8);
+                          // Sur la figure, l'intensité relative des fiches n'entre
+                          // en compte que si l'option est réactivée ; par défaut
+                          // tous les bâtonnets partent à la même hauteur, réglable
+                          // ensuite un par un. Les panneaux et les annotations
+                          // gardent l'intensité dans tous les cas.
+                          const useIntensity = Boolean(S.phaseOverlayUseIntensity);
+                          const stickUnit = (intensity) => (useIntensity ? (intensity / 100) : 1) * reference;
+                          // Longueur du bâtonnet en pixels, comptée depuis sa base.
+                          const stickLength = (intensity, x) => Math.abs(yToPx(stickUnit(intensity) * (x === undefined ? scale : peakScaleFor(x))) - yToPx(0));
+                          const stickTop = (intensity, x) => {
+                            if (S.phaseOverlayFullHeight) return invertSticks ? M.top + mainHeight : M.top;
+                            const length = stickLength(intensity, x);
+                            return clamp(invertSticks ? baseY + length : baseY - length, M.top, M.top + mainHeight);
+                          };
+                          return <>
+                            {visiblePeaks.map(([x, intensity], index) => {
+                              const px = xToPx(x);
+                              const topY = stickTop(intensity, x);
+                              const isException = (phase.overlayValueExceptions || []).some((value) => Math.abs(value - x) < overlayTolerance);
+                              const showValue = phase.overlayShowValues ? !isException : isException;
+                              const valueText = x.toFixed(S.mode === "drx" ? 2 : 0);
+                              // Ancrage de la valeur : extrémité du bâtonnet par défaut,
+                              // sommet de la courbe mesurée en option. Si le texte
+                              // déborderait du cadre, il bascule vers le bas.
+                              const anchorY = anchorMode === "peak"
+                                ? clamp(curveTopPxNear(x, searchWindow, invertSticks) ?? topY, M.top, M.top + mainHeight)
+                                : topY;
+                              const valueLength = valueText.length * valueSize * 0.62;
+                              // Texte tourné de -90° : l'ancrage « start » le fait
+                              // monter depuis son point, « end » le fait descendre.
+                              // Il se place du côté libre de l'extrémité du bâtonnet,
+                              // au-dessus en absorbance, en dessous en transmittance,
+                              // et bascule de l'autre côté si le cadre est atteint.
+                              const fitsOutward = invertSticks
+                                ? anchorY + 4 + valueLength <= M.top + mainHeight - 2
+                                : anchorY - 4 - valueLength >= M.top + 2;
+                              const valueAnchor = invertSticks
+                                ? (fitsOutward ? "end" : "start")
+                                : (fitsOutward ? "start" : "end");
+                              const valueY = invertSticks
+                                ? (fitsOutward ? anchorY + 4 : anchorY - 6)
+                                : (fitsOutward ? anchorY - 4 : anchorY + 6);
+                              // Décalage libre posé par glisser-déposer ; un glisser en
+                              // cours prime sur la valeur enregistrée.
+                              const offsetDrag = dragPreview?.type === "overlayValueMove" && dragPreview.phaseId === phase.id && Math.abs(dragPreview.x - x) < overlayTolerance ? dragPreview : null;
+                              const storedOffset = (phase.overlayValueOffsets || []).find((item) => Math.abs(Number(item.x) - x) < overlayTolerance);
+                              const offsetX = offsetDrag ? offsetDrag.dx : (Number(storedOffset?.dx) || 0);
+                              const offsetY = offsetDrag ? offsetDrag.dy : (Number(storedOffset?.dy) || 0);
+                              const valueX = px + offsetX;
+                              const valueYFinal = valueY + offsetY;
+                              return <g key={`phase-overlay-line-${phase.id}-${index}`}>
+                                {overlayDisplay !== "values" && <line
+                                  x1={px} x2={px} y1={baseY} y2={topY}
+                                  stroke={phase.color} strokeWidth={Number(S.phaseOverlayWidth) || 1}
+                                  strokeDasharray={isPhaseDashed(phase, "overlay") ? "3 2" : undefined}
+                                  opacity={Number(S.phaseOverlayOpacity) || 0.7}
+                                />}
+                                <line
+                                  data-ui-only="true"
+                                  x1={px} x2={px} y1={baseY} y2={topY}
+                                  stroke="transparent" strokeWidth="9"
+                                  style={{ cursor: "pointer" }}
+                                  onClick={(event) => { event.stopPropagation(); togglePhaseOverlayValue(phase.id, x); }}
+                                >
+                                  <title>{`${phase.name} · ${valueText} — ${tr(showValue ? "cliquer pour masquer la valeur" : "cliquer pour afficher la valeur")}`}</title>
+                                </line>
+                                {overlayDisplay !== "sticks" && showValue && <>
+                                  {(offsetX !== 0 || offsetY !== 0) && <line data-ui-only="true" x1={px} y1={anchorY} x2={valueX} y2={valueYFinal} stroke={phase.color} strokeWidth="0.6" strokeDasharray="2 2" opacity="0.5" pointerEvents="none" />}
+                                  <text
+                                    x={valueX} y={valueYFinal} textAnchor={valueAnchor} fontSize={valueSize}
+                                    fontWeight={S.phaseOverlayValueBold ? "700" : "400"} fill={phase.color} fontFamily={figureFont}
+                                    transform={`rotate(-90 ${valueX} ${valueYFinal})`}
+                                    style={{ cursor: "move", userSelect: "none" }}
+                                    onPointerDown={(event) => beginCanvasDrag(event, "overlayValueMove", {
+                                      phaseId: phase.id, x, dx: offsetX, dy: offsetY, stickX: px, stickY: anchorY,
+                                      // Cible alternative d'accrochage : le bâtonnet quand
+                                      // l'ancrage courant est le pic mesuré, et inversement.
+                                      altY: anchorMode === "peak" ? topY : curveTopPxNear(x, searchWindow, invertSticks),
+                                    })}
+                                    onClick={(event) => activateTextTarget(event, { kind: "settings", label: "Valeurs des références", sizeKey: "phaseOverlayValueSize", boldKey: "phaseOverlayValueBold" })}
+                                    onDoubleClick={(event) => { event.stopPropagation(); togglePhaseOverlayValue(phase.id, x); }}
+                                  ><title>{tr("Glisser pour déplacer la valeur, relâcher près du bâtonnet ou du pic pour l’y raccrocher ; double-clic pour la masquer")}</title>{valueText}</text>
+                                </>}
+                                {overlayDisplay !== "values" && !S.phaseOverlayFullHeight && S.showOverlayHandles !== false && (() => {
+                                  // Poignée propre à ce bâtonnet : elle fixe sa hauteur
+                                  // indépendamment du réglage de la phase.
+                                  const overridden = (phase.overlayPeakScales || []).some((item) => Math.abs(Number(item.x) - x) < overlayTolerance);
+                                  return <g
+                                    data-ui-only="true"
+                                    style={{ cursor: "ns-resize" }}
+                                    onPointerDown={(event) => beginCanvasDrag(event, "phaseOverlayPeakScale", { id: phase.id, x, scale: peakScaleFor(x), unit: stickUnit(intensity), invert: invertSticks })}
+                                    onDoubleClick={(event) => { event.stopPropagation(); resetPhaseOverlayPeakScale(phase.id, x); }}
+                                  >
+                                    <rect x={px - 7} y={topY - 7} width="14" height="14" fill="transparent" />
+                                    <rect
+                                      x={px - 3} y={topY - 3} width="6" height="6" rx="1.5"
+                                      fill={overridden ? phase.color : "#fff"} stroke={phase.color} strokeWidth="1"
+                                      opacity={overridden ? 0.95 : 0.7}
+                                    >
+                                      <title>{`${phase.name} · ${valueText} — ${tr("glisser pour régler la hauteur de ce bâtonnet, double-clic pour revenir à la hauteur de la phase")}`}</title>
+                                    </rect>
+                                  </g>;
+                                })()}
+                              </g>;
+                            })}
+                          </>;
+                        })()}
+                      </g>
+                    ))}
+                    {S.figureLayoutMode === "single" && S.showOverlayLegend && (() => {
+                      const overlayPhases = phases.filter((phase) => phase.visible && phase.inOverlay);
+                      if (!overlayPhases.length) return null;
+                      const preview = dragPreview?.type === "overlayLegendMove" ? dragPreview : null;
+                      const fontSize = clamp(Number(S.overlayLegendFontSize) || 10, 6, 20);
+                      const lineHeight = fontSize + 8;
+                      const longest = overlayPhases.reduce((max, phase) => Math.max(max, String(phase.name || "").length), 6);
+                      const boxWidth = clamp(46 + longest * fontSize * 0.6, 90, plotWidth * 0.5);
+                      const boxHeight = overlayPhases.length * lineHeight + 12;
+                      const defaultX = M.left + plotWidth - boxWidth - 10;
+                      const defaultY = M.top + 10;
+                      const boxX = clamp(preview?.x ?? (Number.isFinite(Number(S.overlayLegendX)) && S.overlayLegendX !== null ? Number(S.overlayLegendX) : defaultX), M.left, M.left + plotWidth - boxWidth);
+                      const boxY = clamp(preview?.y ?? (Number.isFinite(Number(S.overlayLegendY)) && S.overlayLegendY !== null ? Number(S.overlayLegendY) : defaultY), M.top, M.top + mainHeight - boxHeight);
+                      return <g
+                        style={{ cursor: "move" }}
+                        onDoubleClick={(event) => openContextOptions(event, { tab: "references", target: "overlay-legend-options" })}
+                        onPointerDown={(event) => { if (event.detail >= 2) return; beginCanvasDrag(event, "overlayLegendMove", { x: boxX, y: boxY }); }}
+                      >
+                        <rect x={boxX} y={boxY} width={boxWidth} height={boxHeight} fill={S.pageBackground} opacity="0.88" stroke="none" />
+                        {overlayPhases.map((phase, index) => {
+                          const y = boxY + 10 + index * lineHeight + fontSize * 0.5;
+                          return <g key={`overlay-legend-${phase.id}`}>
+                            <line x1={boxX + 8} x2={boxX + 34} y1={y - fontSize * 0.32} y2={y - fontSize * 0.32} stroke={phase.color} strokeWidth={Math.max(1.4, (Number(S.phaseOverlayWidth) || 1) * 1.6)} strokeDasharray={isPhaseDashed(phase, "overlay") ? "3 2" : undefined} />
+                            <text x={boxX + 40} y={y} fontSize={fontSize} fontWeight={S.overlayLegendFontBold ? "700" : "400"} fill="#15191f" fontFamily={figureFont} style={{ userSelect: "none", cursor: "pointer" }} onClick={(event) => activateTextTarget(event, { kind: "settings", label: "Légende des références", sizeKey: "overlayLegendFontSize", boldKey: "overlayLegendFontBold" })}>{phase.name}</text>
+                          </g>;
+                        })}
+                      </g>;
+                    })()}
+
+                    {S.figureLayoutMode === "single" && S.showCurveLegend && processed.length > 0 && (() => {
+                      const preview = dragPreview?.type === "curveLegendMove" ? dragPreview : null;
+                      const fontSize = clamp(Number(S.curveLegendFontSize) || 10, 6, 20);
+                      const lineHeight = fontSize + 8;
+                      const entries = processed.slice(0, 12);
+                      const longest = entries.reduce((max, pattern) => Math.max(max, String(pattern.label || "").length), 6);
+                      const boxWidth = clamp(48 + longest * fontSize * 0.58, 100, plotWidth * 0.55);
+                      const boxHeight = entries.length * lineHeight + 12;
+                      const defaultX = M.left + 12;
+                      const defaultY = M.top + 10;
+                      const boxX = clamp(preview?.x ?? (Number.isFinite(Number(S.curveLegendX)) && S.curveLegendX !== null ? Number(S.curveLegendX) : defaultX), M.left, M.left + plotWidth - boxWidth);
+                      const boxY = clamp(preview?.y ?? (Number.isFinite(Number(S.curveLegendY)) && S.curveLegendY !== null ? Number(S.curveLegendY) : defaultY), M.top, Math.max(M.top, M.top + mainHeight - boxHeight));
+                      return <g
+                        style={{ cursor: "move" }}
+                        onPointerDown={(event) => { if (event.detail >= 2) return; beginCanvasDrag(event, "curveLegendMove", { x: boxX, y: boxY }); }}
+                      >
+                        <rect x={boxX} y={boxY} width={boxWidth} height={boxHeight} fill={S.pageBackground} opacity="0.92" stroke="#8f969e" strokeWidth="0.8" rx="3" />
+                        {entries.map((pattern, index) => {
+                          const y = boxY + 10 + index * lineHeight + fontSize * 0.5;
+                          const color = colorMap.get(pattern.id) || "#111111";
+                          return <g key={`curve-legend-${pattern.id}`}>
+                            <line x1={boxX + 8} x2={boxX + 32} y1={y - fontSize * 0.32} y2={y - fontSize * 0.32} stroke={color} strokeWidth={Math.max(1.4, S.lineWidth * 1.6)} />
+                            <text x={boxX + 38} y={y} fontSize={fontSize} fontWeight={S.curveLegendFontBold ? "700" : "400"} fill="#15191f" fontFamily={figureFont} style={{ userSelect: "none", cursor: "pointer" }} onClick={(event) => activateTextTarget(event, { kind: "settings", label: "Légende des courbes", sizeKey: "curveLegendFontSize", boldKey: "curveLegendFontBold" })}>{truncateLabel(pattern.label, Math.max(10, Math.round((boxWidth - 46) / (fontSize * 0.55))))}</text>
+                          </g>;
+                        })}
+                      </g>;
+                    })()}
+
+                    {S.figureLayoutMode === "single" && multiFitResult && (() => {
+                      const target = processed.find((pattern) => pattern.id === multiFitResult.patternId);
+                      if (!target) return null;
+                      const offset = target.stackOffset || 0;
+                      const toPath = (values) => multiFitResult.x.map((value, index) => `${index ? "L" : "M"}${xToPx(value).toFixed(2)},${yToPx(values[index] + offset).toFixed(2)}`).join("");
+                      return <g clipPath="url(#plot-clip)">
+                        {multiFitResult.components.map((component, index) => (
+                          <path key={`multifit-${index}`} d={toPath(component.curve.map((value, i) => value + multiFitResult.background[i]))} fill="none" stroke="#507f9d" strokeWidth={Math.max(0.8, S.lineWidth * 0.8)} strokeDasharray="4 3" opacity="0.75" vectorEffect="non-scaling-stroke" />
+                        ))}
+                        <path d={toPath(multiFitResult.total)} fill="none" stroke="#e05a47" strokeWidth={Math.max(1, S.lineWidth)} vectorEffect="non-scaling-stroke" opacity="0.9" />
+                      </g>;
+                    })()}
+
+                    {S.figureLayoutMode === "single" && peakFitResult && (() => {
+                      const target = processed.find((pattern) => pattern.id === peakFitResult.patternId);
+                      if (!target) return null;
+                      const offset = target.stackOffset || 0;
+                      const path = peakFitResult.x.map((value, index) => `${index ? "L" : "M"}${xToPx(value).toFixed(2)},${yToPx(peakFitResult.fitted[index] + offset).toFixed(2)}`).join("");
+                      return <g clipPath="url(#plot-clip)"><path d={path} fill="none" stroke="#e05a47" strokeWidth={Math.max(1, S.lineWidth)} strokeDasharray="5 3" vectorEffect="non-scaling-stroke"/><line x1={xToPx(peakFitResult.center)} x2={xToPx(peakFitResult.center)} y1={M.top} y2={M.top + mainHeight} stroke="#e05a47" strokeWidth="0.7" strokeDasharray="2 3" opacity="0.7" /></g>;
+                    })()}
+
+                    {S.figureLayoutMode === "single" && S.showInset && (() => {
+                      const insetPattern = processed.find((pattern) => pattern.id === S.insetPatternId) || activeProcessedPattern || processed[0];
+                      if (!insetPattern || !(Number(S.insetXMax) > Number(S.insetXMin))) return null;
+                      const preview = ["insetMove", "insetResize"].includes(dragPreview?.type) ? dragPreview : null;
+                      const widthPct = clamp(Number(preview?.widthPct ?? S.insetWidthPct) || 34, 15, 70);
+                      const heightPct = clamp(Number(preview?.heightPct ?? S.insetHeightPct) || 34, 15, 70);
+                      const overlayWidth = plotWidth * widthPct / 100;
+                      const overlayHeight = mainHeight * heightPct / 100;
+                      const xFrac = clamp(Number(preview?.xFrac ?? S.insetXFrac) || 0, 0, Math.max(0, 1 - widthPct / 100));
+                      const yFrac = clamp(Number(preview?.yFrac ?? S.insetYFrac) || 0, 0, Math.max(0, 1 - heightPct / 100));
+                      let width = overlayWidth;
+                      let height = overlayHeight;
+                      let left = M.left + xFrac * plotWidth;
+                      let top = M.top + yFrac * mainHeight;
+                      if (insetPlacementMode === "dock-right") {
+                        width = Math.max(150, insetDockRightWidth - 24);
+                        height = Math.min(mainHeight, Math.max(120, overlayHeight));
+                        left = S.figWidth + 12;
+                        top = M.top + Math.max(0, (mainHeight - height) / 2);
+                      } else if (insetPlacementMode === "dock-top") {
+                        width = Math.min(plotWidth, Math.max(180, overlayWidth));
+                        height = Math.max(110, insetDockTopHeight - 24);
+                        left = M.left + Math.max(0, (plotWidth - width) / 2);
+                        top = 10;
+                      }
+                      const inner = { left: left + 31, right: left + width - 9, top: top + 22, bottom: top + height - 25 };
+                      const ixmin = Number(S.insetXMin); const ixmax = Number(S.insetXMax);
+                      const indices = insetPattern.sourceX.map((value, index) => ({ value, index })).filter((entry) => entry.value >= ixmin && entry.value <= ixmax);
+                      if (indices.length < 2) return null;
+                      const values = indices.map((entry) => insetPattern.displayY[entry.index]).filter(Number.isFinite);
+                      if (values.length < 2) return null;
+                      const min = Math.min(...values); const max = Math.max(...values); const range = max - min || 1;
+                      const insetAxisMin = insetAxisWindow.minimum; const insetAxisMax = insetAxisWindow.maximum;
+                      const ix = (value) => {
+                        const px = inner.left + ((axisCoordinate(value) - insetAxisMin) / Math.max(1e-12, insetAxisMax - insetAxisMin)) * (inner.right - inner.left);
+                        // L’encart suit le sens de l’axe principal.
+                        return S.reverseXAxis ? inner.left + inner.right - px : px;
+                      };
+                      const iy = (value) => inner.bottom - ((value - min) / range) * (inner.bottom - inner.top);
+                      const path = indices.map((entry, index) => `${index ? "L" : "M"}${ix(entry.value).toFixed(2)},${iy(insetPattern.displayY[entry.index]).toFixed(2)}`).join("");
+                      const color = colorMap.get(insetPattern.id) || "#20252b";
+                      const sourceValues = indices.map((entry) => insetPattern.displayY[entry.index] + (insetPattern.stackOffset || 0));
+                      const sourceYMin = Math.min(...sourceValues); const sourceYMax = Math.max(...sourceValues);
+                      const sourceX1 = xToPx(ixmin); const sourceX2 = xToPx(ixmax);
+                      const sourceRect = {
+                        x: Math.min(sourceX1, sourceX2),
+                        y: yToPx(sourceYMax),
+                        width: Math.max(2, Math.abs(sourceX2 - sourceX1)),
+                        height: Math.max(3, yToPx(sourceYMin) - yToPx(sourceYMax)),
+                      };
+                      const collision = insetPlacementMode === "overlay" && ((hasAnnotations && yFrac < 0.28) || (S.showAbbrevKey && xFrac + widthPct / 100 > 0.78 && yFrac < 0.38));
+                      const canMove = insetPlacementMode === "overlay";
+                      return <g onDoubleClick={(event) => openContextOptions(event, { tab: "appearance", target: "inset-options" })}>
+                        {S.insetShowSourceRect && <g>
                           <rect x={sourceRect.x} y={sourceRect.y} width={sourceRect.width} height={sourceRect.height} fill="none" stroke={color} strokeWidth="0.8" strokeDasharray="4 3" opacity="0.85" />
                           {S.insetShowConnectors && <><line x1={sourceRect.x + sourceRect.width} y1={sourceRect.y} x2={left} y2={top + height} stroke={color} strokeWidth="0.55" opacity="0.45"/><line x1={sourceRect.x + sourceRect.width} y1={sourceRect.y + sourceRect.height} x2={left} y2={top} stroke={color} strokeWidth="0.55" opacity="0.45"/></>}
                         </g>}
