@@ -1,5 +1,5 @@
 name: Signaler un problème
-description: Signaler un bug, un blocage ou un comportement difficile à comprendre dans Make Figure.
+description: Signaler un bug, un blocage ou un comportement difficile à comprendre dans Diffraction & Spectra Studio.
 title: "[Bug] "
 body:
   - type: markdown
