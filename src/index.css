@@ -817,8 +817,8 @@ textarea:focus { border-color: var(--selection); }
   stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
-  stroke-dasharray: 500;
-  stroke-dashoffset: 500;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
   animation: asset-draw 1.3s .15s var(--ease-out) forwards;
 }
 .workspace-asset__signal--back { stroke: rgba(141,152,170,.16); stroke-width: 6; filter: blur(2px); animation-delay: .05s; }
