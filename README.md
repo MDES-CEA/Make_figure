@@ -24,7 +24,7 @@ The built-in sample data provide a quick way to explore the XRD workflow without
 
 Reference display modes can be controlled independently: phase annotations, the reference panel and sticks drawn on the figure can each be shown or hidden. Processing controls remain available alongside the figure.
 
-![Phase-reference cards and XRD processing controls](docs/screenshots/phase-references-and-processing.jpg)
+![Phase-reference cards and XRD processing controls](docs/screenshots/phase-references-and-processing.png)
 
 ## Export preview
 
