@@ -59,13 +59,18 @@ Walkthrough of a project:
 
    ->You can: change the text and axes, the Xmax and Xmin (you can also do this by dragging the resize strip above the figure), add a grid, change tick steps, add a secondary axis, a zoom inset), change the layout when you have a serie of acquisition (stacking, waterfall, overlay), adjust the typography of all the text (police, bold, size), adjust line width and opacity, change line colors, add an X axis break, save you style to reuse it later. 
 
+![Appearances window](docs/screenshots/Appearance.png)
 
-## Export preview
+5. Export your figure
 
-The preview uses the same normalised SVG as the exported file, independently of the editor zoom. The preview also reports the output dimensions, background and curve line width before export.
+   -> Adjust the quality and scale of the PNG and PDF/TIFF file in the "Export" window on the right panel and export by clicking "Preview export", choosing your format and clicking "Export". You can also save the data and project in CSV. The preview uses the same normalised SVG as the exported file, independently of the editor zoom. The preview also reports the output dimensions, background and curve line width before export.
+   
+![Export options](docs/screenshots/Figure-export.png)
+![Export options](docs/screenshots/preview-export.png)   
 
-![Export preview with format and output details](docs/screenshots/export-preview.jpg)
+**Your session is saved in browser at all time, you can also save your session in a .json file and upload it later to keep working on your project. You upload a .json by clicking the "import a JSON" button next to "active project on the top right or pressing Ctrl+O**
 
+![import options](docs/screenshots/import.png) 
 
 ## Run locally
 
