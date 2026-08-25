@@ -33,7 +33,7 @@ The built-in sample data provide a quick way to explore the XRD workflow without
 Files can be selected from the import controls or dragged directly into the workspace. Recognised XRD, RRUFF Raman and OPUS files are routed to the appropriate analysis space.
 
 
-Walkthrough of a project: 
+## Walkthrough of a project: 
 
 1. Import your data into the app by dragging your file in the window or pressing "import data" in the "Curves" window on the left panel.
 
