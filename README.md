@@ -36,36 +36,35 @@ Files can be selected from the import controls or dragged directly into the work
 Walkthrough of a project: 
 
 1. Import your data into the app by dragging your file in the window or pressing "import data" in the "Curves" window on the left panel.
--> Your data should be shown in a graph on the middle window, by pressing the "Processing" button, a right panel opens with several options and treatment for your data.
+
+   -> Your data should be shown in a graph on the middle window, by pressing the "Processing" button, a right panel opens with several options and treatment for your data.
+   
    - Preprocessing allow you to smooth and trim the peaks with "percentile clipping", you can also normalize your data with different laws (especially usefull if you have several spectra or very high peak)
    - Baseline correction (rolling minimum, SNIP, rubber band, polynomial law, ALS)
    - A peak detection tool with different parameters and an export option
    - Deconvolution tool for multi peak fitting
    - You can also : align a serie of acquisition, change instrument and radiation, add an instrumental correction, fit single peaks
 
-2. Import your reference phases in the "References" window on the left panel in .dif, .cif, .txt, .csv, .dat or manually enter the peak with "add manually"
--> The reference panel on the left allow you to add those references onto the graph, either with phase annotation in a dedicated panel on the top of your figure, directly put it on the figure and control stick height, peak values, line width (these control are also available directly on the figure after adding the references), or in a dedicated panel on the bottom of the figure
-   
+3. Import your reference phases in the "References" window on the left panel in .dif, .cif, .txt, .csv, .dat or manually enter the peak with "add manually"
 
-![IR workspace with 6 patterns and 3 phase references](docs/screenshots/phase-annotations.png) ![IR workspace with 6 patterns and 3 phase references](docs/screenshots/reference-on-fig.png) ![IR workspace with 6 patterns and 3 phase references](docs/screenshots/ref-panel.png)
+   -> The reference panel on the left allow you to add those references onto the graph, either with phase annotation in a dedicated panel on the top of your figure, directly put it on the figure and control stick height,    peak values, line width (these control are also available directly on the figure after adding the references), or in a dedicated panel on the bottom of the figure.
 
+   Layout control are also possible directly on the figure and by the addition of notes (left pannel). Notes can be added anywhere on the graph, options are located by selecting a note (notes added are automatically          selected) and going into the "Selection" window on the right panel.
 
-
-
-
-
-## Reference and processing tools
-
-Reference display modes can be controlled independently: phase annotations, the reference panel and sticks drawn on the figure can each be shown or hidden. Processing controls remain available alongside the figure.
+![Phase annotation options](docs/screenshots/phase-annotations.png) ![reference on figure options](docs/screenshots/reference-on-fig.png) ![reference pannel options](docs/screenshots/ref-panel.png)
 
 ![Phase-reference cards and XRD processing controls](docs/screenshots/phase-references-and-processing.png)
+
+4. Tune the layout with the "Appearance" window on the right panel.
+
+   ->You can: change the text and axes, the Xmax and Xmin (you can also do this by dragging the resize strip above the figure), add a grid, change tick steps, add a secondary axis, a zoom inset), change the layout when you have a serie of acquisition (stacking, waterfall, overlay), adjust the typography of all the text (police, bold, size), adjust line width and opacity, change line colors, add an X axis break, save you style to reuse it later. 
+
 
 ## Export preview
 
 The preview uses the same normalised SVG as the exported file, independently of the editor zoom. The preview also reports the output dimensions, background and curve line width before export.
 
 ![Export preview with format and output details](docs/screenshots/export-preview.jpg)
-
 
 
 ## Run locally
