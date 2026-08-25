@@ -66,7 +66,6 @@ import {
   zoneAreasToCsv,
   fitMultiPeaks,
   multiPeakFitToCsv,
-  makeSampleData,
   svgToVectorPdf,
 } from "./lib";
 
@@ -1206,6 +1205,7 @@ export default function App() {
   const [batchRename, setBatchRename] = useState({ mode: "prefix", find: "", replace: "", value: "" });
   const [batchGroup, setBatchGroup] = useState({ type: "sample", name: "", value: "" });
   const [dropActive, setDropActive] = useState(false);
+  const [sampleLoading, setSampleLoading] = useState(false);
   const [autosaveState, setAutosaveState] = useState("loading");
   const [isExporting, setIsExporting] = useState(false);
   const [exportPreview, setExportPreview] = useState({ open: false, format: "png", serialized: "" });
@@ -3722,52 +3722,31 @@ export default function App() {
     return bestIndex >= 0 ? sourceX[bestIndex] : dataX;
   }, [S.xmax, S.xmin, peakEditTolerance, plotWidth]);
 
-  /** Charge un jeu de démonstration synthétique dans l'espace actif. */
-  const loadSampleData = useCallback(() => {
-    const sample = makeSampleData(activeMode);
-    const patternsToAdd = sample.patterns.map((entry, index) => ({
-      id: newId("pattern"),
-      label: entry.label,
-      fileName: `exemple_${activeMode}_${index + 1}`,
-      x: entry.x,
-      y: entry.y,
-      visible: true,
-      color: "#111111",
-      yscale: 1,
-      xoffset: 0,
-      locked: false,
-      userNotes: tr("Données synthétiques de démonstration."),
-      orderValue: "",
-      groupType: "",
-      groupName: "",
-      groupValue: "",
-      importedAt: Date.now(),
-      ...(entry.irQuantity ? { irQuantity: entry.irQuantity } : {}),
-    }));
-    const phasesToAdd = sample.phases.map((entry, index) => ({
-      id: newId("phase"),
-      name: entry.name,
-      abbrev: entry.abbrev,
-      color: PHASE_COLORS[index % PHASE_COLORS.length],
-      peaks: entry.peaks,
-      visible: true,
-      inAnnot: true,
-      inPanel: activeMode === "drx",
-      files: ["exemple"],
-      sourceKind: "manual",
-      labelOffsetX: 0,
-      labelOffsetY: 0,
-    }));
-    const zonesToAdd = (sample.zones || []).map((entry) => ({ id: newId("zone"), visible: true, ...entry }));
-    history.set((current) => updateWorkspaceProject(current, activeMode, (currentWorkspace) => ({
-      ...currentWorkspace,
-      patterns: [...currentWorkspace.patterns, ...patternsToAdd],
-      phases: [...currentWorkspace.phases, ...phasesToAdd],
-      zones: MODES_WITH_ZONES.includes(activeMode) ? [...(currentWorkspace.zones || []), ...zonesToAdd] : currentWorkspace.zones,
-    })));
-    setLeftTab("patterns");
-    setMessage(`Jeu d'exemple ${tr(modeLabel(activeMode))} chargé : ${patternsToAdd.length} patron(s), ${phasesToAdd.length} phase(s). Données synthétiques, à des fins de découverte uniquement.`);
-  }, [activeMode, history]);
+  /** Charge le projet de démonstration complet sans l'inclure dans le bundle initial. */
+  const loadSampleData = useCallback(async () => {
+    if (sampleLoading) return;
+    setSampleLoading(true);
+    try {
+      const { makeSampleProject } = await import("./sampleProject.js");
+      const parsed = validateProject(makeSampleProject());
+      const imported = duplicateProject(parsed, parsed.name || "Projet d’exemple");
+      await saveStoredProject(project);
+      history.replace(imported);
+      clearSelection();
+      setZoom(1);
+      setCursor(null);
+      setLeftTab("patterns");
+      setRightCollapsed(true);
+      await saveStoredProject(imported);
+      await refreshProjectIndex();
+      writeLocalSetting("make-figure-active-project", imported.id);
+      setMessage("Projet d’exemple synthétique chargé.");
+    } catch (error) {
+      setMessage(`Impossible de charger le projet d’exemple : ${error.message}`);
+    } finally {
+      setSampleLoading(false);
+    }
+  }, [clearSelection, history, project, refreshProjectIndex, sampleLoading]);
 
   const onSvgClick = (event) => {
     if (suppressClickRef.current) { suppressClickRef.current = false; return; }
@@ -4497,7 +4476,7 @@ export default function App() {
                 <div className="welcome-card__actions">
                   <Button variant="primary" icon="upload" onClick={() => patternInputRef.current?.click()}>{tr("Importer des patrons")}</Button>
                   <Button variant="secondary" icon="phase" onClick={() => phaseInputRef.current?.click()}>Ajouter des phases</Button>
-                  <Button variant="secondary" icon="waveform" onClick={loadSampleData}>Jeu d’exemple</Button>
+                  <Button variant="secondary" icon="waveform" disabled={sampleLoading} onClick={loadSampleData}>{sampleLoading ? "Chargement…" : "Jeu d’exemple"}</Button>
                 </div>
                 <div className="welcome-card__privacy"><Icon name="check" size={12} /> {tr("Traitement exclusivement local dans le navigateur.")}</div>
               </div>

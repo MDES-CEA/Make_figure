@@ -36,7 +36,7 @@ Data import, signal processing, reference management, figure editing and export 
 ## Quick start
 
 1. [Open the application](https://make-figure.vercel.app/).
-2. Select **Sample data** to inspect a prepared XRD project, or import an acquisition from the left data panel.
+2. Select **Sample data** to inspect a synthetic hydration study containing XRD, Raman and IR workspaces, or import an acquisition from the left data panel. The example is generated locally and contains no experimental or third-party reference measurements.
 3. Open **Processing** to prepare the signal.
 4. Add references from the **References** tab in the data panel.
 5. Use **Appearance** to compose the final layout.
