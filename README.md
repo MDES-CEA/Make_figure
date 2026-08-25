@@ -4,7 +4,7 @@ A free, browser-based workspace for building publication-ready XRD, Raman and IR
 
 [Open the app](https://make-figure.vercel.app/) · [Report a problem](https://github.com/MDES-CEA/Make_figure/issues/new?template=bug_report.yml)
 
-![XRD workspace with two patterns and two phase references](docs/screenshots/xrd-workspace.jpg)
+![XRD workspace with two patterns and two phase references](docs/screenshots/xrd-workspace.png)
 
 ## What it does
 
