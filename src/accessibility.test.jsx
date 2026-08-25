@@ -29,7 +29,7 @@ describe("accessibilité de l’interface", () => {
   it("affiche la nouvelle marque, révèle tout le tracé DRX et traduit l’accueil", () => {
     const { container } = render(<App />);
 
-    expect(screen.getAllByText("Diffraction & Spectra Studio").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("PhaseCanvas").length).toBeGreaterThan(0);
     const animatedGeometry = container.querySelectorAll(".workspace-asset__signal, .workspace-asset__stick");
     expect(animatedGeometry.length).toBeGreaterThan(0);
     expect([...animatedGeometry].every((element) => element.getAttribute("pathLength") === "1")).toBe(true);

@@ -1,6 +1,6 @@
-# Diffraction & Spectra Studio
+# PhaseCanvas
 
-A browser-based workspace for preparing publication-ready X-ray diffraction (XRD), Raman and infrared (IR) figures.
+A browser-based XRD, Raman and IR figure editor for preparing publication-ready scientific graphics.
 
 [Open the application](https://make-figure.vercel.app/) · [Report a problem](https://github.com/MDES-CEA/Make_figure/issues/new?template=bug_report.yml)
 

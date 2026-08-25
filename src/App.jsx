@@ -383,7 +383,7 @@ const WORKSPACE_ASSET_COLORS = {
   ir: "#c77868",
 };
 
-const APP_NAME = "Diffraction & Spectra Studio";
+const APP_NAME = "PhaseCanvas";
 
 function WorkspaceIllustration({ mode = "drx", compact = false }) {
   const resolvedMode = resolveMode(mode);
@@ -2309,7 +2309,7 @@ export default function App() {
 
   const saveSessionFile = useCallback(() => {
     const payload = JSON.stringify({ ...project, version: 17 }, null, 2);
-    const safeName = String(project.name || S.fileName || "make_figure_project").replace(/[\/:*?"<>|]/g, "_");
+    const safeName = String(project.name || S.fileName || "phasecanvas_project").replace(/[\/:*?"<>|]/g, "_");
     downloadBlob(payload, "application/json", `${safeName}_session.json`);
     setMessage("Session JSON exportée.");
   }, [project, S.fileName]);
