@@ -4,6 +4,7 @@ import { translate, translateMessage, defaultAxisLabels, STOCK_AXIS_LABELS } fro
 import { exportScaleLimits, serializeSvgForExport, svgDataUrl } from "./exportUtils.js";
 import { isPhaseDashed } from "./phaseStyles.js";
 import { canUpdatePatternField } from "./patternEditing.js";
+import MineralField from "./MineralField.jsx";
 import {
   CMAPS,
   PHASE_COLORS,
@@ -383,7 +384,7 @@ const WORKSPACE_ASSET_COLORS = {
   ir: "#c77868",
 };
 
-const APP_NAME = "PhaseCanvas";
+const APP_NAME = "mineral";
 
 function WorkspaceIllustration({ mode = "drx", compact = false }) {
   const resolvedMode = resolveMode(mode);
@@ -2309,7 +2310,7 @@ export default function App() {
 
   const saveSessionFile = useCallback(() => {
     const payload = JSON.stringify({ ...project, version: 17 }, null, 2);
-    const safeName = String(project.name || S.fileName || "phasecanvas_project").replace(/[\/:*?"<>|]/g, "_");
+    const safeName = String(project.name || S.fileName || "mineral_project").replace(/[\/:*?"<>|]/g, "_");
     downloadBlob(payload, "application/json", `${safeName}_session.json`);
     setMessage("Session JSON exportée.");
   }, [project, S.fileName]);
@@ -4470,7 +4471,7 @@ export default function App() {
             {dropActive && <div className="drop-overlay"><div className="drop-overlay__asset"><WorkspaceIllustration mode={activeMode} compact /></div><Icon name="upload" size={24} /><strong>{tr("Déposer les fichiers")}</strong><span>{tr(".dif → DRX · RRUFF Raman → Raman · .xml OPUS → IR · autres fichiers → espace actif.")}</span></div>}
             {!visibleCount ? (
               <div className="welcome-card">
-                <div className="welcome-card__visual"><WorkspaceIllustration mode={activeMode} /></div>
+                <MineralField tr={tr} reduceMotion={reduceMotion} />
                 <h1>{tr(activeMode === "drx" ? "Composer une figure de diffraction" : activeMode === "ir" ? "Composer une figure infrarouge" : "Composer une figure Raman")}</h1>
                 <p>{tr("Importer les acquisitions, ajouter les références, appliquer le traitement du signal puis produire une figure scientifique prête à publier.")}</p>
                 <div className="welcome-card__actions">

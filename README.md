@@ -1,4 +1,4 @@
-# PhaseCanvas
+# mineral
 
 A browser-based XRD, Raman and IR figure editor for preparing publication-ready scientific graphics.
 

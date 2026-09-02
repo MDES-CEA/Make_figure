@@ -26,13 +26,16 @@ describe("accessibilité de l’interface", () => {
     expect(unnamed).toEqual([]);
   });
 
-  it("affiche la nouvelle marque, révèle tout le tracé DRX et traduit l’accueil", () => {
+  it("affiche la marque, le champ minéral de l’accueil et traduit l’accueil", () => {
     const { container } = render(<App />);
 
-    expect(screen.getAllByText("PhaseCanvas").length).toBeGreaterThan(0);
-    const animatedGeometry = container.querySelectorAll(".workspace-asset__signal, .workspace-asset__stick");
-    expect(animatedGeometry.length).toBeGreaterThan(0);
-    expect([...animatedGeometry].every((element) => element.getAttribute("pathLength") === "1")).toBe(true);
+    expect(screen.getAllByText("mineral").length).toBeGreaterThan(0);
+    // L’accueil expose un objet manipulable et sa commande, tous deux nommés.
+    const field = container.querySelector(".mineral-field__canvas");
+    expect(field).toBeTruthy();
+    expect(field.getAttribute("role")).toBe("img");
+    expect(field.getAttribute("aria-label")).toBeTruthy();
+    expect(screen.getByLabelText("Degré de cristallinité")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "FR" }));
     expect(document.documentElement.lang).toBe("en");
